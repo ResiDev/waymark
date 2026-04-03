@@ -20,26 +20,37 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
     [setHighlight]
   );
 
-  useEffect(() => {
-    if (!currentStep) return;
-    if (currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check()) {
-      next();
-    }
-  }, [currentStep, next]);
-
   useLayoutEffect(() => {
     if (!currentStep || !active) return;
-    const highlightElement = document.querySelector(`[data-tutorial-highlight=${currentStep.highlightName}]`);
-    if (!highlightElement) {
-      console.error(`Did not find highlightElement ${currentStep.highlightName}`);
-      return;
-    }
-    if (currentStep.scrollIntoView) highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+    let highlightElement: Element | null = document.querySelector(
+      `[data-tutorial-highlight=${currentStep.highlightName}]`
+    );
+
+    let frameId: number;
+    let advancing = false;
+    const update = () => {
+      if (!highlightElement) {
+        highlightElement = document.querySelector(`[data-tutorial-highlight=${currentStep.highlightName}]`);
+      } else {
+        if (!advancing && currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check()) {
+          advancing = true;
+          if (currentStep.delay) setTimeout(() => next(), currentStep.delay);
+          else next();
+        }
+        updateHighlight(highlightElement);
+      }
+      frameId = requestAnimationFrame(update);
+    };
+    update();
+
+    if (highlightElement && currentStep.scrollIntoView)
+      highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
-      if (highlightElement.contains(e.target)) {
+      if (highlightElement && highlightElement.contains(e.target)) {
         if (currentStep.advanceWhen.type === 'click') next();
         return;
       }
@@ -49,13 +60,6 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
     };
 
     window.addEventListener('click', handleWindowClick);
-
-    let frameId: number;
-    const update = () => {
-      updateHighlight(highlightElement);
-      frameId = requestAnimationFrame(update);
-    };
-    update();
 
     return () => {
       cancelAnimationFrame(frameId);

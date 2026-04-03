@@ -3,6 +3,7 @@ export type TutorialStep = {
   text: string;
   advanceWhen: { type: 'click' } | { type: 'state'; check: () => boolean };
   scrollIntoView: boolean;
+  delay?: number;
 };
 
 export type TutorialRenderProps = {
