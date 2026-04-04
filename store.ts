@@ -10,19 +10,25 @@ export function createTourStore(id: string) {
     listeners: new Set<() => void>(),
     highlightedElement: null,
     highlightElementIsInView: false,
-    observer: new IntersectionObserver(([entry]) => {
-      tourStore.highlightElementIsInView = entry.isIntersecting;
-    }),
+    observer: null as IntersectionObserver | null,
+    getObserver: () => {
+      if (!tourStore.observer && typeof IntersectionObserver !== 'undefined') {
+        tourStore.observer = new IntersectionObserver(([entry]) => {
+          tourStore.highlightElementIsInView = entry?.isIntersecting ?? false;
+        });
+      }
+      return tourStore.observer;
+    },
     getStep: () => tourStore.step,
     getFocused: () => tourStore.focused,
     getHighlightedElement: () => tourStore.highlightedElement,
     setHighlightedElement: (document: Element | Document, name: string) => {
       const el = document.querySelector(`[data-tour=${name}]`);
       if (tourStore.highlightedElement) {
-        tourStore.observer.unobserve(tourStore.highlightedElement);
+        tourStore.getObserver()?.unobserve(tourStore.highlightedElement);
       }
       tourStore.highlightedElement = el;
-      if (el) tourStore.observer.observe(el);
+      if (el) tourStore.getObserver()?.observe(el);
     },
     subscribe: (callback: () => void) => {
       tourStore.listeners.add(callback);

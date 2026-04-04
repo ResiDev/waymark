@@ -5,7 +5,8 @@ export type TutorialStore = {
   listeners: Set<() => void>;
   highlightedElement: null | Element;
   highlightElementIsInView: boolean;
-  observer: IntersectionObserver;
+  observer: IntersectionObserver | null;
+  getObserver: () => IntersectionObserver | null;
   getStep: () => number;
   getFocused: () => boolean;
   getHighlightedElement: () => null | Element;
