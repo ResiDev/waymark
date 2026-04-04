@@ -1,27 +1,24 @@
-import { useCallback, useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import { tutorialStore } from './store';
+import { useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { createTourStore, tourStores } from './store';
 import type { TutorialStep } from './types';
 
-export function useTutorial({ active, steps }: { active: boolean; steps: Array<TutorialStep> }) {
+export function useTutorial({ id, active, steps }: { id: string; active: boolean; steps: Array<TutorialStep> }) {
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
 
-  // Reset store when a new Tutorial mounts — prevents state bleeding
-  // between pages that each have their own Tutorial instance
-  useLayoutEffect(() => {
-    tutorialStore.reset();
-  }, []);
+  const tourStore = useMemo(() => {
+    const foundStore = tourStores.get(id);
+    if (!foundStore) return createTourStore(id);
+    return foundStore;
+  }, [id]);
 
-  const step = useSyncExternalStore(tutorialStore.subscribe, tutorialStore.getStep, () => 0);
-  const focused = useSyncExternalStore(tutorialStore.subscribe, tutorialStore.getFocused, () => false);
+  const step = useSyncExternalStore(tourStore.subscribe, tourStore.getStep, () => 0);
+  const focused = useSyncExternalStore(tourStore.subscribe, tourStore.getFocused, () => false);
 
-  const currentStep: TutorialStep | undefined = steps[step];
-
-  const next = useCallback(() => {
-    tutorialStore.advance();
-  }, []);
+  const currentStep = steps.at(step);
 
   const updateHighlight = useCallback(
-    (element: Element) => {
+    (element: Element | null) => {
+      if (!element) return;
       setHighlight(element.getBoundingClientRect());
     },
     [setHighlight]
@@ -30,39 +27,47 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
   useLayoutEffect(() => {
     if (!currentStep || !active) return;
 
-    let highlightElement: Element | null = document.querySelector(`[data-tour=${currentStep.highlightName}]`);
-
     let frameId: number;
+    // Prevent next from being called multiple times by raf loop
     let advancing = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    // raf loop to detect: if we have the right highlightElement, if the condition is completed, if it is in view
     const update = () => {
-      highlightElement = document.querySelector(`[data-tour=${currentStep.highlightName}]`);
-      if (highlightElement) {
+      const highlightElement = tourStore.getHighlightedElement();
+
+      if (!highlightElement || !highlightElement.isConnected) {
+        tourStore.setHighlightedElement(document, currentStep.highlightName);
+      }
+      if (highlightElement && focused) {
+        if (!tourStore.highlightElementIsInView) {
+          highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        // detect state change for auto advance tour
         if (!advancing && currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check(highlightElement)) {
           advancing = true;
-          if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
-          else next();
+          if (currentStep.delay) timeoutId = setTimeout(() => tourStore.advance(), currentStep.delay);
+          else tourStore.advance();
         }
-        updateHighlight(highlightElement);
       }
+      updateHighlight(highlightElement);
       frameId = requestAnimationFrame(update);
     };
+
     update();
     clearTimeout(timeoutId);
-
-    if (highlightElement && currentStep.scrollIntoView)
-      highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
       if (e.target.closest(`[data-tour=${currentStep.highlightName}]`)) {
-        if (currentStep.advanceWhen.type === 'click') next();
+        if (currentStep.advanceWhen.type === 'click') tourStore.advance();
         return;
       }
       if (e.target.closest('[data-tour-popover]')) return;
       if (e.target.closest('[data-tour-beacon]')) return;
-      tutorialStore.unfocus();
+      tourStore.unfocus();
     };
 
     // true added so that it fires on capture, rather than on bubble (so before react can swap dom nodes)
@@ -72,7 +77,7 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
       cancelAnimationFrame(frameId);
       window.removeEventListener('click', handleWindowClick, true);
     };
-  }, [currentStep, active, next, updateHighlight]);
+  }, [currentStep, active, updateHighlight, focused, tourStore]);
 
   if (!active || !highlight || !currentStep) return { highlight: undefined };
 
@@ -80,11 +85,11 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
     step,
     currentStep,
     highlight,
-    next,
-    prev: tutorialStore.prev,
+    next: tourStore.advance,
+    prev: tourStore.prev,
     focused,
-    focus: tutorialStore.focus,
-    unfocus: tutorialStore.unfocus,
-    reset: tutorialStore.reset,
+    focus: tourStore.focus,
+    unfocus: tourStore.unfocus,
+    reset: tourStore.reset,
   };
 }

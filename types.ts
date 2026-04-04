@@ -1,3 +1,22 @@
+export type TutorialStore = {
+  step: number;
+  active: boolean;
+  focused: boolean;
+  listeners: Set<() => void>;
+  highlightedElement: null | Element;
+  highlightElementIsInView: boolean;
+  observer: IntersectionObserver;
+  getStep: () => number;
+  getFocused: () => boolean;
+  getHighlightedElement: () => null | Element;
+  setHighlightedElement: (document: Element | Document, name: string) => void;
+  subscribe: (callback: () => void) => () => void;
+  focus: () => void;
+  unfocus: () => void;
+  prev: () => void;
+  advance: () => void;
+  reset: () => void;
+};
 export type TutorialStep = {
   highlightName: string;
   text: string;

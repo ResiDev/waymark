@@ -6,17 +6,20 @@ import type { TutorialRenderProps, TutorialStep } from './types';
 import { useTutorial } from './useTutorial';
 
 export function Tutorial({
+  id,
   active,
   steps,
   children,
   highlightPadding = 20,
 }: {
+  id: string;
   active: boolean;
   steps: Array<TutorialStep>;
   children?: (props: TutorialRenderProps) => React.ReactNode;
   highlightPadding?: number;
 }) {
   const { step, currentStep, highlight, next, prev, focused, focus, reset } = useTutorial({
+    id,
     active,
     steps,
   });

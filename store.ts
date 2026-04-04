@@ -1,36 +1,62 @@
-export const tutorialStore = {
-  step: 0,
-  focused: true,
-  listeners: new Set<() => void>(),
-  getStep: () => tutorialStore.step,
-  getFocused: () => tutorialStore.focused,
-  subscribe: (callback: () => void) => {
-    tutorialStore.listeners.add(callback);
-    return () => tutorialStore.listeners.delete(callback);
-  },
-  focus: () => {
-    tutorialStore.focused = true;
-    tutorialStore.listeners.forEach((callback) => callback());
-  },
-  unfocus: () => {
-    tutorialStore.focused = false;
-    tutorialStore.listeners.forEach((callback) => callback());
-  },
-  prev: () => {
-    if (tutorialStore.step > 0) {
-      tutorialStore.step -= 1;
-      tutorialStore.focused = true;
-      tutorialStore.listeners.forEach((callback) => callback());
-    }
-  },
-  advance: () => {
-    tutorialStore.step += 1;
-    tutorialStore.focused = true;
-    tutorialStore.listeners.forEach((callback) => callback());
-  },
-  reset: () => {
-    tutorialStore.step = 0;
-    tutorialStore.focused = true;
-    tutorialStore.listeners.forEach((callback) => callback());
-  },
-};
+import type { TutorialStore } from './types';
+
+export const tourStores = new Map<string, TutorialStore>();
+
+export function createTourStore(id: string) {
+  const tourStore: TutorialStore = {
+    step: 0,
+    active: false,
+    focused: true,
+    listeners: new Set<() => void>(),
+    highlightedElement: null,
+    highlightElementIsInView: false,
+    observer: new IntersectionObserver(([entry]) => {
+      tourStore.highlightElementIsInView = entry.isIntersecting;
+    }),
+    getStep: () => tourStore.step,
+    getFocused: () => tourStore.focused,
+    getHighlightedElement: () => tourStore.highlightedElement,
+    setHighlightedElement: (document: Element | Document, name: string) => {
+      const el = document.querySelector(`[data-tour=${name}]`);
+      if (tourStore.highlightedElement) {
+        tourStore.observer.unobserve(tourStore.highlightedElement);
+      }
+      tourStore.highlightedElement = el;
+      if (el) tourStore.observer.observe(el);
+    },
+    subscribe: (callback: () => void) => {
+      tourStore.listeners.add(callback);
+      return () => tourStore.listeners.delete(callback);
+    },
+    focus: () => {
+      tourStore.focused = true;
+      tourStore.listeners.forEach((cb) => cb());
+    },
+    unfocus: () => {
+      tourStore.focused = false;
+      tourStore.listeners.forEach((cb) => cb());
+    },
+    prev: () => {
+      if (tourStore.step > 0) {
+        tourStore.step -= 1;
+        tourStore.focused = true;
+        tourStore.highlightedElement = null;
+        tourStore.listeners.forEach((cb) => cb());
+      }
+    },
+    advance: () => {
+      tourStore.step += 1;
+      tourStore.focused = true;
+      tourStore.highlightedElement = null;
+      tourStore.listeners.forEach((cb) => cb());
+    },
+    reset: () => {
+      tourStore.step = 0;
+      tourStore.focused = true;
+      tourStore.highlightedElement = null;
+      tourStore.listeners.forEach((cb) => cb());
+    },
+  };
+  tourStores.set(id, tourStore);
+  return tourStore;
+}
