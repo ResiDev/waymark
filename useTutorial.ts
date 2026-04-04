@@ -23,19 +23,17 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
   useLayoutEffect(() => {
     if (!currentStep || !active) return;
 
-    let highlightElement: Element | null = document.querySelector(
-      `[data-tutorial-highlight=${currentStep.highlightName}]`
-    );
+    let highlightElement: Element | null = document.querySelector(`[data-tour=${currentStep.highlightName}]`);
 
     let frameId: number;
     let advancing = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const update = () => {
-      if (!highlightElement) {
-        highlightElement = document.querySelector(`[data-tutorial-highlight=${currentStep.highlightName}]`);
-      } else {
+      highlightElement = document.querySelector(`[data-tour=${currentStep.highlightName}]`);
+      if (highlightElement) {
         if (!advancing && currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check()) {
           advancing = true;
-          if (currentStep.delay) setTimeout(() => next(), currentStep.delay);
+          if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
           else next();
         }
         updateHighlight(highlightElement);
@@ -43,6 +41,7 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
       frameId = requestAnimationFrame(update);
     };
     update();
+    clearTimeout(timeoutId);
 
     if (highlightElement && currentStep.scrollIntoView)
       highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -50,20 +49,21 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
-      if (highlightElement && highlightElement.contains(e.target)) {
+      if (e.target.closest(`[data-tour=${currentStep.highlightName}]`)) {
         if (currentStep.advanceWhen.type === 'click') next();
         return;
       }
-      if (e.target.closest('[data-tutorial-popover]')) return;
-      if (e.target.closest('[data-tutorial-beacon]')) return;
+      if (e.target.closest('[data-tour-popover]')) return;
+      if (e.target.closest('[data-tour-beacon]')) return;
       tutorialStore.unfocus();
     };
 
-    window.addEventListener('click', handleWindowClick);
+    // true added so that it fires on capture, rather than on bubble (so before react can swap dom nodes)
+    window.addEventListener('click', handleWindowClick, true);
 
     return () => {
       cancelAnimationFrame(frameId);
-      window.removeEventListener('click', handleWindowClick);
+      window.removeEventListener('click', handleWindowClick, true);
     };
   }, [currentStep, active, next, updateHighlight]);
 
