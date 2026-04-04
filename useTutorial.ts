@@ -16,6 +16,10 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
 
   const currentStep = steps.at(step);
 
+  const selector =
+    currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}` : currentStep?.selector;
+  if (!selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
+
   const updateHighlight = useCallback(
     (element: Element | null) => {
       if (!element) return;
@@ -37,10 +41,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       const highlightElement = tourStore.getHighlightedElement();
 
       if (!highlightElement || !highlightElement.isConnected) {
-        tourStore.setHighlightedElement(
-          document,
-          'dataTour' in currentStep ? currentStep.dataTour : currentStep.selector
-        );
+        tourStore.setHighlightedElement(document, selector);
       }
       if (highlightElement && focused) {
         if (!tourStore.highlightElementIsInView) {
@@ -64,7 +65,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
-      if (e.target.closest(`[data-tour=${currentStep.highlightName}]`)) {
+      if (e.target.closest(selector)) {
         if (currentStep.advanceWhen.type === 'click') tourStore.advance();
         return;
       }
@@ -80,7 +81,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       cancelAnimationFrame(frameId);
       window.removeEventListener('click', handleWindowClick, true);
     };
-  }, [currentStep, active, updateHighlight, focused, tourStore]);
+  }, [currentStep, active, updateHighlight, focused, tourStore, selector]);
 
   if (!active || !highlight || !currentStep) return { highlight: undefined };
 

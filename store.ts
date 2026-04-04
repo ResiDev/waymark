@@ -22,8 +22,8 @@ export function createTourStore(id: string) {
     getStep: () => tourStore.step,
     getFocused: () => tourStore.focused,
     getHighlightedElement: () => tourStore.highlightedElement,
-    setHighlightedElement: (document: Element | Document, name: string) => {
-      const el = document.querySelector(`[data-tour=${name}]`);
+    setHighlightedElement: (document: Element | Document, selector: string) => {
+      const el = document.querySelector(selector);
       if (tourStore.highlightedElement) {
         tourStore.getObserver()?.unobserve(tourStore.highlightedElement);
       }
