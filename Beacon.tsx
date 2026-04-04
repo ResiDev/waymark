@@ -4,7 +4,7 @@ export function Beacon({ highlight, onClick }: { highlight: DOMRect; onClick: ()
   return (
     <>
       <div
-        data-tutorial-beacon
+        data-tour-beacon
         style={{
           width: 20,
           height: 20,
