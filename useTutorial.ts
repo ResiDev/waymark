@@ -37,7 +37,10 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       const highlightElement = tourStore.getHighlightedElement();
 
       if (!highlightElement || !highlightElement.isConnected) {
-        tourStore.setHighlightedElement(document, currentStep.highlightName);
+        tourStore.setHighlightedElement(
+          document,
+          'dataTour' in currentStep ? currentStep.dataTour : currentStep.selector
+        );
       }
       if (highlightElement && focused) {
         if (!tourStore.highlightElementIsInView) {

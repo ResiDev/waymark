@@ -17,8 +17,7 @@ export type TutorialStore = {
   advance: () => void;
   reset: () => void;
 };
-export type TutorialStep = {
-  highlightName: string;
+type TutorialStepBase = {
   text: string;
   advanceWhen:
     | { type: 'click' }
@@ -27,6 +26,8 @@ export type TutorialStep = {
   scrollIntoView: boolean;
   delay?: number;
 };
+
+export type TutorialStep = (TutorialStepBase & { dataTour: string }) | (TutorialStepBase & { selector: string });
 
 export type TutorialRenderProps = {
   currentStep: TutorialStep;
