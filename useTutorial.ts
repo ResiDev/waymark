@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import { tutorialStore } from './store';
 import type { TutorialStep } from './types';
 
 export function useTutorial({ active, steps }: { active: boolean; steps: Array<TutorialStep> }) {
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
+
+  // Reset store when a new Tutorial mounts — prevents state bleeding
+  // between pages that each have their own Tutorial instance
+  useLayoutEffect(() => {
+    tutorialStore.reset();
+  }, []);
+
   const step = useSyncExternalStore(tutorialStore.subscribe, tutorialStore.getStep, () => 0);
   const focused = useSyncExternalStore(tutorialStore.subscribe, tutorialStore.getFocused, () => false);
 
@@ -31,7 +38,7 @@ export function useTutorial({ active, steps }: { active: boolean; steps: Array<T
     const update = () => {
       highlightElement = document.querySelector(`[data-tour=${currentStep.highlightName}]`);
       if (highlightElement) {
-        if (!advancing && currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check()) {
+        if (!advancing && currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check(highlightElement)) {
           advancing = true;
           if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
           else next();
