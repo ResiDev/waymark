@@ -1,3 +1,5 @@
+import { Placement } from './PopoverAnchor';
+
 export type TutorialStore = {
   step: number;
   active: boolean;
@@ -25,6 +27,7 @@ type TutorialStepBase = {
     | { type: 'state'; check: (el?: Element) => boolean }
     | { type: 'event'; event: keyof HTMLElementEventMap | Array<keyof HTMLElementEventMap> };
   scrollIntoView: boolean;
+  preferredPopoverPosition?: Placement;
   delay?: number;
 };
 

@@ -42,7 +42,7 @@ export function Tutorial({
 
   return (
     <Highlight highlight={highlight} padding={highlightPadding}>
-      <PopoverAnchor highlight={highlight} padding={highlightPadding}>
+      <PopoverAnchor highlight={highlight} padding={highlightPadding} preferredPlacement={currentStep.preferredPopoverPosition}>
         {content}
       </PopoverAnchor>
     </Highlight>

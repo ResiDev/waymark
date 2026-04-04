@@ -32,7 +32,7 @@ export function DefaultPopover({ currentStep, step, totalSteps, next, prev, rese
         gap: 12,
       }}
     >
-      <div style={{ fontSize: 14, lineHeight: 1.5 }}>{currentStep.text}</div>
+      <div style={{ fontSize: 16, lineHeight: 1.5 }}>{currentStep.text}</div>
       <div
         style={{
           display: 'flex',
