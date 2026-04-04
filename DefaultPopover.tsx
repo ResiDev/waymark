@@ -1,6 +1,6 @@
 import type { TutorialRenderProps } from './types';
 
-export function DefaultPopover({ currentStep, step, totalSteps, next, prev, reset }: TutorialRenderProps) {
+export function DefaultPopover({ currentStep, step, totalSteps, ready, next, prev, reset }: TutorialRenderProps) {
   const buttonStyle: React.CSSProperties = {
     background: 'none',
     border: 'none',
@@ -9,12 +9,15 @@ export function DefaultPopover({ currentStep, step, totalSteps, next, prev, rese
     padding: '4px 0',
     fontSize: 13,
   };
+  const hasGate = !!currentStep.advanceWhen?.gateNext;
   const primaryButtonStyle: React.CSSProperties = {
     ...buttonStyle,
-    backgroundColor: '#3b82f6',
-    color: '#fff',
+    backgroundColor: ready ? '#3b82f6' : '#334155',
+    color: ready ? '#fff' : '#475569',
     borderRadius: 6,
     padding: '6px 14px',
+    cursor: ready ? 'pointer' : 'not-allowed',
+    position: 'relative' as const,
   };
   return (
     <div
@@ -49,11 +52,30 @@ export function DefaultPopover({ currentStep, step, totalSteps, next, prev, rese
               Prev
             </button>
           )}
-          <button style={primaryButtonStyle} onClick={next}>
+          <button style={primaryButtonStyle} onClick={next} disabled={!ready}>
             {step + 1 === totalSteps ? 'Finish' : `Next (${step + 1} of ${totalSteps})`}
+            {hasGate && ready && (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  borderRadius: 6,
+                  border: '2px solid rgba(255, 255, 255, 0.6)',
+                  pointerEvents: 'none',
+                  animation: 'tour-next-ring 2s ease-out infinite',
+                }}
+              />
+            )}
           </button>
         </div>
       </div>
+      {hasGate && ready && (
+        <style>{`@keyframes tour-next-ring {
+          0% { inset: 0; border-color: rgba(255, 255, 255, 0.5); }
+          50% { inset: -8px; border-color: rgba(255, 255, 255, 0); }
+          100% { inset: -8px; border-color: rgba(255, 255, 255, 0); }
+        }`}</style>
+      )}
     </div>
   );
 }

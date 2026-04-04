@@ -16,7 +16,6 @@ export function PopoverAnchor({
   const ref = useRef<HTMLDivElement>(null);
   const [popoverHeight, setPopoverHeight] = useState(0);
   const [popoverWidth, setPopoverWidth] = useState(0);
-  console.log('preferredPlacement', preferredPlacement);
 
   useLayoutEffect(() => {
     if (ref.current) {

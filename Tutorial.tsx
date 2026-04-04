@@ -18,7 +18,7 @@ export function Tutorial({
   children?: (props: TutorialRenderProps) => React.ReactNode;
   highlightPadding?: number;
 }) {
-  const { step, currentStep, highlight, next, prev, focused, focus, reset } = useTutorial({
+  const { step, currentStep, highlight, ready, next, prev, focused, focus, reset } = useTutorial({
     id,
     active,
     steps,
@@ -28,6 +28,7 @@ export function Tutorial({
   const renderProps: TutorialRenderProps = {
     currentStep,
     step,
+    ready,
     totalSteps: steps.length,
     next,
     prev,
@@ -42,7 +43,11 @@ export function Tutorial({
 
   return (
     <Highlight highlight={highlight} padding={highlightPadding}>
-      <PopoverAnchor highlight={highlight} padding={highlightPadding} preferredPlacement={currentStep.preferredPopoverPosition}>
+      <PopoverAnchor
+        highlight={highlight}
+        padding={highlightPadding}
+        preferredPlacement={currentStep.preferredPopoverPosition}
+      >
         {content}
       </PopoverAnchor>
     </Highlight>

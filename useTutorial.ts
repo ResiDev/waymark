@@ -16,6 +16,10 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
 
   const currentStep = steps.at(step);
 
+  useLayoutEffect(() => {
+    tourStore.setReady(!currentStep?.advanceWhen?.gateNext);
+  }, [currentStep, tourStore]);
+
   const selector =
     currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}` : currentStep?.selector;
   if (!selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
@@ -44,15 +48,21 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
         tourStore.setHighlightedElement(document, selector);
       }
       if (highlightElement && focused) {
-        if (!tourStore.highlightElementIsInView) {
+        if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView) {
           highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
         // detect state change for auto advance tour
-        if (!advancing && currentStep.advanceWhen.type === 'state' && currentStep.advanceWhen.check(highlightElement)) {
-          advancing = true;
-          if (currentStep.delay) timeoutId = setTimeout(() => tourStore.advance(), currentStep.delay);
-          else tourStore.advance();
+        if (currentStep.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement)) {
+          if (!advancing && !currentStep.advanceWhen.disableAutoAdvance) {
+            advancing = true;
+            if (currentStep.delay) timeoutId = setTimeout(() => tourStore.advance(), currentStep.delay);
+            else tourStore.advance();
+          }
+
+          if (currentStep.advanceWhen.gateNext) {
+            tourStore.setReady(true);
+          }
         }
       }
       updateHighlight(highlightElement);
@@ -66,11 +76,13 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
       if (e.target.closest(selector)) {
-        if (currentStep.advanceWhen.type === 'click') tourStore.advance();
+        if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) tourStore.setReady(true);
+        if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance) tourStore.advance();
         return;
       }
       if (e.target.closest('[data-tour-popover]')) return;
       if (e.target.closest('[data-tour-beacon]')) return;
+      if (e.target.closest('[role="dialog"], [data-popover]')) return;
       tourStore.unfocus();
     };
 
@@ -89,6 +101,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
     step,
     currentStep,
     highlight,
+    ready: tourStore.ready,
     next: tourStore.advance,
     prev: tourStore.prev,
     focused,

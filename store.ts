@@ -6,6 +6,7 @@ export function createTourStore(id: string) {
   const tourStore: TutorialStore = {
     step: 0,
     active: false,
+    ready: true,
     focused: true,
     listeners: new Set<() => void>(),
     highlightedElement: null,
@@ -14,7 +15,7 @@ export function createTourStore(id: string) {
     getObserver: () => {
       if (!tourStore.observer && typeof IntersectionObserver !== 'undefined') {
         tourStore.observer = new IntersectionObserver(([entry]) => {
-          tourStore.highlightElementIsInView = entry?.isIntersecting ?? false;
+          tourStore.highlightElementIsInView = entry.isIntersecting;
         });
       }
       return tourStore.observer;
@@ -29,6 +30,10 @@ export function createTourStore(id: string) {
       }
       tourStore.highlightedElement = el;
       if (el) tourStore.getObserver()?.observe(el);
+    },
+    getReady: () => tourStore.ready,
+    setReady: (ready: boolean) => {
+      tourStore.ready = ready;
     },
     subscribe: (callback: () => void) => {
       tourStore.listeners.add(callback);
