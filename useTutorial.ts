@@ -83,7 +83,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       }
       if (e.target.closest('[data-tour-popover]')) return;
       if (e.target.closest('[data-tour-beacon]')) return;
-      if (e.target.closest('[role="dialog"], [data-popover]')) return;
+      if (e.target.closest('[role="dialog"], [data-popover], [data-slot="select-positioner"]')) return;
       tourStore.unfocus();
     };
 
