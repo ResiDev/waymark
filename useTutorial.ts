@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
-import type { TourCallbacks, TutorialStep } from './types';
+import type { TourCallbackContext, TourCallbacks, TutorialStep } from './types';
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -33,45 +33,66 @@ export function useTutorial({
 
   const currentStep = steps.at(step);
 
+  const selector =
+    currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}]` : currentStep?.selector;
+  if (currentStep && !selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
+
+  const callbackContext: TourCallbackContext = useMemo(
+    () => ({
+      stepIndex: step,
+      currentStep,
+      targetSelector: selector,
+    }),
+    [step, currentStep, selector]
+  );
+
   useLayoutEffect(() => {
     tourStore.setReady(!currentStep?.advanceWhen?.gateNext);
   }, [currentStep, tourStore]);
 
   useEffect(() => {
     if (step >= steps.length && !finished.current) {
-      if (callbacks?.onFinish) callbacks.onFinish();
+      if (callbacks?.onFinish) callbacks.onFinish(callbackContext);
       finished.current = true;
     }
-  }, [step, steps.length, callbacks]);
+  }, [step, steps.length, callbacks, callbackContext]);
 
   const next = useCallback(() => {
-    tourStore.advance(callbacks?.onAdvance);
-  }, [tourStore, callbacks?.onAdvance]);
+    tourStore.advance();
+    callbacks?.onAdvance?.(callbackContext);
+    currentStep?.callbacks?.onAdvance?.(callbackContext);
+  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
   const prev = useCallback(() => {
-    tourStore.prev(callbacks?.onPrev);
-  }, [tourStore, callbacks?.onPrev]);
+    tourStore.prev();
+    callbacks?.onPrev?.(callbackContext);
+    currentStep?.callbacks?.onPrev?.(callbackContext);
+  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
   const focus = useCallback(() => {
-    tourStore.focus(callbacks?.onFocus);
-  }, [tourStore, callbacks?.onFocus]);
+    tourStore.focus();
+    callbacks?.onFocus?.(callbackContext);
+    currentStep?.callbacks?.onFocus?.(callbackContext);
+  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
   const unfocus = useCallback(() => {
-    tourStore.unfocus(callbacks?.onUnfocus);
-  }, [tourStore, callbacks?.onUnfocus]);
+    tourStore.unfocus();
+    callbacks?.onUnfocus?.(callbackContext);
+    currentStep?.callbacks?.onUnfocus?.(callbackContext);
+  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
   const reset = useCallback(() => {
-    tourStore.reset(callbacks?.onReset);
-  }, [tourStore, callbacks?.onReset]);
+    tourStore.reset();
+    callbacks?.onReset?.(callbackContext);
+  }, [tourStore, callbacks, callbackContext]);
   const cancel = useCallback(() => {
     onCancel();
-  }, [onCancel]);
+    callbacks?.onCancel?.(callbackContext);
+    currentStep?.callbacks?.onCancel?.(callbackContext);
+  }, [onCancel, callbacks, currentStep?.callbacks, callbackContext]);
   const setReady = useCallback(
     (readyVal: boolean) => {
-      tourStore.setReady(readyVal, callbacks?.onReady);
+      tourStore.setReady(readyVal);
+      if (readyVal) callbacks?.onReady?.(callbackContext);
     },
-    [tourStore, callbacks?.onReady]
+    [tourStore, callbacks, callbackContext]
   );
-
-  const selector =
-    currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}]` : currentStep?.selector;
-  if (currentStep && !selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
 
   const updateHighlight = useCallback(
     (element: Element | null) => {

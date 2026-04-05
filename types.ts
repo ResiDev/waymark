@@ -15,13 +15,13 @@ export type TutorialStore = {
   getHighlightedElement: () => null | Element;
   setHighlightedElement: (document: Element | Document, name: string) => void;
   getReady: () => boolean;
-  setReady: (ready: boolean, onReady?: () => void) => void;
+  setReady: (ready: boolean) => void;
   subscribe: (callback: () => void) => () => void;
-  focus: (onFocus?: () => void) => void;
-  unfocus: (onUnfocus?: () => void) => void;
-  prev: (onPrev?: () => void) => void;
-  advance: (onAdvance?: () => void) => void;
-  reset: (onReset?: () => void) => void;
+  focus: () => void;
+  unfocus: () => void;
+  prev: () => void;
+  advance: () => void;
+  reset: () => void;
 };
 
 type BaseAutoAdvanced = { disableAutoAdvance?: boolean; gateNext?: boolean };
@@ -37,9 +37,35 @@ type TutorialStepBase = {
   advanceWhen?: AutoAdvances;
   scrollIntoView?: boolean;
   delay?: number;
+  callbacks?: StepCallbacks;
 };
 
 export type TutorialStep = (TutorialStepBase & { dataTour: string }) | (TutorialStepBase & { selector: string });
+
+export type TourCallbackContext = {
+  stepIndex: number;
+  targetSelector: string;
+  currentStep: TutorialRenderProps;
+};
+
+type TourCallbackFn = (ctx: TourCallbackContext) => void;
+
+/** Callbacks available on both individual steps and at the tour level. */
+export type StepCallbacks = {
+  onFocus?: TourCallbackFn;
+  onUnfocus?: TourCallbackFn;
+  onAdvance?: TourCallbackFn;
+  onPrev?: TourCallbackFn;
+  onCancel?: TourCallbackFn;
+};
+
+/** Tour-level callbacks extend step callbacks with tour-wide lifecycle hooks. */
+export type TourCallbacks = StepCallbacks & {
+  onReset?: TourCallbackFn;
+  onFinish?: TourCallbackFn;
+  onStart?: TourCallbackFn;
+  onReady?: TourCallbackFn;
+};
 
 export type TutorialRenderProps = {
   currentStep: TutorialStep;
@@ -51,15 +77,4 @@ export type TutorialRenderProps = {
   prev: () => void;
   reset: () => void;
   cancel: () => void;
-};
-
-export type TourCallbacks = {
-  onFocus?: () => void;
-  onUnfocus?: () => void;
-  onAdvance?: () => void;
-  onPrev?: () => void;
-  onReset?: () => void;
-  onFinish?: () => void;
-  onStart?: () => void;
-  onReady?: () => void;
 };
