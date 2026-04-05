@@ -22,7 +22,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
 
   const selector =
     currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}` : currentStep?.selector;
-  if (!selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
+  if (currentStep && !selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
 
   const updateHighlight = useCallback(
     (element: Element | null) => {
@@ -33,7 +33,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
   );
 
   useLayoutEffect(() => {
-    if (!currentStep || !active) return;
+    if (!currentStep || !active || !selector) return;
 
     let frameId: number;
     // Prevent next from being called multiple times by raf loop
@@ -77,7 +77,8 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       if (!e.target.isConnected) return;
       if (e.target.closest(selector)) {
         if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) tourStore.setReady(true);
-        if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance) tourStore.advance();
+        if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance)
+          tourStore.advance();
         return;
       }
       if (e.target.closest('[data-tour-popover]')) return;
