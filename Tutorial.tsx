@@ -52,6 +52,7 @@ export function Tutorial({
         highlight={highlight}
         padding={highlightPadding}
         preferredPlacement={currentStep.preferredPopoverPosition}
+        ariaLabel={`Tutorial step ${step + 1} of ${steps.length}`}
       >
         {content}
       </PopoverAnchor>

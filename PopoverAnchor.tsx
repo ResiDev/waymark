@@ -40,11 +40,13 @@ export function PopoverAnchor({
   highlight,
   padding,
   preferredPlacement,
+  ariaLabel,
   children,
 }: {
   highlight: DOMRect;
   padding: number;
   preferredPlacement?: Placement;
+  ariaLabel?: string;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -114,13 +116,20 @@ export function PopoverAnchor({
     <div
       ref={ref}
       data-tour-popover
+      role="dialog"
+      aria-modal="true"
+      aria-label={ariaLabel}
+      aria-describedby="tour-step-text"
+      tabIndex={-1}
       style={{
         pointerEvents: 'auto',
         position: 'fixed',
+        outline: 'none',
         ...popoverPosition,
       }}
     >
       <div
+        aria-hidden="true"
         style={{
           position: 'absolute',
           width: 16,

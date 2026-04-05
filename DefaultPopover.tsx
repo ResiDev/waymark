@@ -35,7 +35,7 @@ export function DefaultPopover({ currentStep, step, totalSteps, ready, next, pre
         gap: 12,
       }}
     >
-      <div style={{ fontSize: 16, lineHeight: 1.5 }}>{currentStep.text}</div>
+      <div id="tour-step-text" style={{ fontSize: 16, lineHeight: 1.5 }}>{currentStep.text}</div>
       <div
         style={{
           display: 'flex',

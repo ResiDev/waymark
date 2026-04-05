@@ -5,6 +5,9 @@ export function Beacon({ highlight, onClick }: { highlight: DOMRect; onClick: ()
     <>
       <div
         data-tour-beacon
+        role="button"
+        aria-label="Resume tutorial"
+        tabIndex={0}
         style={{
           width: 20,
           height: 20,
@@ -18,8 +21,15 @@ export function Beacon({ highlight, onClick }: { highlight: DOMRect; onClick: ()
           zIndex: 51,
         }}
         onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onClick();
+          }
+        }}
       />
       <div
+        aria-hidden="true"
         style={{
           position: 'fixed',
           top: cy,

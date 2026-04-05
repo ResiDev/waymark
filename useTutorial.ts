@@ -2,6 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { createTourStore, tourStores } from './store';
 import type { TourCallbacks, TutorialStep } from './types';
 
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function useTutorial({
   id,
   active,
@@ -15,6 +18,7 @@ export function useTutorial({
 }) {
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
   const finished = useRef<boolean>(false);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const tourStore = useMemo(() => {
     const foundStore = tourStores.get(id);
@@ -75,6 +79,31 @@ export function useTutorial({
     [setHighlight]
   );
 
+  // Capture the user's focused element when the tour starts so we can
+  // restore it when the tour deactivates (e.g. they were typing in an input).
+  useLayoutEffect(() => {
+    if (active) {
+      previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    return () => {
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
+  }, [active]);
+
+  // Move focus into the popover when a new step renders or the user re-opens
+  // from the beacon. hasHighlight handles initial mount: highlight starts null
+  // until the RAF loop measures the target, so the popover doesn't exist yet.
+  // Once highlight is set the popover renders and this effect re-fires to focus it.
+  const hasHighlight = highlight !== null;
+  useEffect(() => {
+    if (!hasHighlight || !focused || !active) return;
+    const frameId = requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('[data-tour-popover]')?.focus();
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [step, focused, active, hasHighlight]);
+
   useLayoutEffect(() => {
     if (!currentStep || !active || !selector) return;
 
@@ -82,6 +111,8 @@ export function useTutorial({
     // Prevent next from being called multiple times by raf loop
     let advancing = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    // Track which element has ARIA attributes so we can clean them up on change
+    let decoratedElement: Element | null = null;
 
     // raf loop to detect: if we have the right highlightElement, if the condition is completed, if it is in view
     const update = () => {
@@ -89,6 +120,17 @@ export function useTutorial({
 
       if (!highlightElement || !highlightElement.isConnected) {
         tourStore.setHighlightedElement(document, selector);
+      }
+
+      // Mark the target element so screen readers announce it has an associated dialog
+      if (highlightElement !== decoratedElement) {
+        decoratedElement?.removeAttribute('aria-haspopup');
+        decoratedElement?.removeAttribute('aria-expanded');
+        if (highlightElement) {
+          highlightElement.setAttribute('aria-haspopup', 'dialog');
+          highlightElement.setAttribute('aria-expanded', 'true');
+        }
+        decoratedElement = highlightElement;
       }
       if (highlightElement && focused) {
         if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView) {
@@ -129,14 +171,82 @@ export function useTutorial({
       unfocus();
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!focused) return;
+
+      switch (e.key) {
+        case 'Escape':
+          e.preventDefault();
+          unfocus();
+          break;
+        case 'ArrowRight': {
+          const { activeElement } = document;
+          const isEditable =
+            activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLTextAreaElement ||
+            activeElement instanceof HTMLSelectElement ||
+            (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+          if (!isEditable && tourStore.ready) {
+            e.preventDefault();
+            next();
+          }
+          break;
+        }
+        case 'ArrowLeft': {
+          const { activeElement } = document;
+          const isEditable =
+            activeElement instanceof HTMLInputElement ||
+            activeElement instanceof HTMLTextAreaElement ||
+            activeElement instanceof HTMLSelectElement ||
+            (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+          if (!isEditable) {
+            e.preventDefault();
+            prev();
+          }
+          break;
+        }
+        case 'Tab': {
+          const popover = document.querySelector<HTMLElement>('[data-tour-popover]');
+          const highlightEl = tourStore.getHighlightedElement();
+          if (!popover) break;
+
+          const focusables = [
+            ...Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+            ...(highlightEl instanceof HTMLElement
+              ? [
+                  ...(highlightEl.matches(FOCUSABLE_SELECTOR) ? [highlightEl] : []),
+                  ...Array.from(highlightEl.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+                ]
+              : []),
+          ];
+
+          if (focusables.length === 0) break;
+
+          e.preventDefault();
+          const currentIndex = focusables.indexOf(document.activeElement as HTMLElement);
+
+          if (e.shiftKey) {
+            focusables[currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1].focus();
+          } else {
+            focusables[currentIndex >= focusables.length - 1 ? 0 : currentIndex + 1].focus();
+          }
+          break;
+        }
+      }
+    };
+
     // true added so that it fires on capture, rather than on bubble (so before react can swap dom nodes)
     window.addEventListener('click', handleWindowClick, true);
+    window.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      decoratedElement?.removeAttribute('aria-haspopup');
+      decoratedElement?.removeAttribute('aria-expanded');
       cancelAnimationFrame(frameId);
       window.removeEventListener('click', handleWindowClick, true);
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentStep, next, setReady, unfocus, callbacks, active, updateHighlight, focused, tourStore, selector]);
+  }, [currentStep, next, prev, setReady, unfocus, callbacks, active, updateHighlight, focused, tourStore, selector]);
 
   if (!active || !highlight || !currentStep) return { highlight: undefined };
 
