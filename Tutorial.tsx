@@ -20,7 +20,7 @@ export function Tutorial({
   callbacks?: TourCallbacks;
   highlightPadding?: number;
 }) {
-  const { step, currentStep, highlight, ready, next, prev, focused, focus, reset } = useTutorial({
+  const { step, currentStep, highlight, ready, next, prev, focused, focus, reset, cancel } = useTutorial({
     id,
     active,
     callbacks,
@@ -33,6 +33,7 @@ export function Tutorial({
     step,
     ready,
     callbacks,
+    cancel,
     totalSteps: steps.length,
     next,
     prev,

@@ -1,6 +1,6 @@
 import type { TutorialRenderProps } from './types';
 
-export function DefaultPopover({ currentStep, step, totalSteps, ready, next, prev, reset }: TutorialRenderProps) {
+export function DefaultPopover({ currentStep, step, totalSteps, ready, next, prev, cancel }: TutorialRenderProps) {
   const buttonStyle: React.CSSProperties = {
     background: 'none',
     border: 'none',
@@ -43,7 +43,7 @@ export function DefaultPopover({ currentStep, step, totalSteps, ready, next, pre
           alignItems: 'center',
         }}
       >
-        <button style={buttonStyle} onClick={reset}>
+        <button style={buttonStyle} onClick={cancel}>
           Skip
         </button>
         <div style={{ display: 'flex', gap: 8 }}>

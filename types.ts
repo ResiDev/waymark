@@ -50,6 +50,7 @@ export type TutorialRenderProps = {
   next: () => void;
   prev: () => void;
   reset: () => void;
+  cancel: () => void;
 };
 
 export type TourCallbacks = {
@@ -61,4 +62,5 @@ export type TourCallbacks = {
   onFinish?: () => void;
   onStart?: () => void;
   onReady?: () => void;
+  onCancel?: () => void;
 };

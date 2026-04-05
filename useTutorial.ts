@@ -53,6 +53,9 @@ export function useTutorial({
   const reset = useCallback(() => {
     tourStore.reset(callbacks?.onReset);
   }, [tourStore, callbacks?.onReset]);
+  const cancel = useCallback(() => {
+    if (callbacks?.onCancel) callbacks.onCancel();
+  }, [callbacks]);
   const setReady = useCallback(
     (readyVal: boolean) => {
       tourStore.setReady(readyVal, callbacks?.onReady);
@@ -149,5 +152,6 @@ export function useTutorial({
     focus,
     unfocus,
     reset,
+    cancel,
   };
 }
