@@ -40,7 +40,9 @@ type TutorialStepBase = {
   callbacks?: StepCallbacks;
 };
 
-export type TutorialStep = (TutorialStepBase & { dataTour: string }) | (TutorialStepBase & { selector: string });
+export type TutorialStep =
+  | (TutorialStepBase & { dataTour: string; selector?: never })
+  | (TutorialStepBase & { selector: string; dataTour?: never });
 
 export type TourCallbackContext = {
   stepIndex: number;
