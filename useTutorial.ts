@@ -70,7 +70,7 @@ export function useTutorial({
   );
 
   const selector =
-    currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}` : currentStep?.selector;
+    currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}]` : currentStep?.selector;
   if (currentStep && !selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
 
   const updateHighlight = useCallback(
@@ -157,7 +157,6 @@ export function useTutorial({
     };
 
     update();
-    clearTimeout(timeoutId);
 
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
@@ -245,6 +244,7 @@ export function useTutorial({
       decoratedElement?.removeAttribute('aria-haspopup');
       decoratedElement?.removeAttribute('aria-expanded');
       cancelAnimationFrame(frameId);
+      clearTimeout(timeoutId);
       window.removeEventListener('click', handleWindowClick, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
