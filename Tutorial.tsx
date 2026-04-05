@@ -10,12 +10,14 @@ export function Tutorial({
   active,
   steps,
   children,
+  onCancel,
   callbacks,
   highlightPadding = 20,
 }: {
   id: string;
   active: boolean;
   steps: Array<TutorialStep>;
+  onCancel: () => void;
   children?: (props: TutorialRenderProps) => React.ReactNode;
   callbacks?: TourCallbacks;
   highlightPadding?: number;
@@ -25,6 +27,7 @@ export function Tutorial({
     active,
     callbacks,
     steps,
+    onCancel,
   });
   if (!highlight) return;
 

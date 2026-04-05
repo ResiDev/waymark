@@ -33,9 +33,9 @@ type AutoAdvances =
 
 type TutorialStepBase = {
   text: string;
-  advanceWhen?: AutoAdvances;
-  scrollIntoView: boolean;
   preferredPopoverPosition?: Placement;
+  advanceWhen?: AutoAdvances;
+  scrollIntoView?: boolean;
   delay?: number;
 };
 
@@ -62,5 +62,4 @@ export type TourCallbacks = {
   onFinish?: () => void;
   onStart?: () => void;
   onReady?: () => void;
-  onCancel?: () => void;
 };

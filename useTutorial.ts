@@ -10,11 +10,13 @@ export function useTutorial({
   active,
   steps,
   callbacks,
+  onCancel,
 }: {
   id: string;
   active: boolean;
   steps: Array<TutorialStep>;
   callbacks?: TourCallbacks;
+  onCancel: () => void;
 }) {
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
   const finished = useRef<boolean>(false);
@@ -58,8 +60,8 @@ export function useTutorial({
     tourStore.reset(callbacks?.onReset);
   }, [tourStore, callbacks?.onReset]);
   const cancel = useCallback(() => {
-    if (callbacks?.onCancel) callbacks.onCancel();
-  }, [callbacks]);
+    onCancel();
+  }, [onCancel]);
   const setReady = useCallback(
     (readyVal: boolean) => {
       tourStore.setReady(readyVal, callbacks?.onReady);
