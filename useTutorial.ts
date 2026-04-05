@@ -136,6 +136,7 @@ export function useTutorial({
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     // Track which element has ARIA attributes so we can clean them up on change
     let decoratedElement: Element | null = null;
+    let scrollIntoViewOnce = false;
 
     // raf loop to detect: if we have the right highlightElement, if the condition is completed, if it is in view
     const update = () => {
@@ -156,8 +157,11 @@ export function useTutorial({
         decoratedElement = highlightElement;
       }
       if (highlightElement && focused) {
-        if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView) {
-          highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView !== 'never') {
+          if (currentStep.scrollIntoView === 'always' || !scrollIntoViewOnce) {
+            highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+          scrollIntoViewOnce = true;
         }
 
         // detect state change for auto advance tour

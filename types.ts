@@ -35,7 +35,7 @@ type TutorialStepBase = {
   text: string;
   preferredPopoverPosition?: Placement;
   advanceWhen?: AutoAdvances;
-  scrollIntoView?: boolean;
+  scrollIntoView?: 'always' | 'once' | 'never'; // defaults to once if omitted
   delay?: number;
   callbacks?: StepCallbacks;
 };
@@ -44,8 +44,8 @@ export type TutorialStep = (TutorialStepBase & { dataTour: string }) | (Tutorial
 
 export type TourCallbackContext = {
   stepIndex: number;
-  targetSelector: string;
-  currentStep: TutorialRenderProps;
+  targetSelector?: string;
+  currentStep?: TutorialStep;
 };
 
 type TourCallbackFn = (ctx: TourCallbackContext) => void;
