@@ -21,6 +21,7 @@ export function useTutorial({
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
   const finished = useRef<boolean>(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const unfocusedBecauseHighlightNotFound = useRef(false);
 
   const tourStore = useMemo(() => {
     const foundStore = tourStores.get(id);
@@ -96,10 +97,19 @@ export function useTutorial({
 
   const updateHighlight = useCallback(
     (element: Element | null) => {
-      if (!element) return;
+      if (!element) {
+        if (tourStore.getFocused()) {
+          unfocus();
+          unfocusedBecauseHighlightNotFound.current = true;
+        }
+        return;
+      } else if (unfocusedBecauseHighlightNotFound.current) {
+        unfocusedBecauseHighlightNotFound.current = false;
+        focus();
+      }
       setHighlight(element.getBoundingClientRect());
     },
-    [setHighlight]
+    [setHighlight, tourStore, focus, unfocus]
   );
 
   // Capture the user's focused element when the tour starts so we can
