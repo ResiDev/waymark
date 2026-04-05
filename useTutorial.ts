@@ -36,7 +36,6 @@ export function useTutorial({
 
   const selector =
     currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}]` : currentStep?.selector;
-  if (currentStep && !selector) throw new Error(`No selector found for currentStep ${JSON.stringify(currentStep)}`);
 
   const callbackContext: TourCallbackContext = useMemo(
     () => ({
@@ -69,10 +68,14 @@ export function useTutorial({
     currentStep?.callbacks?.onPrev?.(callbackContext);
   }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
   const focus = useCallback(() => {
+    if (unfocusedBecauseHighlightNotFound.current) {
+      prev();
+      unfocusedBecauseHighlightNotFound.current = false;
+    }
     tourStore.focus();
     callbacks?.onFocus?.(callbackContext);
     currentStep?.callbacks?.onFocus?.(callbackContext);
-  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
+  }, [tourStore, callbacks, currentStep?.callbacks, prev, unfocusedBecauseHighlightNotFound, callbackContext]);
   const unfocus = useCallback(() => {
     tourStore.unfocus();
     callbacks?.onUnfocus?.(callbackContext);
@@ -95,9 +98,9 @@ export function useTutorial({
     [tourStore, callbacks, callbackContext]
   );
 
-  const updateHighlight = useCallback(
-    (element: Element | null) => {
-      if (!element) {
+  const unfocusWhenElementNotFound = useCallback(
+    (element: Element | null, selector: string | undefined) => {
+      if (!element && selector) {
         if (tourStore.getFocused()) {
           unfocus();
           unfocusedBecauseHighlightNotFound.current = true;
@@ -107,9 +110,15 @@ export function useTutorial({
         unfocusedBecauseHighlightNotFound.current = false;
         focus();
       }
-      setHighlight(element.getBoundingClientRect());
     },
-    [setHighlight, tourStore, focus, unfocus]
+    [tourStore, unfocus, focus]
+  );
+
+  const updateHighlight = useCallback(
+    (element: Element | null) => {
+      if (element) setHighlight(element.getBoundingClientRect());
+    },
+    [setHighlight]
   );
 
   // Capture the user's focused element when the tour starts so we can
@@ -138,7 +147,7 @@ export function useTutorial({
   }, [step, focused, active, hasHighlight]);
 
   useLayoutEffect(() => {
-    if (!currentStep || !active || !selector) return;
+    if (!currentStep || !active) return;
 
     let frameId: number;
     // Prevent next from being called multiple times by raf loop
@@ -152,7 +161,7 @@ export function useTutorial({
     const update = () => {
       const highlightElement = tourStore.getHighlightedElement();
 
-      if (!highlightElement || !highlightElement.isConnected) {
+      if ((!highlightElement || !highlightElement.isConnected) && selector) {
         tourStore.setHighlightedElement(document, selector);
       }
 
@@ -166,6 +175,7 @@ export function useTutorial({
         }
         decoratedElement = highlightElement;
       }
+
       if (highlightElement && focused) {
         if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView !== 'never') {
           if (currentStep.scrollIntoView === 'always' || !scrollIntoViewOnce) {
@@ -173,21 +183,24 @@ export function useTutorial({
           }
           scrollIntoViewOnce = true;
         }
+      }
 
-        // detect state change for auto advance tour
-        if (currentStep.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement)) {
-          if (!advancing && !currentStep.advanceWhen.disableAutoAdvance) {
-            advancing = true;
-            if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
-            else next();
-          }
+      // detect state change for auto advance tour
+      if (currentStep.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement ?? undefined)) {
+        if (!advancing && !currentStep.advanceWhen.disableAutoAdvance) {
+          advancing = true;
+          if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
+          else next();
+        }
 
-          if (currentStep.advanceWhen.gateNext) {
-            setReady(true);
-          }
+        if (currentStep.advanceWhen.gateNext) {
+          setReady(true);
         }
       }
+
       updateHighlight(highlightElement);
+      unfocusWhenElementNotFound(highlightElement, selector);
+
       frameId = requestAnimationFrame(update);
     };
 
@@ -196,7 +209,7 @@ export function useTutorial({
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
-      if (e.target.closest(selector)) {
+      if (selector && e.target.closest(selector)) {
         if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) setReady(true);
         if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance) next();
         return;
@@ -283,9 +296,20 @@ export function useTutorial({
       window.removeEventListener('click', handleWindowClick, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentStep, next, prev, setReady, unfocus, callbacks, active, updateHighlight, focused, tourStore, selector]);
-
-  if (!active || !highlight || !currentStep) return { highlight: undefined };
+  }, [
+    currentStep,
+    next,
+    prev,
+    setReady,
+    unfocus,
+    callbacks,
+    active,
+    updateHighlight,
+    unfocusWhenElementNotFound,
+    focused,
+    tourStore,
+    selector,
+  ]);
 
   return {
     step,
@@ -293,6 +317,7 @@ export function useTutorial({
     highlight,
     callbacks,
     ready: tourStore.ready,
+    selector,
     next,
     prev,
     focused,
