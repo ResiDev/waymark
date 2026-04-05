@@ -15,13 +15,13 @@ export type TutorialStore = {
   getHighlightedElement: () => null | Element;
   setHighlightedElement: (document: Element | Document, name: string) => void;
   getReady: () => boolean;
-  setReady: (ready: boolean) => void;
+  setReady: (ready: boolean, onReady?: () => void) => void;
   subscribe: (callback: () => void) => () => void;
-  focus: () => void;
-  unfocus: () => void;
-  prev: () => void;
-  advance: () => void;
-  reset: () => void;
+  focus: (onFocus?: () => void) => void;
+  unfocus: (onUnfocus?: () => void) => void;
+  prev: (onPrev?: () => void) => void;
+  advance: (onAdvance?: () => void) => void;
+  reset: (onReset?: () => void) => void;
 };
 
 type BaseAutoAdvanced = { disableAutoAdvance?: boolean; gateNext?: boolean };
@@ -46,7 +46,19 @@ export type TutorialRenderProps = {
   step: number;
   totalSteps: number;
   ready: boolean;
+  callbacks?: TourCallbacks;
   next: () => void;
   prev: () => void;
   reset: () => void;
+};
+
+export type TourCallbacks = {
+  onFocus?: () => void;
+  onUnfocus?: () => void;
+  onAdvance?: () => void;
+  onPrev?: () => void;
+  onReset?: () => void;
+  onFinish?: () => void;
+  onStart?: () => void;
+  onReady?: () => void;
 };

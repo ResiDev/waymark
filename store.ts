@@ -32,39 +32,45 @@ export function createTourStore(id: string) {
       if (el) tourStore.getObserver()?.observe(el);
     },
     getReady: () => tourStore.ready,
-    setReady: (ready: boolean) => {
+    setReady: (ready: boolean, onReady) => {
       tourStore.ready = ready;
+      if (ready && onReady) onReady();
     },
     subscribe: (callback: () => void) => {
       tourStore.listeners.add(callback);
       return () => tourStore.listeners.delete(callback);
     },
-    focus: () => {
+    focus: (onFocus) => {
       tourStore.focused = true;
+      if (onFocus) onFocus();
       tourStore.listeners.forEach((cb) => cb());
     },
-    unfocus: () => {
+    unfocus: (onUnfocus) => {
       tourStore.focused = false;
+      if (onUnfocus) onUnfocus();
       tourStore.listeners.forEach((cb) => cb());
     },
-    prev: () => {
+    prev: (onPrev) => {
       if (tourStore.step > 0) {
         tourStore.step -= 1;
         tourStore.focused = true;
         tourStore.highlightedElement = null;
+        if (onPrev) onPrev();
         tourStore.listeners.forEach((cb) => cb());
       }
     },
-    advance: () => {
+    advance: (onAdvance) => {
       tourStore.step += 1;
       tourStore.focused = true;
       tourStore.highlightedElement = null;
+      if (onAdvance) onAdvance();
       tourStore.listeners.forEach((cb) => cb());
     },
-    reset: () => {
+    reset: (onReset) => {
       tourStore.step = 0;
       tourStore.focused = true;
       tourStore.highlightedElement = null;
+      if (onReset) onReset();
       tourStore.listeners.forEach((cb) => cb());
     },
   };

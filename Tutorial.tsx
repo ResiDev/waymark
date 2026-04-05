@@ -2,7 +2,7 @@ import { Beacon } from './Beacon';
 import { DefaultPopover } from './DefaultPopover';
 import { Highlight } from './Highlight';
 import { PopoverAnchor } from './PopoverAnchor';
-import type { TutorialRenderProps, TutorialStep } from './types';
+import type { TourCallbacks, TutorialRenderProps, TutorialStep } from './types';
 import { useTutorial } from './useTutorial';
 
 export function Tutorial({
@@ -10,17 +10,20 @@ export function Tutorial({
   active,
   steps,
   children,
+  callbacks,
   highlightPadding = 20,
 }: {
   id: string;
   active: boolean;
   steps: Array<TutorialStep>;
   children?: (props: TutorialRenderProps) => React.ReactNode;
+  callbacks?: TourCallbacks;
   highlightPadding?: number;
 }) {
   const { step, currentStep, highlight, ready, next, prev, focused, focus, reset } = useTutorial({
     id,
     active,
+    callbacks,
     steps,
   });
   if (!highlight) return;
@@ -29,6 +32,7 @@ export function Tutorial({
     currentStep,
     step,
     ready,
+    callbacks,
     totalSteps: steps.length,
     next,
     prev,

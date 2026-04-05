@@ -1,9 +1,20 @@
-import { useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
-import type { TutorialStep } from './types';
+import type { TourCallbacks, TutorialStep } from './types';
 
-export function useTutorial({ id, active, steps }: { id: string; active: boolean; steps: Array<TutorialStep> }) {
+export function useTutorial({
+  id,
+  active,
+  steps,
+  callbacks,
+}: {
+  id: string;
+  active: boolean;
+  steps: Array<TutorialStep>;
+  callbacks?: TourCallbacks;
+}) {
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
+  const finished = useRef<boolean>(false);
 
   const tourStore = useMemo(() => {
     const foundStore = tourStores.get(id);
@@ -19,6 +30,35 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
   useLayoutEffect(() => {
     tourStore.setReady(!currentStep?.advanceWhen?.gateNext);
   }, [currentStep, tourStore]);
+
+  useEffect(() => {
+    if (step >= steps.length && !finished.current) {
+      if (callbacks?.onFinish) callbacks.onFinish();
+      finished.current = true;
+    }
+  }, [step, steps.length, callbacks]);
+
+  const next = useCallback(() => {
+    tourStore.advance(callbacks?.onAdvance);
+  }, [tourStore, callbacks?.onAdvance]);
+  const prev = useCallback(() => {
+    tourStore.prev(callbacks?.onPrev);
+  }, [tourStore, callbacks?.onPrev]);
+  const focus = useCallback(() => {
+    tourStore.focus(callbacks?.onFocus);
+  }, [tourStore, callbacks?.onFocus]);
+  const unfocus = useCallback(() => {
+    tourStore.unfocus(callbacks?.onUnfocus);
+  }, [tourStore, callbacks?.onUnfocus]);
+  const reset = useCallback(() => {
+    tourStore.reset(callbacks?.onReset);
+  }, [tourStore, callbacks?.onReset]);
+  const setReady = useCallback(
+    (readyVal: boolean) => {
+      tourStore.setReady(readyVal, callbacks?.onReady);
+    },
+    [tourStore, callbacks?.onReady]
+  );
 
   const selector =
     currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}` : currentStep?.selector;
@@ -56,12 +96,12 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
         if (currentStep.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement)) {
           if (!advancing && !currentStep.advanceWhen.disableAutoAdvance) {
             advancing = true;
-            if (currentStep.delay) timeoutId = setTimeout(() => tourStore.advance(), currentStep.delay);
-            else tourStore.advance();
+            if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
+            else next();
           }
 
           if (currentStep.advanceWhen.gateNext) {
-            tourStore.setReady(true);
+            setReady(true);
           }
         }
       }
@@ -76,15 +116,14 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       if (!(e.target instanceof Element)) return;
       if (!e.target.isConnected) return;
       if (e.target.closest(selector)) {
-        if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) tourStore.setReady(true);
-        if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance)
-          tourStore.advance();
+        if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) setReady(true);
+        if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance) next();
         return;
       }
       if (e.target.closest('[data-tour-popover]')) return;
       if (e.target.closest('[data-tour-beacon]')) return;
       if (e.target.closest('[role="dialog"], [data-popover], [data-slot="select-positioner"]')) return;
-      tourStore.unfocus();
+      unfocus();
     };
 
     // true added so that it fires on capture, rather than on bubble (so before react can swap dom nodes)
@@ -94,7 +133,7 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
       cancelAnimationFrame(frameId);
       window.removeEventListener('click', handleWindowClick, true);
     };
-  }, [currentStep, active, updateHighlight, focused, tourStore, selector]);
+  }, [currentStep, next, setReady, unfocus, callbacks, active, updateHighlight, focused, tourStore, selector]);
 
   if (!active || !highlight || !currentStep) return { highlight: undefined };
 
@@ -102,12 +141,13 @@ export function useTutorial({ id, active, steps }: { id: string; active: boolean
     step,
     currentStep,
     highlight,
+    callbacks,
     ready: tourStore.ready,
-    next: tourStore.advance,
-    prev: tourStore.prev,
+    next,
+    prev,
     focused,
-    focus: tourStore.focus,
-    unfocus: tourStore.unfocus,
-    reset: tourStore.reset,
+    focus,
+    unfocus,
+    reset,
   };
 }
