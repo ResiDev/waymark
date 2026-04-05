@@ -22,14 +22,14 @@ export function Tutorial({
   callbacks?: TourCallbacks;
   highlightPadding?: number;
 }) {
-  const { step, currentStep, highlight, ready, next, prev, focused, focus, reset, cancel } = useTutorial({
+  const { step, currentStep, highlight, selector, ready, next, prev, focused, focus, reset, cancel } = useTutorial({
     id,
     active,
     callbacks,
     steps,
     onCancel,
   });
-  if (!highlight) return;
+  if (!currentStep) return;
 
   const renderProps: TutorialRenderProps = {
     currentStep,
@@ -44,6 +44,26 @@ export function Tutorial({
   };
 
   const content = children ? children(renderProps) : <DefaultPopover {...renderProps} />;
+
+  // Target-less step — full overlay, centered popover, no arrow
+  if (!selector) {
+    const centeredRect = new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
+    return (
+      <Highlight highlight={centeredRect} padding={0}>
+        <PopoverAnchor
+          highlight={centeredRect}
+          padding={0}
+          ariaLabel={`Tutorial step ${step + 1} of ${steps.length}`}
+          hideArrow
+        >
+          {content}
+        </PopoverAnchor>
+      </Highlight>
+    );
+  }
+
+  // Waiting for target element to appear in the DOM
+  if (!highlight) return;
 
   if (!focused) {
     return <Beacon highlight={highlight} onClick={focus} />;

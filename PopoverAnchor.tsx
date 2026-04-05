@@ -41,12 +41,14 @@ export function PopoverAnchor({
   padding,
   preferredPlacement,
   ariaLabel,
+  hideArrow,
   children,
 }: {
   highlight: DOMRect;
   padding: number;
   preferredPlacement?: Placement;
   ariaLabel?: string;
+  hideArrow?: boolean;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -128,19 +130,21 @@ export function PopoverAnchor({
         ...popoverPosition,
       }}
     >
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          width: 16,
-          height: 16,
-          backgroundColor: '#1e293b',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
-          borderRight: 'none',
-          borderBottom: 'none',
-          ...arrowPosition,
-        }}
-      />
+      {!hideArrow && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            width: 16,
+            height: 16,
+            backgroundColor: '#1e293b',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRight: 'none',
+            borderBottom: 'none',
+            ...arrowPosition,
+          }}
+        />
+      )}
       {children}
     </div>
   );
