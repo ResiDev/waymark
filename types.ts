@@ -32,7 +32,9 @@ type AutoAdvances =
   | ({ type: 'event'; event: keyof HTMLElementEventMap | Array<keyof HTMLElementEventMap> } & BaseAutoAdvanced);
 
 type TutorialStepBase = {
-  text: string;
+  content: React.ReactNode;
+  stepPopover?: (props: TutorialRenderProps) => React.ReactNode;
+  popoverStyle?: React.CSSProperties;
   preferredPopoverPosition?: Placement;
   advanceWhen?: AutoAdvances;
   scrollIntoView?: 'always' | 'once' | 'never'; // defaults to once if omitted
@@ -72,9 +74,11 @@ export type TourCallbacks = StepCallbacks & {
 
 export type TutorialRenderProps = {
   currentStep: TutorialStep;
+  placement: Placement;
   step: number;
   totalSteps: number;
   ready: boolean;
+  hasTarget: boolean;
   callbacks?: TourCallbacks;
   next: () => void;
   prev: () => void;

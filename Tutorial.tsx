@@ -2,6 +2,7 @@ import { Beacon } from './Beacon';
 import { DefaultPopover } from './DefaultPopover';
 import { Highlight } from './Highlight';
 import { PopoverAnchor } from './PopoverAnchor';
+import type { Placement } from './PopoverAnchor';
 import type { TourCallbacks, TutorialRenderProps, TutorialStep } from './types';
 import { useTutorial } from './useTutorial';
 
@@ -31,32 +32,33 @@ export function Tutorial({
   });
   if (!currentStep) return;
 
-  const renderProps: TutorialRenderProps = {
-    currentStep,
-    step,
-    ready,
-    callbacks,
-    cancel,
-    totalSteps: steps.length,
-    next,
-    prev,
-    reset,
-  };
+  const renderContent = (placement: Placement) => {
+    const renderProps: TutorialRenderProps = {
+      currentStep,
+      placement,
+      hasTarget: !!selector,
+      step,
+      ready,
+      callbacks,
+      cancel,
+      totalSteps: steps.length,
+      next,
+      prev,
+      reset,
+    };
 
-  const content = children ? children(renderProps) : <DefaultPopover {...renderProps} />;
+    if (currentStep.stepPopover) return currentStep.stepPopover(renderProps);
+    if (children) return children(renderProps);
+    return <DefaultPopover {...renderProps} />;
+  };
 
   // Target-less step — full overlay, centered popover, no arrow
   if (!selector) {
     const centeredRect = new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
     return (
       <Highlight highlight={centeredRect} padding={0}>
-        <PopoverAnchor
-          highlight={centeredRect}
-          padding={0}
-          ariaLabel={`Tutorial step ${step + 1} of ${steps.length}`}
-          hideArrow
-        >
-          {content}
+        <PopoverAnchor highlight={centeredRect} padding={0} ariaLabel={`Tutorial step ${step + 1} of ${steps.length}`}>
+          {renderContent}
         </PopoverAnchor>
       </Highlight>
     );
@@ -77,7 +79,7 @@ export function Tutorial({
         preferredPlacement={currentStep.preferredPopoverPosition}
         ariaLabel={`Tutorial step ${step + 1} of ${steps.length}`}
       >
-        {content}
+        {renderContent}
       </PopoverAnchor>
     </Highlight>
   );

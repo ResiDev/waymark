@@ -1,6 +1,23 @@
 import type { TutorialRenderProps } from './types';
 
-export function DefaultPopover({ currentStep, step, totalSteps, ready, next, prev, cancel }: TutorialRenderProps) {
+const arrowPositions = {
+  below: { top: -8, left: '50%', transform: 'translateX(-50%) rotate(45deg)' },
+  above: { bottom: -8, left: '50%', transform: 'rotate(225deg)' },
+  right: { top: '50%', left: -8, transform: 'translateY(-50%) rotate(315deg)' },
+  left: { top: '50%', right: -8, transform: 'translateY(-50%) rotate(135deg)' },
+} as const;
+
+export function DefaultPopover({
+  currentStep,
+  placement,
+  step,
+  totalSteps,
+  ready,
+  hasTarget,
+  next,
+  prev,
+  cancel,
+}: TutorialRenderProps) {
   const buttonStyle: React.CSSProperties = {
     background: 'none',
     border: 'none',
@@ -22,6 +39,7 @@ export function DefaultPopover({ currentStep, step, totalSteps, ready, next, pre
   return (
     <div
       style={{
+        position: 'relative',
         backgroundColor: '#1e293b',
         color: '#e2e8f0',
         borderRadius: 12,
@@ -33,9 +51,27 @@ export function DefaultPopover({ currentStep, step, totalSteps, ready, next, pre
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
+        ...currentStep.popoverStyle,
       }}
     >
-      <div id="tour-step-text" style={{ fontSize: 16, lineHeight: 1.5 }}>{currentStep.text}</div>
+      {hasTarget && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            width: 16,
+            height: 16,
+            backgroundColor: '#1e293b',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            borderRight: 'none',
+            borderBottom: 'none',
+            ...arrowPositions[placement],
+          }}
+        />
+      )}
+      <div id="tour-step-text" style={{ fontSize: 16, lineHeight: 1.5 }}>
+        {currentStep.content}
+      </div>
       <div
         style={{
           display: 'flex',

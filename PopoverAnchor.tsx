@@ -41,15 +41,13 @@ export function PopoverAnchor({
   padding,
   preferredPlacement,
   ariaLabel,
-  hideArrow,
   children,
 }: {
   highlight: DOMRect;
   padding: number;
   preferredPlacement?: Placement;
   ariaLabel?: string;
-  hideArrow?: boolean;
-  children: React.ReactNode;
+  children: (placement: Placement) => React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const preferred = preferredPlacement ?? 'below';
@@ -90,29 +88,17 @@ export function PopoverAnchor({
   const effectiveGap = gap - overlapOffset;
 
   const positions = {
-    below: {
-      popover: { top: highlight.bottom + effectiveGap, left: centerX, transform: 'translateX(-50%)' },
-      arrow: { top: -8, left: '50%', transform: 'translateX(-50%) rotate(45deg)' },
-    },
+    below: { top: highlight.bottom + effectiveGap, left: centerX, transform: 'translateX(-50%)' },
     above: {
-      popover: {
-        top: highlight.top - effectiveGap,
-        left: centerX,
-        transform: 'translateY(-100%) translateX(-50%)',
-      },
-      arrow: { bottom: -8, left: '50%', transform: 'rotate(225deg)' },
+      top: highlight.top - effectiveGap,
+      left: centerX,
+      transform: 'translateY(-100%) translateX(-50%)',
     },
-    right: {
-      popover: { top: centerY - popoverHeight / 2, left: highlight.right + effectiveGap },
-      arrow: { top: '50%', left: -8, transform: 'translateY(-50%) rotate(315deg)' },
-    },
-    left: {
-      popover: { top: centerY - popoverHeight / 2, left: highlight.left - effectiveGap - popoverWidth },
-      arrow: { top: '50%', right: -8, transform: 'translateY(-50%) rotate(135deg)' },
-    },
+    right: { top: centerY - popoverHeight / 2, left: highlight.right + effectiveGap },
+    left: { top: centerY - popoverHeight / 2, left: highlight.left - effectiveGap - popoverWidth },
   } as const;
 
-  const { popover: popoverPosition, arrow: arrowPosition } = positions[placement];
+  const popoverPosition = positions[placement];
 
   return (
     <div
@@ -130,22 +116,7 @@ export function PopoverAnchor({
         ...popoverPosition,
       }}
     >
-      {!hideArrow && (
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            width: 16,
-            height: 16,
-            backgroundColor: '#1e293b',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            borderRight: 'none',
-            borderBottom: 'none',
-            ...arrowPosition,
-          }}
-        />
-      )}
-      {children}
+      {children(placement)}
     </div>
   );
 }
