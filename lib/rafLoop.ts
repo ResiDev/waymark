@@ -72,10 +72,14 @@ export function runTourFrame({
 
   // unfocus if next and can't find element, stay on prev highlight
   if (!highlightElement && selector) {
-    if (newFrameState.highlightTargetStatus === 'searching' && tourStore.getFocused()) {
+    if (
+      (newFrameState.highlightTargetStatus === 'searching' || newFrameState.highlightTargetStatus === 'found') &&
+      tourStore.getFocused()
+    ) {
       unfocusTour(tourStore, callbackArgs);
     }
-    newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
+    if (newFrameState.highlightTargetStatus === 'found') newFrameState.highlightTargetStatus = 'lost';
+    else newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
     return newFrameState;
   }
 

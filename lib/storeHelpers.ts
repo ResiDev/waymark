@@ -25,7 +25,6 @@ export function focusTour(store: TutorialStore, { tourCallbacks, stepCallbacks, 
 }
 
 export function unfocusTour(store: TutorialStore, { tourCallbacks, stepCallbacks, context }: CallbackArgs) {
-  console.log('unfocus');
   store.unfocus();
   tourCallbacks?.onUnfocus?.(context);
   stepCallbacks?.onUnfocus?.(context);

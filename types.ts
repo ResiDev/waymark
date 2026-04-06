@@ -49,7 +49,7 @@ export type FrameState = {
   scrolledIntoViewOnce: boolean;
   ariaAnnotatedElement: Element | null;
   timeoutId: ReturnType<typeof setTimeout> | undefined;
-  highlightTargetStatus: 'searching' | 'found' | 'waiting-for-highlight-target';
+  highlightTargetStatus: 'searching' | 'found' | 'waiting-for-highlight-target' | 'lost';
   frameId: number | undefined;
 };
 

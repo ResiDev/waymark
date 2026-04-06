@@ -39,7 +39,9 @@ export function createTourStore(id: string) {
         tourStore.getObserver()?.unobserve(tourStore.highlightedElement);
       }
       tourStore.highlightedElement = el;
-      if (el) tourStore.getObserver()?.observe(el);
+      if (el) {
+        tourStore.getObserver()?.observe(el);
+      }
     },
     getReady: () => tourStore.ready,
     setReady: (ready: boolean) => {

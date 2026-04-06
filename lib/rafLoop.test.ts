@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTourStore, tourStores } from '../store';
-import type { TutorialStep } from '../types';
+import type { FrameState, TutorialStep } from '../types';
 import type { CallbackArgs } from './storeHelpers';
-import { type FrameState, rafLoop, runTourFrame } from './rafLoop';
+import { rafLoop, runTourFrame } from './rafLoop';
 
 const TOUR_ID = 'test-tour';
 
@@ -15,7 +15,8 @@ const DEFAULT_FRAME_STATE: FrameState = {
   scrolledIntoViewOnce: false,
   ariaAnnotatedElement: null,
   timeoutId: undefined,
-  highlightTargetStatus: 'stable',
+  highlightTargetStatus: 'searching',
+  frameId: undefined,
 };
 
 const DEFAULT_CALLBACK_ARGS: CallbackArgs = {
@@ -24,20 +25,29 @@ const DEFAULT_CALLBACK_ARGS: CallbackArgs = {
   context: { stepIndex: 0, currentStep: DEFAULT_TUTORIAL_STEP, targetSelector: undefined },
 };
 
+// eslint-disable-next-line @typescript-eslint/unbound-method
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 const scrollIntoViewMock = vi.fn();
 Element.prototype.scrollIntoView = scrollIntoViewMock;
 
-function setup(overrides: Partial<Parameters<typeof runTourFrame>[0]> = {}) {
+type SetupOptions = Partial<Parameters<typeof runTourFrame>[0]> & {
+  focused?: boolean;
+  highlightElementIsInView?: boolean;
+};
+
+function setup(overrides: SetupOptions = {}) {
   const store = createTourStore(TOUR_ID);
   const updateHighlight = vi.fn();
+  const { focused, frameState, highlightElementIsInView, ...runOverrides } = overrides;
+
+  if (focused !== undefined) store.focused = focused;
+  if (highlightElementIsInView !== undefined) store.highlightElementIsInView = highlightElementIsInView;
+  if (frameState) store.setFrameState(frameState);
 
   const defaults = {
     tourStore: store,
     selector: undefined as string | undefined,
-    focused: true,
     currentStep: DEFAULT_TUTORIAL_STEP,
-    frameState: { ...DEFAULT_FRAME_STATE },
     queryRoot: document,
     callbackArgs: DEFAULT_CALLBACK_ARGS,
     updateHighlight,
@@ -46,8 +56,30 @@ function setup(overrides: Partial<Parameters<typeof runTourFrame>[0]> = {}) {
   return {
     store,
     updateHighlight,
-    run: (frameOverrides?: Partial<Parameters<typeof runTourFrame>[0]>) =>
-      runTourFrame({ ...defaults, ...overrides, ...frameOverrides }),
+    run: (frameOverrides: SetupOptions = {}) => {
+      const {
+        focused: nextFocused,
+        frameState: nextFrameState,
+        highlightElementIsInView: nextHighlightElementIsInView,
+        ...nextRunOverrides
+      } = frameOverrides;
+
+      if (nextFocused !== undefined) store.focused = nextFocused;
+      if (nextHighlightElementIsInView !== undefined) {
+        store.highlightElementIsInView = nextHighlightElementIsInView;
+      }
+
+      const result = runTourFrame({
+        ...defaults,
+        ...runOverrides,
+        ...nextRunOverrides,
+        frameState: nextFrameState ?? store.frameState,
+      });
+
+      store.setFrameState(result);
+
+      return result;
+    },
   };
 }
 
@@ -72,7 +104,7 @@ describe('runTourFrame', () => {
       const { run, updateHighlight } = setup();
       const result = run();
       expect(updateHighlight).toHaveBeenCalledWith(null);
-      expect(result.highlightTargetStatus).toBe('stable');
+      expect(result.highlightTargetStatus).toBe('searching');
     });
 
     it('sets the highlight element when null', () => {
@@ -223,7 +255,10 @@ describe('runTourFrame', () => {
     it('does not auto advance when disabled', () => {
       let someVal = 0;
       const { store, run } = setup({
-        currentStep: { content: '', advanceWhen: { type: 'state', check: () => someVal > 0, disableAutoAdvance: true } },
+        currentStep: {
+          content: '',
+          advanceWhen: { type: 'state', check: () => someVal > 0, disableAutoAdvance: true },
+        },
       });
 
       store.ready = false;
@@ -268,7 +303,7 @@ describe('runTourFrame', () => {
       const result = run();
 
       expect(store.focused).toBe(true);
-      expect(result.highlightTargetStatus).toBe('stable');
+      expect(result.highlightTargetStatus).toBe('found');
     });
 
     it('unfocuses and waits when no highlight element is found, then refocuses when found', () => {
@@ -286,10 +321,10 @@ describe('runTourFrame', () => {
 
       const result2 = run({ frameState: result1 });
       expect(store.focused).toBe(true);
-      expect(result2.highlightTargetStatus).toBe('stable');
+      expect(result2.highlightTargetStatus).toBe('found');
     });
 
-    it('does not refocus when target is found unless it was waiting', () => {
+    it('refocuses when target is found while manually unfocused', () => {
       document.body.innerHTML = '<div data-tour="target">...</div>';
       const selector = '[data-tour=target]';
       const { store, run } = setup({ selector });
@@ -297,8 +332,27 @@ describe('runTourFrame', () => {
       store.focused = false;
       const result = run();
 
+      expect(store.focused).toBe(true);
+      expect(result.highlightTargetStatus).toBe('found');
+    });
+
+    it('targetStatus becomes lost when a previously found target disappears', () => {
+      const el = document.createElement('div');
+      el.setAttribute('data-tour', 'target');
+      document.body.appendChild(el);
+      const selector = '[data-tour=target]';
+      const { store, run } = setup({ selector });
+
+      const foundFrame = run();
+      expect(foundFrame.highlightTargetStatus).toBe('found');
+      expect(store.highlightedElement).toBe(el);
+
+      document.body.innerHTML = '<div>...</div>';
+
+      const waitingFrame = run({ frameState: foundFrame });
       expect(store.focused).toBe(false);
-      expect(result.highlightTargetStatus).toBe('stable');
+      expect(waitingFrame.highlightTargetStatus).toBe('lost');
+      expect(store.highlightedElement).toBe(null);
     });
   });
 
@@ -351,6 +405,7 @@ describe('runTourFrame', () => {
 
       expect(scrollIntoViewMock).toHaveBeenCalledOnce();
       expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(target?.scrollIntoView).toBe(scrollIntoViewMock);
     });
 
@@ -413,29 +468,25 @@ describe('rafLoop', () => {
     vi.useFakeTimers();
 
     let nextFrameId = 1;
-    vi.stubGlobal('requestAnimationFrame', vi.fn((cb: FrameRequestCallback) => {
-      const id = nextFrameId++;
-      setTimeout(() => cb(performance.now()), 0);
-      return id;
-    }));
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      vi.fn(() => nextFrameId++)
+    );
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
 
     const store = createTourStore(TOUR_ID);
     const cleanup = rafLoop({
       tourStore: store,
       selector: undefined,
-      focused: true,
       currentStep: {
         content: 'test step',
         advanceWhen: { type: 'state', check: () => true, delayMs: 50 },
       },
-      frameState: { ...DEFAULT_FRAME_STATE },
       queryRoot: document,
       callbackArgs: DEFAULT_CALLBACK_ARGS,
       updateHighlight: vi.fn(),
     });
 
-    vi.runOnlyPendingTimers();
     cleanup();
     vi.advanceTimersByTime(50);
 
