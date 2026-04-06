@@ -112,8 +112,7 @@ export function useTutorial({
 
   useLayoutEffect(() => {
     if (!currentStep || !active) return;
-
-    const cleanupRaf = rafLoop({
+    return rafLoop({
       tourStore,
       selector,
       currentStep,
@@ -121,95 +120,103 @@ export function useTutorial({
       callbackArgs: cbArgs,
       updateHighlight,
     });
+  }, [currentStep, active, updateHighlight, tourStore, selector, cbArgs]);
 
-    const handleWindowClick = (e: MouseEvent) => {
-      if (!(e.target instanceof Element)) return;
-      if (!e.target.isConnected) return;
-      if (selector && e.target.closest(selector)) {
-        if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) setReady(true);
-        if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance) next();
-        return;
-      }
-      if (e.target.closest('[data-tour-popover]')) return;
-      if (e.target.closest('[data-tour-beacon]')) return;
-      if (e.target.closest('[role="dialog"], [data-popover], [data-slot="select-positioner"]')) return;
-      unfocus();
-    };
+  useEffect(() => {
+    if (!currentStep || !active) return;
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!tourStore.getFocused()) return;
+    const controller = new AbortController();
+    const { signal } = controller;
 
-      switch (e.key) {
-        case 'Escape':
-          e.preventDefault();
-          unfocus();
-          break;
-        case 'ArrowRight': {
-          const { activeElement } = document;
-          const isEditable =
-            activeElement instanceof HTMLInputElement ||
-            activeElement instanceof HTMLTextAreaElement ||
-            activeElement instanceof HTMLSelectElement ||
-            (activeElement instanceof HTMLElement && activeElement.isContentEditable);
-          if (!isEditable && tourStore.ready) {
+    // capture: true so it fires before react can swap dom nodes
+    window.addEventListener(
+      'click',
+      (e) => {
+        if (!(e.target instanceof Element)) return;
+        if (!e.target.isConnected) return;
+        if (selector && e.target.closest(selector)) {
+          if (currentStep.advanceWhen?.type === 'click' && currentStep.advanceWhen.gateNext) setReady(true);
+          if (currentStep.advanceWhen?.type === 'click' && !currentStep.advanceWhen.disableAutoAdvance) next();
+          return;
+        }
+        if (e.target.closest('[data-tour-popover]')) return;
+        if (e.target.closest('[data-tour-beacon]')) return;
+        if (e.target.closest('[role="dialog"], [data-popover], [data-slot="select-positioner"]')) return;
+        unfocus();
+      },
+      { capture: true, signal }
+    );
+
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (!tourStore.getFocused()) return;
+
+        switch (e.key) {
+          case 'Escape':
             e.preventDefault();
-            next();
+            unfocus();
+            break;
+          case 'ArrowRight': {
+            const { activeElement } = document;
+            const isEditable =
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement ||
+              activeElement instanceof HTMLSelectElement ||
+              (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+            if (!isEditable && tourStore.ready) {
+              e.preventDefault();
+              next();
+            }
+            break;
           }
-          break;
-        }
-        case 'ArrowLeft': {
-          const { activeElement } = document;
-          const isEditable =
-            activeElement instanceof HTMLInputElement ||
-            activeElement instanceof HTMLTextAreaElement ||
-            activeElement instanceof HTMLSelectElement ||
-            (activeElement instanceof HTMLElement && activeElement.isContentEditable);
-          if (!isEditable) {
+          case 'ArrowLeft': {
+            const { activeElement } = document;
+            const isEditable =
+              activeElement instanceof HTMLInputElement ||
+              activeElement instanceof HTMLTextAreaElement ||
+              activeElement instanceof HTMLSelectElement ||
+              (activeElement instanceof HTMLElement && activeElement.isContentEditable);
+            if (!isEditable) {
+              e.preventDefault();
+              prev();
+            }
+            break;
+          }
+          case 'Tab': {
+            const popover = document.querySelector<HTMLElement>('[data-tour-popover]');
+            const highlightEl = tourStore.getHighlightedElement();
+            if (!popover) break;
+
+            const focusables = [
+              ...Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+              ...(highlightEl instanceof HTMLElement
+                ? [
+                    ...(highlightEl.matches(FOCUSABLE_SELECTOR) ? [highlightEl] : []),
+                    ...Array.from(highlightEl.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
+                  ]
+                : []),
+            ];
+
+            if (focusables.length === 0) break;
+
             e.preventDefault();
-            prev();
+            const currentIndex = focusables.indexOf(document.activeElement as HTMLElement);
+
+            if (e.shiftKey) {
+              focusables[currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1].focus();
+            } else {
+              focusables[currentIndex >= focusables.length - 1 ? 0 : currentIndex + 1].focus();
+            }
+            break;
           }
-          break;
         }
-        case 'Tab': {
-          const popover = document.querySelector<HTMLElement>('[data-tour-popover]');
-          const highlightEl = tourStore.getHighlightedElement();
-          if (!popover) break;
+      },
+      { signal }
+    );
 
-          const focusables = [
-            ...Array.from(popover.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
-            ...(highlightEl instanceof HTMLElement
-              ? [
-                  ...(highlightEl.matches(FOCUSABLE_SELECTOR) ? [highlightEl] : []),
-                  ...Array.from(highlightEl.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)),
-                ]
-              : []),
-          ];
-
-          if (focusables.length === 0) break;
-
-          e.preventDefault();
-          const currentIndex = focusables.indexOf(document.activeElement as HTMLElement);
-
-          if (e.shiftKey) {
-            focusables[currentIndex <= 0 ? focusables.length - 1 : currentIndex - 1].focus();
-          } else {
-            focusables[currentIndex >= focusables.length - 1 ? 0 : currentIndex + 1].focus();
-          }
-          break;
-        }
-      }
-    };
-
-    // true added so that it fires on capture, rather than on bubble (so before react can swap dom nodes)
-    window.addEventListener('click', handleWindowClick, true);
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      cleanupRaf();
-      window.removeEventListener('click', handleWindowClick, true);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [currentStep, next, prev, setReady, unfocus, active, updateHighlight, tourStore, selector, cbArgs]);
+    return () => controller.abort();
+  }, [currentStep, selector, active, next, prev, setReady, unfocus, tourStore]);
 
   return {
     step,

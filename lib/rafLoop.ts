@@ -1,50 +1,33 @@
-import type { TutorialStep, TutorialStore } from '../types';
+import type { FrameState, TutorialStep, TutorialStore } from '../types';
 import { advanceTour, focusTour, setTourReady, unfocusTour } from './storeHelpers';
 import type { CallbackArgs } from './storeHelpers';
 
-type TourFrame = {
+type TourState = {
   tourStore: TutorialStore;
   selector: string | undefined;
   currentStep: TutorialStep;
   queryRoot: Document | Element;
   callbackArgs: CallbackArgs;
+  frameState: FrameState;
   updateHighlight: (element: Element | null) => void;
 };
 
 export function runTourFrame({
   tourStore,
+  frameState,
   selector,
   currentStep,
   queryRoot,
   callbackArgs,
   updateHighlight,
-}: TourFrame) {
-  const newFrameState = { ...tourStore.frameState };
-  console.log('frameState', newFrameState);
+}: TourState) {
+  const newFrameState = { ...frameState };
   let highlightElement = tourStore.getHighlightedElement();
 
   // find highlight element
   if ((!highlightElement || !highlightElement.isConnected) && selector) {
     tourStore.setHighlightedElement(queryRoot, selector);
     highlightElement = tourStore.getHighlightedElement();
-  }
-
-  // unfocus if next and can't find element, stay on prev highlight
-  if (!highlightElement && selector) {
-    if (newFrameState.highlightTargetStatus === 'searching') {
-      if (tourStore.getFocused()) unfocusTour(tourStore, callbackArgs);
-      newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
-    }
-    return newFrameState;
-  }
-
-  if (
-    highlightElement &&
-    (newFrameState.highlightTargetStatus === 'searching' ||
-      newFrameState.highlightTargetStatus === 'waiting-for-highlight-target')
-  ) {
-    newFrameState.highlightTargetStatus = 'found';
-    focusTour(tourStore, callbackArgs);
   }
 
   // Mark the target element so screen readers announce it has an associated dialog
@@ -87,17 +70,34 @@ export function runTourFrame({
     }
   }
 
+  // unfocus if next and can't find element, stay on prev highlight
+  if (!highlightElement && selector) {
+    if (newFrameState.highlightTargetStatus === 'searching' && tourStore.getFocused()) {
+      unfocusTour(tourStore, callbackArgs);
+    }
+    newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
+    return newFrameState;
+  }
+
+  if (
+    highlightElement &&
+    (newFrameState.highlightTargetStatus === 'searching' ||
+      newFrameState.highlightTargetStatus === 'waiting-for-highlight-target')
+  ) {
+    newFrameState.highlightTargetStatus = 'found';
+    focusTour(tourStore, callbackArgs);
+  }
+
   updateHighlight(highlightElement);
 
   return newFrameState;
 }
 
-export function rafLoop(tourFrame: TourFrame) {
+export function rafLoop(tourFrame: Omit<TourState, 'frameState'>) {
   const tick = () => {
-    const newFrameState = runTourFrame(tourFrame);
+    const newFrameState = runTourFrame({ ...tourFrame, frameState: tourFrame.tourStore.frameState });
     const frameId = requestAnimationFrame(tick);
-    newFrameState.frameId = frameId;
-    tourFrame.tourStore.setFrameState(newFrameState);
+    tourFrame.tourStore.setFrameState({ ...newFrameState, frameId });
   };
   tick();
   return () => {
