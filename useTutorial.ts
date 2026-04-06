@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
+import { advanceTour, cancelTour, focusTour, prevTour, resetTour, setTourReady, unfocusTour } from './lib/storeHelpers';
 import type { TourCallbackContext, TourCallbacks, TutorialStep } from './types';
 
 const FOCUSABLE_SELECTOR =
@@ -57,45 +58,26 @@ export function useTutorial({
     }
   }, [step, steps.length, callbacks, callbackContext]);
 
-  const next = useCallback(() => {
-    tourStore.advance();
-    callbacks?.onAdvance?.(callbackContext);
-    currentStep?.callbacks?.onAdvance?.(callbackContext);
-  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
-  const prev = useCallback(() => {
-    tourStore.prev();
-    callbacks?.onPrev?.(callbackContext);
-    currentStep?.callbacks?.onPrev?.(callbackContext);
-  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
+  const cbArgs = useMemo(
+    () => ({ tourCallbacks: callbacks, stepCallbacks: currentStep?.callbacks, context: callbackContext }),
+    [callbacks, currentStep?.callbacks, callbackContext]
+  );
+
+  const next = useCallback(() => advanceTour(tourStore, cbArgs), [tourStore, cbArgs]);
+  const prev = useCallback(() => prevTour(tourStore, cbArgs), [tourStore, cbArgs]);
   const focus = useCallback(() => {
     if (unfocusedBecauseHighlightNotFound.current) {
       prev();
       unfocusedBecauseHighlightNotFound.current = false;
     }
-    tourStore.focus();
-    callbacks?.onFocus?.(callbackContext);
-    currentStep?.callbacks?.onFocus?.(callbackContext);
-  }, [tourStore, callbacks, currentStep?.callbacks, prev, unfocusedBecauseHighlightNotFound, callbackContext]);
-  const unfocus = useCallback(() => {
-    tourStore.unfocus();
-    callbacks?.onUnfocus?.(callbackContext);
-    currentStep?.callbacks?.onUnfocus?.(callbackContext);
-  }, [tourStore, callbacks, currentStep?.callbacks, callbackContext]);
-  const reset = useCallback(() => {
-    tourStore.reset();
-    callbacks?.onReset?.(callbackContext);
-  }, [tourStore, callbacks, callbackContext]);
-  const cancel = useCallback(() => {
-    onCancel();
-    callbacks?.onCancel?.(callbackContext);
-    currentStep?.callbacks?.onCancel?.(callbackContext);
-  }, [onCancel, callbacks, currentStep?.callbacks, callbackContext]);
+    focusTour(tourStore, cbArgs);
+  }, [tourStore, cbArgs, prev, unfocusedBecauseHighlightNotFound]);
+  const unfocus = useCallback(() => unfocusTour(tourStore, cbArgs), [tourStore, cbArgs]);
+  const reset = useCallback(() => resetTour(tourStore, cbArgs), [tourStore, cbArgs]);
+  const cancel = useCallback(() => cancelTour(onCancel, cbArgs), [onCancel, cbArgs]);
   const setReady = useCallback(
-    (readyVal: boolean) => {
-      tourStore.setReady(readyVal);
-      if (readyVal) callbacks?.onReady?.(callbackContext);
-    },
-    [tourStore, callbacks, callbackContext]
+    (readyVal: boolean) => setTourReady(tourStore, readyVal, cbArgs),
+    [tourStore, cbArgs]
   );
 
   const unfocusWhenElementNotFound = useCallback(
@@ -116,6 +98,7 @@ export function useTutorial({
 
   const updateHighlight = useCallback(
     (element: Element | null) => {
+      // don't set highlight to null so that it activates beacon, beacon can recover to last step through focus()
       if (element) setHighlight(element.getBoundingClientRect());
     },
     [setHighlight]
@@ -155,7 +138,7 @@ export function useTutorial({
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     // Track which element has ARIA attributes so we can clean them up on change
     let decoratedElement: Element | null = null;
-    let scrollIntoViewOnce = false;
+    let scrolledIntoViewOnce = false;
 
     // raf loop to detect: if we have the right highlightElement, if the condition is completed, if it is in view
     const update = () => {
@@ -178,10 +161,10 @@ export function useTutorial({
 
       if (highlightElement && focused) {
         if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView !== 'never') {
-          if (currentStep.scrollIntoView === 'always' || !scrollIntoViewOnce) {
+          if (currentStep.scrollIntoView === 'always' || !scrolledIntoViewOnce) {
             highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }
-          scrollIntoViewOnce = true;
+          scrolledIntoViewOnce = true;
         }
       }
 
