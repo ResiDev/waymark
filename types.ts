@@ -9,6 +9,7 @@ export type TutorialStore = {
   highlightedElement: null | Element;
   highlightElementIsInView: boolean;
   observer: IntersectionObserver | null;
+  frameState: FrameState;
   getObserver: () => IntersectionObserver | null;
   getStep: () => number;
   getFocused: () => boolean;
@@ -16,6 +17,8 @@ export type TutorialStore = {
   setHighlightedElement: (document: Element | Document, name: string) => void;
   getReady: () => boolean;
   setReady: (ready: boolean) => void;
+  setFrameState: (frameState: FrameState) => void;
+  disposeFrameState: () => void;
   subscribe: (callback: () => void) => () => void;
   focus: () => void;
   unfocus: () => void;
@@ -39,6 +42,15 @@ type TutorialStepBase = {
   advanceWhen?: AutoAdvances;
   scrollIntoView?: 'always' | 'once' | 'never'; // defaults to once if omitted
   callbacks?: StepCallbacks;
+};
+
+export type FrameState = {
+  isAutoAdvancing: boolean;
+  scrolledIntoViewOnce: boolean;
+  ariaAnnotatedElement: Element | null;
+  timeoutId: ReturnType<typeof setTimeout> | undefined;
+  highlightTargetStatus: 'searching' | 'found' | 'waiting-for-highlight-target';
+  frameId: number | undefined;
 };
 
 export type TutorialStep =

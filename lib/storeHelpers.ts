@@ -25,6 +25,7 @@ export function focusTour(store: TutorialStore, { tourCallbacks, stepCallbacks, 
 }
 
 export function unfocusTour(store: TutorialStore, { tourCallbacks, stepCallbacks, context }: CallbackArgs) {
+  console.log('unfocus');
   store.unfocus();
   tourCallbacks?.onUnfocus?.(context);
   stepCallbacks?.onUnfocus?.(context);
@@ -35,10 +36,7 @@ export function resetTour(store: TutorialStore, { tourCallbacks, context }: Omit
   tourCallbacks?.onReset?.(context);
 }
 
-export function cancelTour(
-  onCancel: () => void,
-  { tourCallbacks, stepCallbacks, context }: CallbackArgs
-) {
+export function cancelTour(onCancel: () => void, { tourCallbacks, stepCallbacks, context }: CallbackArgs) {
   onCancel();
   tourCallbacks?.onCancel?.(context);
   stepCallbacks?.onCancel?.(context);

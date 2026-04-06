@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
 import { advanceTour, cancelTour, focusTour, prevTour, resetTour, setTourReady, unfocusTour } from './lib/storeHelpers';
-import { type FrameState, runTourFrame } from './lib/rafLoop';
 import type { TourCallbackContext, TourCallbacks, TutorialStep } from './types';
+import { rafLoop } from './lib/rafLoop';
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -23,7 +23,6 @@ export function useTutorial({
   const [highlight, setHighlight] = useState<DOMRect | null>(null);
   const finished = useRef<boolean>(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const unfocusedBecauseHighlightNotFound = useRef(false);
 
   const tourStore = useMemo(() => {
     const foundStore = tourStores.get(id);
@@ -67,19 +66,16 @@ export function useTutorial({
   const next = useCallback(() => advanceTour(tourStore, cbArgs), [tourStore, cbArgs]);
   const prev = useCallback(() => prevTour(tourStore, cbArgs), [tourStore, cbArgs]);
   const focus = useCallback(() => {
-    if (unfocusedBecauseHighlightNotFound.current) {
+    if (tourStore.frameState.highlightTargetStatus === 'waiting-for-highlight-target') {
       prev();
-      unfocusedBecauseHighlightNotFound.current = false;
+      tourStore.setFrameState({ ...tourStore.frameState, highlightTargetStatus: 'found' });
     }
     focusTour(tourStore, cbArgs);
-  }, [tourStore, cbArgs, prev, unfocusedBecauseHighlightNotFound]);
+  }, [tourStore, cbArgs, prev]);
   const unfocus = useCallback(() => unfocusTour(tourStore, cbArgs), [tourStore, cbArgs]);
   const reset = useCallback(() => resetTour(tourStore, cbArgs), [tourStore, cbArgs]);
   const cancel = useCallback(() => cancelTour(onCancel, cbArgs), [onCancel, cbArgs]);
-  const setReady = useCallback(
-    (readyVal: boolean) => setTourReady(tourStore, readyVal, cbArgs),
-    [tourStore, cbArgs]
-  );
+  const setReady = useCallback((readyVal: boolean) => setTourReady(tourStore, readyVal, cbArgs), [tourStore, cbArgs]);
 
   const updateHighlight = useCallback(
     (element: Element | null) => {
@@ -117,33 +113,14 @@ export function useTutorial({
   useLayoutEffect(() => {
     if (!currentStep || !active) return;
 
-    let frameId: number;
-    let currentFrameState: FrameState = {
-      isAutoAdvancing: false,
-      scrolledIntoViewOnce: false,
-      ariaAnnotatedElement: null,
-      timeoutId: undefined,
-      highlightTargetStatus: 'stable',
-    };
-
-    const update = () => {
-      currentFrameState = runTourFrame({
-        tourStore,
-        selector,
-        focused,
-        currentStep,
-        frameState: currentFrameState,
-        queryRoot: document,
-        callbackArgs: cbArgs,
-        updateHighlight,
-      });
-      unfocusedBecauseHighlightNotFound.current =
-        currentFrameState.highlightTargetStatus === 'waiting-for-highlight-target';
-
-      frameId = requestAnimationFrame(update);
-    };
-
-    update();
+    const cleanupRaf = rafLoop({
+      tourStore,
+      selector,
+      currentStep,
+      queryRoot: document,
+      callbackArgs: cbArgs,
+      updateHighlight,
+    });
 
     const handleWindowClick = (e: MouseEvent) => {
       if (!(e.target instanceof Element)) return;
@@ -160,7 +137,7 @@ export function useTutorial({
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!focused) return;
+      if (!tourStore.getFocused()) return;
 
       switch (e.key) {
         case 'Escape':
@@ -228,15 +205,11 @@ export function useTutorial({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      currentFrameState.ariaAnnotatedElement?.removeAttribute('aria-haspopup');
-      currentFrameState.ariaAnnotatedElement?.removeAttribute('aria-expanded');
-      cancelAnimationFrame(frameId);
-      if (currentFrameState.timeoutId) clearTimeout(currentFrameState.timeoutId);
-      unfocusedBecauseHighlightNotFound.current = false;
+      cleanupRaf();
       window.removeEventListener('click', handleWindowClick, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentStep, next, prev, setReady, unfocus, active, updateHighlight, focused, tourStore, selector, cbArgs]);
+  }, [currentStep, next, prev, setReady, unfocus, active, updateHighlight, tourStore, selector, cbArgs]);
 
   return {
     step,

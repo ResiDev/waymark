@@ -1,6 +1,15 @@
-import type { TutorialStore } from './types';
+import type { FrameState, TutorialStore } from './types';
 
 export const tourStores = new Map<string, TutorialStore>();
+
+const initialFrameState = (): FrameState => ({
+  isAutoAdvancing: false,
+  scrolledIntoViewOnce: false,
+  ariaAnnotatedElement: null,
+  timeoutId: undefined,
+  highlightTargetStatus: 'searching',
+  frameId: undefined,
+});
 
 export function createTourStore(id: string) {
   const tourStore: TutorialStore = {
@@ -12,6 +21,7 @@ export function createTourStore(id: string) {
     highlightedElement: null,
     highlightElementIsInView: false,
     observer: null as IntersectionObserver | null,
+    frameState: initialFrameState(),
     getObserver: () => {
       if (!tourStore.observer && typeof IntersectionObserver !== 'undefined') {
         tourStore.observer = new IntersectionObserver(([entry]) => {
@@ -35,6 +45,14 @@ export function createTourStore(id: string) {
     setReady: (ready: boolean) => {
       tourStore.ready = ready;
     },
+    setFrameState: (nextFrameState) => (tourStore.frameState = nextFrameState),
+    disposeFrameState: () => {
+      if (tourStore.frameState.frameId !== undefined) cancelAnimationFrame(tourStore.frameState.frameId);
+      if (tourStore.frameState.timeoutId !== undefined) clearTimeout(tourStore.frameState.timeoutId);
+      tourStore.frameState.ariaAnnotatedElement?.removeAttribute('aria-haspopup');
+      tourStore.frameState.ariaAnnotatedElement?.removeAttribute('aria-expanded');
+      tourStore.frameState = initialFrameState();
+    },
     subscribe: (callback: () => void) => {
       tourStore.listeners.add(callback);
       return () => tourStore.listeners.delete(callback);
@@ -52,6 +70,7 @@ export function createTourStore(id: string) {
         tourStore.step -= 1;
         tourStore.focused = true;
         tourStore.highlightedElement = null;
+        tourStore.disposeFrameState();
         tourStore.listeners.forEach((cb) => cb());
       }
     },
@@ -59,12 +78,14 @@ export function createTourStore(id: string) {
       tourStore.step += 1;
       tourStore.focused = true;
       tourStore.highlightedElement = null;
+      tourStore.disposeFrameState();
       tourStore.listeners.forEach((cb) => cb());
     },
     reset: () => {
       tourStore.step = 0;
       tourStore.focused = true;
       tourStore.highlightedElement = null;
+      tourStore.disposeFrameState();
       tourStore.listeners.forEach((cb) => cb());
     },
   };

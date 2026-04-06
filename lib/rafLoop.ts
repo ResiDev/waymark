@@ -2,20 +2,10 @@ import type { TutorialStep, TutorialStore } from '../types';
 import { advanceTour, focusTour, setTourReady, unfocusTour } from './storeHelpers';
 import type { CallbackArgs } from './storeHelpers';
 
-export type FrameState = {
-  isAutoAdvancing: boolean;
-  scrolledIntoViewOnce: boolean;
-  ariaAnnotatedElement: Element | null;
-  timeoutId: ReturnType<typeof setTimeout> | undefined;
-  highlightTargetStatus: 'stable' | 'waiting-for-highlight-target';
-};
-
 type TourFrame = {
   tourStore: TutorialStore;
   selector: string | undefined;
-  focused: boolean;
   currentStep: TutorialStep;
-  frameState: FrameState;
   queryRoot: Document | Element;
   callbackArgs: CallbackArgs;
   updateHighlight: (element: Element | null) => void;
@@ -24,20 +14,37 @@ type TourFrame = {
 export function runTourFrame({
   tourStore,
   selector,
-  focused,
   currentStep,
-  frameState,
   queryRoot,
   callbackArgs,
   updateHighlight,
 }: TourFrame) {
-  const newFrameState = { ...frameState };
+  const newFrameState = { ...tourStore.frameState };
+  console.log('frameState', newFrameState);
   let highlightElement = tourStore.getHighlightedElement();
 
   // find highlight element
   if ((!highlightElement || !highlightElement.isConnected) && selector) {
     tourStore.setHighlightedElement(queryRoot, selector);
     highlightElement = tourStore.getHighlightedElement();
+  }
+
+  // unfocus if next and can't find element, stay on prev highlight
+  if (!highlightElement && selector) {
+    if (newFrameState.highlightTargetStatus === 'searching') {
+      if (tourStore.getFocused()) unfocusTour(tourStore, callbackArgs);
+      newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
+    }
+    return newFrameState;
+  }
+
+  if (
+    highlightElement &&
+    (newFrameState.highlightTargetStatus === 'searching' ||
+      newFrameState.highlightTargetStatus === 'waiting-for-highlight-target')
+  ) {
+    newFrameState.highlightTargetStatus = 'found';
+    focusTour(tourStore, callbackArgs);
   }
 
   // Mark the target element so screen readers announce it has an associated dialog
@@ -52,7 +59,7 @@ export function runTourFrame({
   }
 
   // scrollIntoView behaviour
-  if (highlightElement && focused) {
+  if (highlightElement && tourStore.focused) {
     if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView !== 'never') {
       if (currentStep.scrollIntoView === 'always' || !newFrameState.scrolledIntoViewOnce) {
         highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -82,33 +89,18 @@ export function runTourFrame({
 
   updateHighlight(highlightElement);
 
-  if (!highlightElement && selector) {
-    if (tourStore.getFocused()) {
-      unfocusTour(tourStore, callbackArgs);
-      newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
-    }
-    return newFrameState;
-  } else if (newFrameState.highlightTargetStatus === 'waiting-for-highlight-target') {
-    newFrameState.highlightTargetStatus = 'stable';
-    focusTour(tourStore, callbackArgs);
-  }
-
   return newFrameState;
 }
 
 export function rafLoop(tourFrame: TourFrame) {
-  let frameId: number;
-  let currentFrameState = tourFrame.frameState;
-
   const tick = () => {
-    currentFrameState = runTourFrame({ ...tourFrame, frameState: currentFrameState });
-    frameId = requestAnimationFrame(tick);
+    const newFrameState = runTourFrame(tourFrame);
+    const frameId = requestAnimationFrame(tick);
+    newFrameState.frameId = frameId;
+    tourFrame.tourStore.setFrameState(newFrameState);
   };
-
-  frameId = requestAnimationFrame(tick);
-
+  tick();
   return () => {
-    cancelAnimationFrame(frameId);
-    if (currentFrameState.timeoutId) clearTimeout(currentFrameState.timeoutId);
+    tourFrame.tourStore.disposeFrameState();
   };
 }
