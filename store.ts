@@ -20,6 +20,7 @@ export function createTourStore(id: string) {
     listeners: new Set<() => void>(),
     highlightedElement: null,
     highlightElementIsInView: false,
+    highlightedElementRect: null,
     observer: null as IntersectionObserver | null,
     frameState: initialFrameState(),
     getObserver: () => {
@@ -42,6 +43,23 @@ export function createTourStore(id: string) {
       if (el) {
         tourStore.getObserver()?.observe(el);
       }
+    },
+    getHighlightedElementRect: () => tourStore.highlightedElementRect,
+    setHighlightedElementRect: (element) => {
+      if (!element) return;
+      const nextRect = element.getBoundingClientRect();
+      const prevRect = tourStore.highlightedElementRect;
+      if (
+        prevRect &&
+        prevRect.x === nextRect.x &&
+        prevRect.y === nextRect.y &&
+        prevRect.width === nextRect.width &&
+        prevRect.height === nextRect.height
+      ) {
+        return;
+      }
+      tourStore.highlightedElementRect = nextRect;
+      tourStore.listeners.forEach((cb) => cb());
     },
     getReady: () => tourStore.ready,
     setReady: (ready: boolean) => {

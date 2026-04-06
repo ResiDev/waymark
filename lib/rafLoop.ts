@@ -9,18 +9,9 @@ type TourState = {
   queryRoot: Document | Element;
   callbackArgs: CallbackArgs;
   frameState: FrameState;
-  updateHighlight: (element: Element | null) => void;
 };
 
-export function runTourFrame({
-  tourStore,
-  frameState,
-  selector,
-  currentStep,
-  queryRoot,
-  callbackArgs,
-  updateHighlight,
-}: TourState) {
+export function runTourFrame({ tourStore, frameState, selector, currentStep, queryRoot, callbackArgs }: TourState) {
   const newFrameState = { ...frameState };
   let highlightElement = tourStore.getHighlightedElement();
 
@@ -92,7 +83,7 @@ export function runTourFrame({
     focusTour(tourStore, callbackArgs);
   }
 
-  updateHighlight(highlightElement);
+  tourStore.setHighlightedElementRect(highlightElement);
 
   return newFrameState;
 }

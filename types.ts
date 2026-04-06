@@ -8,6 +8,7 @@ export type TutorialStore = {
   listeners: Set<() => void>;
   highlightedElement: null | Element;
   highlightElementIsInView: boolean;
+  highlightedElementRect: DOMRect | null;
   observer: IntersectionObserver | null;
   frameState: FrameState;
   getObserver: () => IntersectionObserver | null;
@@ -15,6 +16,8 @@ export type TutorialStore = {
   getFocused: () => boolean;
   getHighlightedElement: () => null | Element;
   setHighlightedElement: (document: Element | Document, name: string) => void;
+  getHighlightedElementRect: () => DOMRect | null;
+  setHighlightedElementRect: (element: Element | null) => void;
   getReady: () => boolean;
   setReady: (ready: boolean) => void;
   setFrameState: (frameState: FrameState) => void;

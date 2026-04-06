@@ -20,7 +20,6 @@ export function useTutorial({
   callbacks?: TourCallbacks;
   onCancel: () => void;
 }) {
-  const [highlight, setHighlight] = useState<DOMRect | null>(null);
   const finished = useRef<boolean>(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -32,6 +31,7 @@ export function useTutorial({
 
   const step = useSyncExternalStore(tourStore.subscribe, tourStore.getStep, () => 0);
   const focused = useSyncExternalStore(tourStore.subscribe, tourStore.getFocused, () => false);
+  const highlight = useSyncExternalStore(tourStore.subscribe, tourStore.getHighlightedElementRect, () => null);
 
   const currentStep = steps.at(step);
 
@@ -77,14 +77,6 @@ export function useTutorial({
   const cancel = useCallback(() => cancelTour(onCancel, cbArgs), [onCancel, cbArgs]);
   const setReady = useCallback((readyVal: boolean) => setTourReady(tourStore, readyVal, cbArgs), [tourStore, cbArgs]);
 
-  const updateHighlight = useCallback(
-    (element: Element | null) => {
-      // don't set highlight to null so that it activates beacon, beacon can recover to last step through focus()
-      if (element) setHighlight(element.getBoundingClientRect());
-    },
-    [setHighlight]
-  );
-
   // Capture the user's focused element when the tour starts so we can
   // restore it when the tour deactivates (e.g. they were typing in an input).
   useLayoutEffect(() => {
@@ -118,9 +110,8 @@ export function useTutorial({
       currentStep,
       queryRoot: document,
       callbackArgs: cbArgs,
-      updateHighlight,
     });
-  }, [currentStep, active, updateHighlight, tourStore, selector, cbArgs]);
+  }, [currentStep, active, tourStore, selector, cbArgs]);
 
   useEffect(() => {
     if (!currentStep || !active) return;
