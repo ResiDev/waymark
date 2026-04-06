@@ -107,5 +107,8 @@ export function rafLoop(tourFrame: TourFrame) {
 
   frameId = requestAnimationFrame(tick);
 
-  return () => cancelAnimationFrame(frameId);
+  return () => {
+    cancelAnimationFrame(frameId);
+    if (currentFrameState.timeoutId) clearTimeout(currentFrameState.timeoutId);
+  };
 }
