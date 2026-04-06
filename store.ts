@@ -36,12 +36,14 @@ export function createTourStore(id: string) {
     getHighlightedElement: () => tourStore.highlightedElement,
     setHighlightedElement: (document: Element | Document, selector: string) => {
       const el = document.querySelector(selector);
+      if (el === tourStore.highlightedElement) return;
       if (tourStore.highlightedElement) {
         tourStore.getObserver()?.unobserve(tourStore.highlightedElement);
       }
       tourStore.highlightedElement = el;
       if (el) {
         tourStore.getObserver()?.observe(el);
+        tourStore.setHighlightedElementRect(tourStore.highlightedElement);
       }
     },
     getHighlightedElementRect: () => tourStore.highlightedElementRect,
