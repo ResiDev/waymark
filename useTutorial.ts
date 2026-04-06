@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
 import { advanceTour, cancelTour, focusTour, prevTour, resetTour, setTourReady, unfocusTour } from './lib/storeHelpers';
+import { type FrameState, runTourFrame } from './lib/rafLoop';
 import type { TourCallbackContext, TourCallbacks, TutorialStep } from './types';
 
 const FOCUSABLE_SELECTOR =
@@ -80,22 +81,6 @@ export function useTutorial({
     [tourStore, cbArgs]
   );
 
-  const unfocusWhenElementNotFound = useCallback(
-    (element: Element | null, selector: string | undefined) => {
-      if (!element && selector) {
-        if (tourStore.getFocused()) {
-          unfocus();
-          unfocusedBecauseHighlightNotFound.current = true;
-        }
-        return;
-      } else if (unfocusedBecauseHighlightNotFound.current) {
-        unfocusedBecauseHighlightNotFound.current = false;
-        focus();
-      }
-    },
-    [tourStore, unfocus, focus]
-  );
-
   const updateHighlight = useCallback(
     (element: Element | null) => {
       // don't set highlight to null so that it activates beacon, beacon can recover to last step through focus()
@@ -133,56 +118,27 @@ export function useTutorial({
     if (!currentStep || !active) return;
 
     let frameId: number;
-    // Prevent next from being called multiple times by raf loop
-    let advancing = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    // Track which element has ARIA attributes so we can clean them up on change
-    let decoratedElement: Element | null = null;
-    let scrolledIntoViewOnce = false;
+    let currentFrameState: FrameState = {
+      isAutoAdvancing: false,
+      scrolledIntoViewOnce: false,
+      ariaAnnotatedElement: null,
+      timeoutId: undefined,
+      highlightTargetStatus: 'stable',
+    };
 
-    // raf loop to detect: if we have the right highlightElement, if the condition is completed, if it is in view
     const update = () => {
-      const highlightElement = tourStore.getHighlightedElement();
-
-      if ((!highlightElement || !highlightElement.isConnected) && selector) {
-        tourStore.setHighlightedElement(document, selector);
-      }
-
-      // Mark the target element so screen readers announce it has an associated dialog
-      if (highlightElement !== decoratedElement) {
-        decoratedElement?.removeAttribute('aria-haspopup');
-        decoratedElement?.removeAttribute('aria-expanded');
-        if (highlightElement) {
-          highlightElement.setAttribute('aria-haspopup', 'dialog');
-          highlightElement.setAttribute('aria-expanded', 'true');
-        }
-        decoratedElement = highlightElement;
-      }
-
-      if (highlightElement && focused) {
-        if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView !== 'never') {
-          if (currentStep.scrollIntoView === 'always' || !scrolledIntoViewOnce) {
-            highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
-          scrolledIntoViewOnce = true;
-        }
-      }
-
-      // detect state change for auto advance tour
-      if (currentStep.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement ?? undefined)) {
-        if (!advancing && !currentStep.advanceWhen.disableAutoAdvance) {
-          advancing = true;
-          if (currentStep.delay) timeoutId = setTimeout(() => next(), currentStep.delay);
-          else next();
-        }
-
-        if (currentStep.advanceWhen.gateNext) {
-          setReady(true);
-        }
-      }
-
-      updateHighlight(highlightElement);
-      unfocusWhenElementNotFound(highlightElement, selector);
+      currentFrameState = runTourFrame({
+        tourStore,
+        selector,
+        focused,
+        currentStep,
+        frameState: currentFrameState,
+        queryRoot: document,
+        callbackArgs: cbArgs,
+        updateHighlight,
+      });
+      unfocusedBecauseHighlightNotFound.current =
+        currentFrameState.highlightTargetStatus === 'waiting-for-highlight-target';
 
       frameId = requestAnimationFrame(update);
     };
@@ -272,27 +228,15 @@ export function useTutorial({
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      decoratedElement?.removeAttribute('aria-haspopup');
-      decoratedElement?.removeAttribute('aria-expanded');
+      currentFrameState.ariaAnnotatedElement?.removeAttribute('aria-haspopup');
+      currentFrameState.ariaAnnotatedElement?.removeAttribute('aria-expanded');
       cancelAnimationFrame(frameId);
-      clearTimeout(timeoutId);
+      if (currentFrameState.timeoutId) clearTimeout(currentFrameState.timeoutId);
+      unfocusedBecauseHighlightNotFound.current = false;
       window.removeEventListener('click', handleWindowClick, true);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [
-    currentStep,
-    next,
-    prev,
-    setReady,
-    unfocus,
-    callbacks,
-    active,
-    updateHighlight,
-    unfocusWhenElementNotFound,
-    focused,
-    tourStore,
-    selector,
-  ]);
+  }, [currentStep, next, prev, setReady, unfocus, active, updateHighlight, focused, tourStore, selector, cbArgs]);
 
   return {
     step,

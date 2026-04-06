@@ -24,7 +24,7 @@ export type TutorialStore = {
   reset: () => void;
 };
 
-type BaseAutoAdvanced = { disableAutoAdvance?: boolean; gateNext?: boolean };
+type BaseAutoAdvanced = { disableAutoAdvance?: boolean; gateNext?: boolean; delayMs?: number };
 
 type AutoAdvances =
   | ({ type: 'click' } & BaseAutoAdvanced)
@@ -38,7 +38,6 @@ type TutorialStepBase = {
   preferredPopoverPosition?: Placement;
   advanceWhen?: AutoAdvances;
   scrollIntoView?: 'always' | 'once' | 'never'; // defaults to once if omitted
-  delay?: number;
   callbacks?: StepCallbacks;
 };
 
