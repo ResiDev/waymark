@@ -67,6 +67,7 @@ export function runTourFrame({ tourStore, frameState, selector, currentStep, que
       (newFrameState.highlightTargetStatus === 'searching' || newFrameState.highlightTargetStatus === 'found') &&
       tourStore.getFocused()
     ) {
+      console.log('auto unfocus', newFrameState.highlightTargetStatus);
       unfocusTour(tourStore, callbackArgs);
     }
     if (newFrameState.highlightTargetStatus === 'found') newFrameState.highlightTargetStatus = 'lost';
@@ -79,6 +80,7 @@ export function runTourFrame({ tourStore, frameState, selector, currentStep, que
     (newFrameState.highlightTargetStatus === 'searching' ||
       newFrameState.highlightTargetStatus === 'waiting-for-highlight-target')
   ) {
+    console.log('found the element now', newFrameState.highlightTargetStatus);
     newFrameState.highlightTargetStatus = 'found';
     focusTour(tourStore, callbackArgs);
   }

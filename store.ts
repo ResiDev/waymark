@@ -1,3 +1,4 @@
+import { listeners } from 'process';
 import type { FrameState, TutorialStore } from './types';
 
 export const tourStores = new Map<string, TutorialStore>();
@@ -66,6 +67,7 @@ export function createTourStore(id: string) {
     getReady: () => tourStore.ready,
     setReady: (ready: boolean) => {
       tourStore.ready = ready;
+      tourStore.listeners.forEach((cb) => cb());
     },
     setFrameState: (nextFrameState) => (tourStore.frameState = nextFrameState),
     disposeFrameState: () => {

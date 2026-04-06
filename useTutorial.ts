@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from 'react';
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
 import { advanceTour, cancelTour, focusTour, prevTour, resetTour, unfocusTour } from './lib/storeHelpers';
 import type { TourCallbackContext, TourCallbacks, TutorialStep } from './types';
@@ -38,6 +30,7 @@ export function useTutorial({
   const step = useSyncExternalStore(tourStore.subscribe, tourStore.getStep, () => 0);
   const focused = useSyncExternalStore(tourStore.subscribe, tourStore.getFocused, () => false);
   const highlight = useSyncExternalStore(tourStore.subscribe, tourStore.getHighlightedElementRect, () => null);
+  const ready = useSyncExternalStore(tourStore.subscribe, tourStore.getReady, () => true);
 
   const currentStep = steps.at(step);
 
@@ -146,7 +139,7 @@ export function useTutorial({
     currentStep,
     highlight,
     callbacks,
-    ready: tourStore.ready,
+    ready,
     selector,
     next,
     prev,
