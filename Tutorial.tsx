@@ -29,6 +29,7 @@ export function Tutorial({
     callbacks,
     steps,
     onCancel,
+    highlightPadding,
   });
   if (!currentStep) return;
 

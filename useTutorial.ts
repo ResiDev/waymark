@@ -12,12 +12,14 @@ export function useTutorial({
   steps,
   callbacks,
   onCancel,
+  highlightPadding,
 }: {
   id: string;
   active: boolean;
   steps: Array<TutorialStep>;
   callbacks?: TourCallbacks;
   onCancel: () => void;
+  highlightPadding: number;
 }) {
   const finished = useRef<boolean>(false);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -119,12 +121,24 @@ export function useTutorial({
 
   const onWindowClick = useEffectEvent((e: MouseEvent) => {
     if (!currentStep) return;
-    handleTutorialClick(e, { tourStore, currentStep, selector, callbackArgs: callbackArgsRef.current });
+    handleTutorialClick(e, {
+      tourStore,
+      currentStep,
+      selector,
+      highlightPadding,
+      callbackArgs: callbackArgsRef.current,
+    });
   });
 
   const onWindowKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (!currentStep) return;
-    handleTutorialKeyDown(e, { tourStore, currentStep, selector, callbackArgs: callbackArgsRef.current });
+    handleTutorialKeyDown(e, {
+      tourStore,
+      currentStep,
+      selector,
+      highlightPadding,
+      callbackArgs: callbackArgsRef.current,
+    });
   });
 
   useEffect(() => {

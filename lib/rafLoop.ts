@@ -14,6 +14,7 @@ export type TourState = {
   frameState: FrameState;
 };
 
+// todo optimise when not focused
 export function runTourFrame({
   tourStore,
   frameState,

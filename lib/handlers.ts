@@ -9,13 +9,30 @@ export type TutorialEventContext = {
   tourStore: TutorialStore;
   currentStep: TutorialStep;
   selector: string | undefined;
+  highlightPadding: number;
   callbackArgs: CallbackArgs;
 };
+
+// Clicks inside the <Highlight> halo (rect + padding) count as on-target,
+// even if the underlying DOM target is a parent of the highlighted element.
+function isClickWithinVisualHighlight(e: MouseEvent, ctx: TutorialEventContext) {
+  if (!ctx.selector) return false;
+  if (e.target instanceof Element && e.target.closest(ctx.selector)) return true;
+  const rect = ctx.tourStore.getHighlightedElementRect();
+  if (!rect) return false;
+  const pad = ctx.highlightPadding;
+  return (
+    e.clientX >= rect.left - pad &&
+    e.clientX <= rect.right + pad &&
+    e.clientY >= rect.top - pad &&
+    e.clientY <= rect.bottom + pad
+  );
+}
 
 export function handleTutorialClick(e: MouseEvent, ctx: TutorialEventContext) {
   if (!(e.target instanceof Element)) return;
   if (!e.target.isConnected) return;
-  if (ctx.selector && e.target.closest(ctx.selector)) {
+  if (isClickWithinVisualHighlight(e, ctx)) {
     if (ctx.currentStep.advanceWhen?.type === 'click' && ctx.currentStep.advanceWhen.gateNext) {
       setTourReady(ctx.tourStore, true, ctx.callbackArgs);
     }
