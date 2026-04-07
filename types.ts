@@ -64,7 +64,7 @@ export type TutorialStep =
 export type TourCallbackContext = {
   stepIndex: number;
   targetSelector?: string;
-  currentStep?: TutorialStep;
+  currentStep: TutorialStep | null;
 };
 
 type TourCallbackFn = (ctx: TourCallbackContext) => void;

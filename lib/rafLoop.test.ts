@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { createTourStore, tourStores } from '../store';
 import type { FrameState, TutorialStep } from '../types';
 import type { CallbackArgs } from './storeHelpers';
-import { rafLoop, runTourFrame } from './rafLoop';
+import { rafLoop, runTourFrame, TourState } from './rafLoop';
 
 const TOUR_ID = 'test-tour';
 
@@ -37,25 +37,23 @@ type SetupOptions = Partial<Parameters<typeof runTourFrame>[0]> & {
 
 function setup(overrides: SetupOptions = {}) {
   const store = createTourStore(TOUR_ID);
-  const updateHighlight = vi.fn();
   const { focused, frameState, highlightElementIsInView, ...runOverrides } = overrides;
 
   if (focused !== undefined) store.focused = focused;
   if (highlightElementIsInView !== undefined) store.highlightElementIsInView = highlightElementIsInView;
   if (frameState) store.setFrameState(frameState);
 
-  const defaults = {
+  const defaults: TourState = {
     tourStore: store,
     selector: undefined as string | undefined,
     currentStep: DEFAULT_TUTORIAL_STEP,
     queryRoot: document,
     callbackArgs: DEFAULT_CALLBACK_ARGS,
-    updateHighlight,
+    frameState: DEFAULT_FRAME_STATE,
   };
 
   return {
     store,
-    updateHighlight,
     run: (frameOverrides: SetupOptions = {}) => {
       const {
         focused: nextFocused,
@@ -101,9 +99,10 @@ afterAll(() => {
 describe('runTourFrame', () => {
   describe('target resolution', () => {
     it('runs with no selector and no highlight element', () => {
-      const { run, updateHighlight } = setup();
+      const { run, store } = setup();
+      vi.spyOn(store, 'setHighlightedElementRect');
       const result = run();
-      expect(updateHighlight).toHaveBeenCalledWith(null);
+      expect(store.setHighlightedElementRect).toHaveBeenCalledWith(null);
       expect(result.highlightTargetStatus).toBe('searching');
     });
 
@@ -484,7 +483,6 @@ describe('rafLoop', () => {
       },
       queryRoot: document,
       callbackArgs: DEFAULT_CALLBACK_ARGS,
-      updateHighlight: vi.fn(),
     });
 
     cleanup();

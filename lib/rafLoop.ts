@@ -2,17 +2,29 @@ import type { FrameState, TutorialStep, TutorialStore } from '../types';
 import { advanceTour, focusTour, setTourReady, unfocusTour } from './storeHelpers';
 import type { CallbackArgs } from './storeHelpers';
 
-type TourState = {
+export type CurrentStepRef = { current: TutorialStep | null };
+export type CallbackArgsRef = { current: CallbackArgs };
+
+export type TourState = {
   tourStore: TutorialStore;
   selector: string | undefined;
-  currentStep: TutorialStep;
   queryRoot: Document | Element;
-  callbackArgs: CallbackArgs;
+  currentStepRef: CurrentStepRef;
+  callbackArgsRef: CallbackArgsRef;
   frameState: FrameState;
 };
 
-export function runTourFrame({ tourStore, frameState, selector, currentStep, queryRoot, callbackArgs }: TourState) {
+export function runTourFrame({
+  tourStore,
+  frameState,
+  selector,
+  queryRoot,
+  currentStepRef,
+  callbackArgsRef,
+}: TourState) {
   const newFrameState = { ...frameState };
+  const currentStep = currentStepRef.current;
+  const callbackArgs = callbackArgsRef.current;
   let highlightElement = tourStore.getHighlightedElement();
 
   // find highlight element
@@ -34,8 +46,8 @@ export function runTourFrame({ tourStore, frameState, selector, currentStep, que
 
   // scrollIntoView behaviour
   if (highlightElement && tourStore.focused) {
-    if (!tourStore.highlightElementIsInView && currentStep.scrollIntoView !== 'never') {
-      if (currentStep.scrollIntoView === 'always' || !newFrameState.scrolledIntoViewOnce) {
+    if (!tourStore.highlightElementIsInView && currentStep?.scrollIntoView !== 'never') {
+      if (currentStep?.scrollIntoView === 'always' || !newFrameState.scrolledIntoViewOnce) {
         highlightElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       newFrameState.scrolledIntoViewOnce = true;
@@ -43,11 +55,11 @@ export function runTourFrame({ tourStore, frameState, selector, currentStep, que
   }
 
   // detect state change for auto advance tour
-  if (currentStep.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement ?? undefined)) {
+  if (currentStep?.advanceWhen?.type === 'state' && currentStep.advanceWhen.check(highlightElement ?? undefined)) {
     if (!newFrameState.isAutoAdvancing && !currentStep.advanceWhen.disableAutoAdvance) {
       if (currentStep.advanceWhen.delayMs) {
         newFrameState.timeoutId = setTimeout(
-          () => advanceTour(tourStore, callbackArgs),
+          () => advanceTour(tourStore, callbackArgsRef.current),
           currentStep.advanceWhen.delayMs
         );
       } else {
@@ -67,12 +79,10 @@ export function runTourFrame({ tourStore, frameState, selector, currentStep, que
       (newFrameState.highlightTargetStatus === 'searching' || newFrameState.highlightTargetStatus === 'found') &&
       tourStore.getFocused()
     ) {
-      console.log('auto unfocus', newFrameState.highlightTargetStatus);
       unfocusTour(tourStore, callbackArgs);
     }
     if (newFrameState.highlightTargetStatus === 'found') newFrameState.highlightTargetStatus = 'lost';
     else newFrameState.highlightTargetStatus = 'waiting-for-highlight-target';
-    return newFrameState;
   }
 
   if (
@@ -80,7 +90,6 @@ export function runTourFrame({ tourStore, frameState, selector, currentStep, que
     (newFrameState.highlightTargetStatus === 'searching' ||
       newFrameState.highlightTargetStatus === 'waiting-for-highlight-target')
   ) {
-    console.log('found the element now', newFrameState.highlightTargetStatus);
     newFrameState.highlightTargetStatus = 'found';
     focusTour(tourStore, callbackArgs);
   }

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { createTourStore, tourStores } from './store';
 import { advanceTour, cancelTour, focusTour, prevTour, resetTour, unfocusTour } from './lib/storeHelpers';
-import type { TourCallbackContext, TourCallbacks, TutorialStep } from './types';
+import type { CallbackArgs } from './lib/storeHelpers';
+import type { TourCallbacks, TutorialStep } from './types';
 import { rafLoop } from './lib/rafLoop';
 import { handleTutorialClick, handleTutorialKeyDown } from './lib/handlers';
 
@@ -32,48 +33,53 @@ export function useTutorial({
   const highlight = useSyncExternalStore(tourStore.subscribe, tourStore.getHighlightedElementRect, () => null);
   const ready = useSyncExternalStore(tourStore.subscribe, tourStore.getReady, () => true);
 
-  const currentStep = steps.at(step);
-
+  const currentStep = steps.at(step) ?? null;
   const selector =
     currentStep && 'dataTour' in currentStep ? `[data-tour=${currentStep.dataTour}]` : currentStep?.selector;
+  const gateNext = currentStep?.advanceWhen?.gateNext ?? false;
 
-  const callbackContext: TourCallbackContext = useMemo(
-    () => ({
-      stepIndex: step,
-      currentStep,
-      targetSelector: selector,
-    }),
-    [step, currentStep, selector]
-  );
+  // Live refs that long-lived consumers (rafLoop, window listeners, imperative
+  // handles) read at moment of use. The layout effect below keeps them synced
+  // every commit so .current is always the freshest value from the latest render.
+  const currentStepRef = useRef<TutorialStep | null>(currentStep);
+  const callbackArgsRef = useRef<CallbackArgs>({
+    tourCallbacks: callbacks,
+    stepCallbacks: currentStep?.callbacks,
+    context: { stepIndex: step, currentStep, targetSelector: selector },
+  });
 
   useLayoutEffect(() => {
-    tourStore.setReady(!currentStep?.advanceWhen?.gateNext);
-  }, [currentStep, tourStore]);
+    currentStepRef.current = currentStep;
+    callbackArgsRef.current = {
+      tourCallbacks: callbacks,
+      stepCallbacks: currentStep?.callbacks,
+      context: { stepIndex: step, currentStep, targetSelector: selector },
+    };
+  });
+
+  useLayoutEffect(() => {
+    tourStore.setReady(!gateNext);
+  }, [gateNext, tourStore]);
 
   useEffect(() => {
     if (step >= steps.length && !finished.current) {
-      if (callbacks?.onFinish) callbacks.onFinish(callbackContext);
+      callbackArgsRef.current.tourCallbacks?.onFinish?.(callbackArgsRef.current.context);
       finished.current = true;
     }
-  }, [step, steps.length, callbacks, callbackContext]);
+  }, [step, steps.length]);
 
-  const cbArgs = useMemo(
-    () => ({ tourCallbacks: callbacks, stepCallbacks: currentStep?.callbacks, context: callbackContext }),
-    [callbacks, currentStep?.callbacks, callbackContext]
-  );
-
-  const next = useCallback(() => advanceTour(tourStore, cbArgs), [tourStore, cbArgs]);
-  const prev = useCallback(() => prevTour(tourStore, cbArgs), [tourStore, cbArgs]);
+  const next = useCallback(() => advanceTour(tourStore, callbackArgsRef.current), [tourStore]);
+  const prev = useCallback(() => prevTour(tourStore, callbackArgsRef.current), [tourStore]);
   const focus = useCallback(() => {
     if (tourStore.frameState.highlightTargetStatus === 'waiting-for-highlight-target') {
       prev();
       tourStore.setFrameState({ ...tourStore.frameState, highlightTargetStatus: 'found' });
     }
-    focusTour(tourStore, cbArgs);
-  }, [tourStore, cbArgs, prev]);
-  const unfocus = useCallback(() => unfocusTour(tourStore, cbArgs), [tourStore, cbArgs]);
-  const reset = useCallback(() => resetTour(tourStore, cbArgs), [tourStore, cbArgs]);
-  const cancel = useCallback(() => cancelTour(onCancel, cbArgs), [onCancel, cbArgs]);
+    focusTour(tourStore, callbackArgsRef.current);
+  }, [tourStore, prev]);
+  const unfocus = useCallback(() => unfocusTour(tourStore, callbackArgsRef.current), [tourStore]);
+  const reset = useCallback(() => resetTour(tourStore, callbackArgsRef.current), [tourStore]);
+  const cancel = useCallback(() => cancelTour(onCancel, callbackArgsRef.current), [onCancel]);
 
   // Capture the user's focused element when the tour starts so we can
   // restore it when the tour deactivates (e.g. they were typing in an input).
@@ -101,24 +107,24 @@ export function useTutorial({
   }, [step, focused, active, hasHighlight]);
 
   useLayoutEffect(() => {
-    if (!currentStep || !active) return;
+    if (!active) return;
     return rafLoop({
       tourStore,
       selector,
-      currentStep,
       queryRoot: document,
-      callbackArgs: cbArgs,
+      currentStepRef,
+      callbackArgsRef,
     });
-  }, [currentStep, active, tourStore, selector, cbArgs]);
+  }, [active, tourStore, selector, step]);
 
   const onWindowClick = useEffectEvent((e: MouseEvent) => {
     if (!currentStep) return;
-    handleTutorialClick(e, { tourStore, currentStep, selector, callbackArgs: cbArgs });
+    handleTutorialClick(e, { tourStore, currentStep, selector, callbackArgs: callbackArgsRef.current });
   });
 
   const onWindowKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (!currentStep) return;
-    handleTutorialKeyDown(e, { tourStore, currentStep, selector, callbackArgs: cbArgs });
+    handleTutorialKeyDown(e, { tourStore, currentStep, selector, callbackArgs: callbackArgsRef.current });
   });
 
   useEffect(() => {
