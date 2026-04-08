@@ -6,16 +6,19 @@ import type { TourCallbacks, TutorialStep } from './types';
 import { rafLoop } from './lib/rafLoop';
 import { handleTutorialClick, handleTutorialKeyDown } from './lib/handlers';
 
+// Caller is responsible for only mounting this hook while the tour is active —
+// every consumer goes through <Tutorial>, which gates on `active` before rendering
+// the inner component that owns this hook. Letting the hook assume "always active"
+// removes a class of bugs where stray effects (setReady, onFinish, focus capture)
+// fired against the shared tourStore from inactive consumers.
 export function useTutorial({
   id,
-  active,
   steps,
   callbacks,
   onCancel,
   highlightPadding,
 }: {
   id: string;
-  active: boolean;
   steps: Array<TutorialStep>;
   callbacks?: TourCallbacks;
   onCancel: () => void;
@@ -86,14 +89,12 @@ export function useTutorial({
   // Capture the user's focused element when the tour starts so we can
   // restore it when the tour deactivates (e.g. they were typing in an input).
   useLayoutEffect(() => {
-    if (active) {
-      previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    }
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     return () => {
       previousFocusRef.current?.focus();
       previousFocusRef.current = null;
     };
-  }, [active]);
+  }, []);
 
   // Move focus into the popover when a new step renders or the user re-opens
   // from the beacon. hasHighlight handles initial mount: highlight starts null
@@ -101,15 +102,14 @@ export function useTutorial({
   // Once highlight is set the popover renders and this effect re-fires to focus it.
   const hasHighlight = highlight !== null;
   useEffect(() => {
-    if (!hasHighlight || !focused || !active) return;
+    if (!hasHighlight || !focused) return;
     const frameId = requestAnimationFrame(() => {
       document.querySelector<HTMLElement>('[data-tour-popover]')?.focus();
     });
     return () => cancelAnimationFrame(frameId);
-  }, [step, focused, active, hasHighlight]);
+  }, [step, focused, hasHighlight]);
 
   useLayoutEffect(() => {
-    if (!active) return;
     return rafLoop({
       tourStore,
       selector,
@@ -117,7 +117,7 @@ export function useTutorial({
       currentStepRef,
       callbackArgsRef,
     });
-  }, [active, tourStore, selector, step]);
+  }, [tourStore, selector, step]);
 
   const onWindowClick = useEffectEvent((e: MouseEvent) => {
     if (!currentStep) return;
@@ -142,8 +142,6 @@ export function useTutorial({
   });
 
   useEffect(() => {
-    if (!active) return;
-
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -152,7 +150,7 @@ export function useTutorial({
     window.addEventListener('keydown', onWindowKeyDown, { signal });
 
     return () => controller.abort();
-  }, [active]);
+  }, []);
 
   return {
     step,

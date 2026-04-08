@@ -6,15 +6,7 @@ import type { Placement } from './PopoverAnchor';
 import type { TourCallbacks, TutorialRenderProps, TutorialStep } from './types';
 import { useTutorial } from './useTutorial';
 
-export function Tutorial({
-  id,
-  active,
-  steps,
-  children,
-  onCancel,
-  callbacks,
-  highlightPadding = 20,
-}: {
+type TutorialProps = {
   id: string;
   active: boolean;
   steps: Array<TutorialStep>;
@@ -22,17 +14,32 @@ export function Tutorial({
   children?: (props: TutorialRenderProps) => React.ReactNode;
   callbacks?: TourCallbacks;
   highlightPadding?: number;
-}) {
-  if (!active) return;
+};
+
+// Thin gate so the hook (and all its store subscriptions, refs, effects) only
+// run while the tour is active. Avoids dirtying the shared tourStore from
+// inactive consumers, and means each step in `useTutorial` can assume `active`.
+export function Tutorial(props: TutorialProps) {
+  if (!props.active) return null;
+  return <ActiveTutorial {...props} />;
+}
+
+function ActiveTutorial({
+  id,
+  steps,
+  children,
+  onCancel,
+  callbacks,
+  highlightPadding = 20,
+}: TutorialProps) {
   const { step, currentStep, highlight, selector, ready, next, prev, focused, focus, reset, cancel } = useTutorial({
     id,
-    active,
     callbacks,
     steps,
     onCancel,
     highlightPadding,
   });
-  if (!currentStep) return;
+  if (!currentStep) return null;
 
   const renderContent = (placement: Placement) => {
     const renderProps: TutorialRenderProps = {
