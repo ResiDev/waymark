@@ -8,16 +8,31 @@ function choosePlacement(
   popoverW: number,
   highlight: DOMRect,
   gap: number,
+  windowMarginPx: number,
   preferred: Placement
 ) {
   const mirror: Record<Placement, Placement> = { above: 'below', below: 'above', left: 'right', right: 'left' };
+
   const spaces: Record<Placement, number> = {
     below: window.innerHeight - highlight.bottom - gap,
     above: highlight.top - gap,
     right: window.innerWidth - highlight.right - gap,
     left: highlight.left - gap,
   };
-  const fits = (p: Placement) => spaces[p] >= (p === 'above' || p === 'below' ? popoverH : popoverW);
+
+  const centerYWidth = highlight.left + highlight.width / 2;
+  const centerXHeight = highlight.top + highlight.height / 2;
+
+  const fits = (p: Placement) => {
+    const isVertical = p === 'above' || p === 'below';
+    const mainAxisFits = spaces[p] >= (isVertical ? popoverH : popoverW);
+    const orthogonalAxisFits = isVertical
+      ? centerYWidth - popoverW / 2 >= windowMarginPx &&
+        centerYWidth + popoverW / 2 <= window.innerWidth - windowMarginPx
+      : centerXHeight - popoverH / 2 >= windowMarginPx &&
+        centerXHeight + popoverH / 2 <= window.innerHeight - windowMarginPx;
+    return mainAxisFits && orthogonalAxisFits;
+  };
 
   if (fits(prev)) return { direction: prev, anyFit: true };
 
@@ -65,7 +80,7 @@ export function PopoverAnchor({
     if (h !== popoverHeight) setPopoverHeight(h);
     if (w !== popoverWidth) setPopoverWidth(w);
 
-    const result = choosePlacement(placement, h, w, highlight, gap, preferred);
+    const result = choosePlacement(placement, h, w, highlight, gap, 8, preferred);
     setPlacement(result.direction);
 
     if (result.anyFit) {
@@ -78,7 +93,7 @@ export function PopoverAnchor({
         right: window.innerWidth - highlight.right - gap,
         left: highlight.left - gap,
       };
-      setOverlapOffset(needed - spaces[result.direction]);
+      setOverlapOffset(Math.max(0, needed - spaces[result.direction]));
     }
   }, [highlight, popoverHeight, placement, popoverWidth, gap, preferred]);
 
