@@ -64,6 +64,10 @@ function ActiveTutorial({
   // Target-less step — full overlay, centered popover, no arrow
   if (!selector) {
     const centeredRect = new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 0, 0);
+    if (!focused) {
+      const beaconRect = new DOMRect(window.innerWidth / 2, window.innerHeight - 48, 0, 0);
+      return <Beacon highlight={beaconRect} onClick={focus} />;
+    }
     return (
       <Highlight highlight={centeredRect} padding={0}>
         <PopoverAnchor highlight={centeredRect} padding={0} ariaLabel={`Tutorial step ${step + 1} of ${steps.length}`}>
