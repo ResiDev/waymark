@@ -68,6 +68,7 @@ export function PopoverAnchor({
   const preferred = preferredPlacement ?? 'below';
   const [placement, setPlacement] = useState<Placement>(preferred);
   const [overlapOffset, setOverlapOffset] = useState(0);
+  const [noFit, setNoFit] = useState(false);
   const [popoverHeight, setPopoverHeight] = useState(0);
   const [popoverWidth, setPopoverWidth] = useState(0);
 
@@ -85,7 +86,9 @@ export function PopoverAnchor({
 
     if (result.anyFit) {
       setOverlapOffset(0);
+      setNoFit(false);
     } else {
+      setNoFit(true);
       const needed = result.direction === 'above' || result.direction === 'below' ? h : w;
       const spaces: Record<Placement, number> = {
         below: window.innerHeight - highlight.bottom - gap,
@@ -102,15 +105,47 @@ export function PopoverAnchor({
 
   const effectiveGap = gap - overlapOffset;
 
+  // Last-resort cross-axis nudge: when no placement fit (noFit), shift the
+  // popover back on-screen so a clipping target near a viewport edge doesn't
+  // leave part of the popover off-screen.
+  const windowMarginPx = 8;
+  let horizontalNudge = 0;
+  let verticalNudge = 0;
+  if (noFit) {
+    if (placement === 'above' || placement === 'below') {
+      const half = popoverWidth / 2;
+      const leftOverflow = windowMarginPx - (centerX - half);
+      const rightOverflow = centerX + half - (window.innerWidth - windowMarginPx);
+      if (leftOverflow > 0) horizontalNudge = leftOverflow;
+      else if (rightOverflow > 0) horizontalNudge = -rightOverflow;
+    } else {
+      const half = popoverHeight / 2;
+      const topOverflow = windowMarginPx - (centerY - half);
+      const bottomOverflow = centerY + half - (window.innerHeight - windowMarginPx);
+      if (topOverflow > 0) verticalNudge = topOverflow;
+      else if (bottomOverflow > 0) verticalNudge = -bottomOverflow;
+    }
+  }
+
   const positions = {
-    below: { top: highlight.bottom + effectiveGap, left: centerX, transform: 'translateX(-50%)' },
+    below: {
+      top: highlight.bottom + effectiveGap,
+      left: centerX + horizontalNudge,
+      transform: 'translateX(-50%)',
+    },
     above: {
       top: highlight.top - effectiveGap,
-      left: centerX,
+      left: centerX + horizontalNudge,
       transform: 'translateY(-100%) translateX(-50%)',
     },
-    right: { top: centerY - popoverHeight / 2, left: highlight.right + effectiveGap },
-    left: { top: centerY - popoverHeight / 2, left: highlight.left - effectiveGap - popoverWidth },
+    right: {
+      top: centerY - popoverHeight / 2 + verticalNudge,
+      left: highlight.right + effectiveGap,
+    },
+    left: {
+      top: centerY - popoverHeight / 2 + verticalNudge,
+      left: highlight.left - effectiveGap - popoverWidth,
+    },
   } as const;
 
   const popoverPosition = positions[placement];
