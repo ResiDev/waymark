@@ -50,18 +50,18 @@ export function handleTutorialClick(e: MouseEvent, ctx: TutorialEventContext) {
 export function handleTutorialKeyDown(e: KeyboardEvent, ctx: TutorialEventContext) {
   if (!ctx.tourStore.getFocused()) return;
 
+  const { activeElement } = document;
+  const isEditable =
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    activeElement instanceof HTMLSelectElement ||
+    (activeElement instanceof HTMLElement && activeElement.isContentEditable);
   switch (e.key) {
     case 'Escape':
       e.preventDefault();
       unfocusTour(ctx.tourStore, ctx.callbackArgs);
       break;
     case 'ArrowRight': {
-      const { activeElement } = document;
-      const isEditable =
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement instanceof HTMLSelectElement ||
-        (activeElement instanceof HTMLElement && activeElement.isContentEditable);
       if (!isEditable && ctx.tourStore.ready) {
         e.preventDefault();
         advanceTour(ctx.tourStore, ctx.callbackArgs);
@@ -69,12 +69,6 @@ export function handleTutorialKeyDown(e: KeyboardEvent, ctx: TutorialEventContex
       break;
     }
     case 'ArrowLeft': {
-      const { activeElement } = document;
-      const isEditable =
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        activeElement instanceof HTMLSelectElement ||
-        (activeElement instanceof HTMLElement && activeElement.isContentEditable);
       if (!isEditable) {
         e.preventDefault();
         prevTour(ctx.tourStore, ctx.callbackArgs);
