@@ -1,23 +1,14 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTourStore, tourStores } from '../store';
-import type { FrameState, TutorialStep } from '../types';
+import { createTourStore, tourStores } from './store';
+import type { FrameState, WaymarkStep } from './types';
 import type { CallbackArgs } from './storeHelpers';
-import { rafLoop, runTourFrame, TourState } from './rafLoop';
+import { rafLoop, runTourFrame } from './rafLoop';
+import type { TourState } from './rafLoop';
 
 const TOUR_ID = 'test-tour';
 
-const DEFAULT_TUTORIAL_STEP: TutorialStep = {
-  content: 'test step',
-};
+const DEFAULT_TUTORIAL_STEP: WaymarkStep = {};
 
-const DEFAULT_FRAME_STATE: FrameState = {
-  isAutoAdvancing: false,
-  scrolledIntoViewOnce: false,
-  ariaAnnotatedElement: null,
-  timeoutId: undefined,
-  highlightTargetStatus: 'searching',
-  frameId: undefined,
-};
 
 const DEFAULT_CALLBACK_ARGS: CallbackArgs = {
   tourCallbacks: undefined,
@@ -30,52 +21,56 @@ const originalScrollIntoView = Element.prototype.scrollIntoView;
 const scrollIntoViewMock = vi.fn();
 Element.prototype.scrollIntoView = scrollIntoViewMock;
 
-type SetupOptions = Partial<Parameters<typeof runTourFrame>[0]> & {
+// The loop takes live refs (currentStepRef/callbackArgsRef) so long-lived
+// consumers can mutate them between frames. Tests are clearer with plain values,
+// so this harness accepts flat options and wraps them into refs at call time.
+type SetupOptions = {
+  selector?: string;
+  queryRoot?: Document | Element;
+  currentStep?: WaymarkStep | null;
+  callbackArgs?: CallbackArgs;
+  frameState?: FrameState;
   focused?: boolean;
   highlightElementIsInView?: boolean;
 };
 
 function setup(overrides: SetupOptions = {}) {
   const store = createTourStore(TOUR_ID);
-  const { focused, frameState, highlightElementIsInView, ...runOverrides } = overrides;
 
-  if (focused !== undefined) store.focused = focused;
-  if (highlightElementIsInView !== undefined) store.highlightElementIsInView = highlightElementIsInView;
-  if (frameState) store.setFrameState(frameState);
+  // Rect updates moved onto the store; spying here is how tests observe that the
+  // loop pushed a newly resolved target through to the highlight.
+  const updateHighlight = vi.spyOn(store, 'setHighlightedElementRect');
 
-  const defaults: TourState = {
-    tourStore: store,
-    selector: undefined as string | undefined,
-    currentStep: DEFAULT_TUTORIAL_STEP,
-    queryRoot: document,
-    callbackArgs: DEFAULT_CALLBACK_ARGS,
-    frameState: DEFAULT_FRAME_STATE,
+  const applyStoreState = (opts: SetupOptions) => {
+    if (opts.focused !== undefined) store.focused = opts.focused;
+    if (opts.highlightElementIsInView !== undefined) {
+      store.highlightElementIsInView = opts.highlightElementIsInView;
+    }
   };
+
+  applyStoreState(overrides);
+  if (overrides.frameState) store.setFrameState(overrides.frameState);
 
   return {
     store,
+    updateHighlight,
     run: (frameOverrides: SetupOptions = {}) => {
-      const {
-        focused: nextFocused,
-        frameState: nextFrameState,
-        highlightElementIsInView: nextHighlightElementIsInView,
-        ...nextRunOverrides
-      } = frameOverrides;
+      applyStoreState(frameOverrides);
+      const merged = { ...overrides, ...frameOverrides };
 
-      if (nextFocused !== undefined) store.focused = nextFocused;
-      if (nextHighlightElementIsInView !== undefined) {
-        store.highlightElementIsInView = nextHighlightElementIsInView;
-      }
+      const state: TourState = {
+        tourStore: store,
+        selector: merged.selector,
+        queryRoot: merged.queryRoot ?? document,
+        currentStepRef: {
+          current: merged.currentStep === undefined ? DEFAULT_TUTORIAL_STEP : merged.currentStep,
+        },
+        callbackArgsRef: { current: merged.callbackArgs ?? DEFAULT_CALLBACK_ARGS },
+        frameState: frameOverrides.frameState ?? store.frameState,
+      };
 
-      const result = runTourFrame({
-        ...defaults,
-        ...runOverrides,
-        ...nextRunOverrides,
-        frameState: nextFrameState ?? store.frameState,
-      });
-
+      const result = runTourFrame(state);
       store.setFrameState(result);
-
       return result;
     },
   };
@@ -123,7 +118,7 @@ describe('runTourFrame', () => {
       const checkFn = vi.fn(() => true);
       const { run } = setup({
         selector,
-        currentStep: { content: 'some content', advanceWhen: { type: 'state', check: checkFn } },
+        currentStep: { advanceWhen: { type: 'state', check: checkFn } },
       });
 
       run();
@@ -137,7 +132,7 @@ describe('runTourFrame', () => {
       const checkFn = vi.fn(() => true);
       const { run } = setup({
         selector,
-        currentStep: { content: 'some content', advanceWhen: { type: 'state', check: checkFn } },
+        currentStep: { advanceWhen: { type: 'state', check: checkFn } },
       });
 
       run();
@@ -176,7 +171,7 @@ describe('runTourFrame', () => {
     it('auto advances when currentStep is "state" and check is true', () => {
       let someVal = 0;
       const { store, run } = setup({
-        currentStep: { content: 'some content', advanceWhen: { type: 'state', check: () => someVal > 0 } },
+        currentStep: { advanceWhen: { type: 'state', check: () => someVal > 0 } },
       });
 
       const result1 = run();
@@ -195,7 +190,6 @@ describe('runTourFrame', () => {
       const check = vi.fn(() => true);
       const { store, run } = setup({
         currentStep: {
-          content: 'step',
           advanceWhen: { type: 'state', check },
         },
       });
@@ -217,7 +211,7 @@ describe('runTourFrame', () => {
     it('auto advances when currentStep is state and check is true with delay', () => {
       vi.useFakeTimers();
       const { store, run } = setup({
-        currentStep: { content: 'some content', advanceWhen: { type: 'state', check: () => true, delayMs: 50 } },
+        currentStep: { advanceWhen: { type: 'state', check: () => true, delayMs: 50 } },
       });
 
       const result = run();
@@ -236,7 +230,7 @@ describe('runTourFrame', () => {
     it('gates next until advanced', () => {
       let someVal = 0;
       const { store, run } = setup({
-        currentStep: { content: '', advanceWhen: { type: 'state', check: () => someVal > 0, gateNext: true } },
+        currentStep: { advanceWhen: { type: 'state', check: () => someVal > 0, gateNext: true } },
       });
 
       store.ready = false;
@@ -255,7 +249,6 @@ describe('runTourFrame', () => {
       let someVal = 0;
       const { store, run } = setup({
         currentStep: {
-          content: '',
           advanceWhen: { type: 'state', check: () => someVal > 0, disableAutoAdvance: true },
         },
       });
@@ -274,7 +267,6 @@ describe('runTourFrame', () => {
       let someVal = 0;
       const { store, run } = setup({
         currentStep: {
-          content: '',
           advanceWhen: { type: 'state', check: () => someVal > 0, gateNext: true, disableAutoAdvance: true },
         },
       });
@@ -373,7 +365,7 @@ describe('runTourFrame', () => {
       document.body.innerHTML = '<button data-tour="target">Old</button>';
       const selector = '[data-tour=target]';
       const oldTarget = document.querySelector(selector);
-      const { store, run } = setup({ selector });
+      const { run } = setup({ selector });
 
       const frame1 = run();
       expect(oldTarget).toHaveAttribute('aria-haspopup', 'dialog');
@@ -413,7 +405,7 @@ describe('runTourFrame', () => {
       const selector = '[data-tour=target]';
       const { run } = setup({
         selector,
-        currentStep: { content: 'test step', scrollIntoView: 'never' },
+        currentStep: { scrollIntoView: 'never' },
       });
 
       run();
@@ -426,7 +418,7 @@ describe('runTourFrame', () => {
       const selector = '[data-tour=target]';
       const { run } = setup({
         selector,
-        currentStep: { content: 'test step', scrollIntoView: 'once' },
+        currentStep: { scrollIntoView: 'once' },
       });
 
       const frame1 = run();
@@ -441,7 +433,7 @@ describe('runTourFrame', () => {
       const selector = '[data-tour=target]';
       const { run } = setup({
         selector,
-        currentStep: { content: 'test step', scrollIntoView: 'always' },
+        currentStep: { scrollIntoView: 'always' },
       });
 
       const frame1 = run();
@@ -477,12 +469,13 @@ describe('rafLoop', () => {
     const cleanup = rafLoop({
       tourStore: store,
       selector: undefined,
-      currentStep: {
-        content: 'test step',
-        advanceWhen: { type: 'state', check: () => true, delayMs: 50 },
+      currentStepRef: {
+        current: {
+          advanceWhen: { type: 'state', check: () => true, delayMs: 50 },
+        },
       },
       queryRoot: document,
-      callbackArgs: DEFAULT_CALLBACK_ARGS,
+      callbackArgsRef: { current: DEFAULT_CALLBACK_ARGS },
     });
 
     cleanup();

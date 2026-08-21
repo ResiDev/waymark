@@ -1,6 +1,7 @@
 import { useRef, useState, useLayoutEffect } from 'react';
+import type { Placement } from 'waymark';
 
-export type Placement = 'above' | 'below' | 'left' | 'right';
+export type { Placement } from 'waymark';
 
 function choosePlacement(
   prev: Placement,

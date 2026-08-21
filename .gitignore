@@ -1,0 +1,21 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# test / e2e output
+coverage/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# editor / os
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# env
+.env
+.env.*
+!.env.example

@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { createTourStore, tourStores } from './store';
-import { advanceTour, cancelTour, focusTour, prevTour, resetTour, unfocusTour } from './lib/storeHelpers';
-import type { CallbackArgs } from './lib/storeHelpers';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import {
+  advanceTour,
+  cancelTour,
+  createTourStore,
+  focusTour,
+  handleTutorialClick,
+  handleTutorialKeyDown,
+  prevTour,
+  rafLoop,
+  resetTour,
+  tourStores,
+  unfocusTour,
+} from 'waymark';
+import type { CallbackArgs } from 'waymark';
 import type { TourCallbacks, TutorialStep } from './types';
-import { rafLoop } from './lib/rafLoop';
-import { handleTutorialClick, handleTutorialKeyDown } from './lib/handlers';
+import { useEffectEvent } from './lib/useEffectEvent';
 
 // Caller is responsible for only mounting this hook while the tour is active —
 // every consumer goes through <Tutorial>, which gates on `active` before rendering
@@ -47,7 +57,7 @@ export function useTutorial({
   // handles) read at moment of use. The layout effect below keeps them synced
   // every commit so .current is always the freshest value from the latest render.
   const currentStepRef = useRef<TutorialStep | null>(currentStep);
-  const callbackArgsRef = useRef<CallbackArgs>({
+  const callbackArgsRef = useRef<CallbackArgs<TutorialStep>>({
     tourCallbacks: callbacks,
     stepCallbacks: currentStep?.callbacks,
     context: { stepIndex: step, currentStep, targetSelector: selector },

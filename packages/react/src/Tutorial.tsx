@@ -2,7 +2,7 @@ import { Beacon } from './Beacon';
 import { DefaultPopover } from './DefaultPopover';
 import { Highlight } from './Highlight';
 import { PopoverAnchor } from './PopoverAnchor';
-import type { Placement } from './PopoverAnchor';
+import type { Placement } from 'waymark';
 import type { TourCallbacks, TutorialRenderProps, TutorialStep } from './types';
 import { useTutorial } from './useTutorial';
 

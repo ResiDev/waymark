@@ -1,4 +1,4 @@
-import type { FrameState, TutorialStore } from './types';
+import type { FrameState, TutorialStore } from "./index";
 
 export const tourStores = new Map<string, TutorialStore>();
 
@@ -7,11 +7,11 @@ const initialFrameState = (): FrameState => ({
   scrolledIntoViewOnce: false,
   ariaAnnotatedElement: null,
   timeoutId: undefined,
-  highlightTargetStatus: 'searching',
+  highlightTargetStatus: "searching",
   frameId: undefined,
 });
 
-export function createTourStore(id: string) {
+export function createTourStore(id: string): TutorialStore {
   const tourStore: TutorialStore = {
     step: 0,
     active: false,
@@ -24,7 +24,7 @@ export function createTourStore(id: string) {
     observer: null as IntersectionObserver | null,
     frameState: initialFrameState(),
     getObserver: () => {
-      if (!tourStore.observer && typeof IntersectionObserver !== 'undefined') {
+      if (!tourStore.observer && typeof IntersectionObserver !== "undefined") {
         tourStore.observer = new IntersectionObserver(([entry]) => {
           tourStore.highlightElementIsInView = entry.isIntersecting;
         });
@@ -70,10 +70,16 @@ export function createTourStore(id: string) {
     },
     setFrameState: (nextFrameState) => (tourStore.frameState = nextFrameState),
     disposeFrameState: () => {
-      if (tourStore.frameState.frameId !== undefined) cancelAnimationFrame(tourStore.frameState.frameId);
-      if (tourStore.frameState.timeoutId !== undefined) clearTimeout(tourStore.frameState.timeoutId);
-      tourStore.frameState.ariaAnnotatedElement?.removeAttribute('aria-haspopup');
-      tourStore.frameState.ariaAnnotatedElement?.removeAttribute('aria-expanded');
+      if (tourStore.frameState.frameId !== undefined)
+        cancelAnimationFrame(tourStore.frameState.frameId);
+      if (tourStore.frameState.timeoutId !== undefined)
+        clearTimeout(tourStore.frameState.timeoutId);
+      tourStore.frameState.ariaAnnotatedElement?.removeAttribute(
+        "aria-haspopup",
+      );
+      tourStore.frameState.ariaAnnotatedElement?.removeAttribute(
+        "aria-expanded",
+      );
       tourStore.frameState = initialFrameState();
     },
     subscribe: (callback: () => void) => {

@@ -1,28 +1,27 @@
-import type { FrameState, TutorialStep, TutorialStore } from '../types';
-import { advanceTour, focusTour, setTourReady, unfocusTour } from './storeHelpers';
-import type { CallbackArgs } from './storeHelpers';
+import { advanceTour, focusTour, setTourReady, unfocusTour } from './index';
+import type { CallbackArgs, FrameState, TutorialStore, WaymarkStep } from './index';
 
-export type CurrentStepRef = { current: TutorialStep | null };
-export type CallbackArgsRef = { current: CallbackArgs };
+export type CurrentStepRef<TStep extends WaymarkStep = WaymarkStep> = { current: TStep | null };
+export type CallbackArgsRef<TStep extends WaymarkStep = WaymarkStep> = { current: CallbackArgs<TStep> };
 
-export type TourState = {
+export type TourState<TStep extends WaymarkStep = WaymarkStep> = {
   tourStore: TutorialStore;
   selector: string | undefined;
   queryRoot: Document | Element;
-  currentStepRef: CurrentStepRef;
-  callbackArgsRef: CallbackArgsRef;
+  currentStepRef: CurrentStepRef<TStep>;
+  callbackArgsRef: CallbackArgsRef<TStep>;
   frameState: FrameState;
 };
 
 // todo optimise when not focused
-export function runTourFrame({
+export function runTourFrame<TStep extends WaymarkStep>({
   tourStore,
   frameState,
   selector,
   queryRoot,
   currentStepRef,
   callbackArgsRef,
-}: TourState) {
+}: TourState<TStep>) {
   const newFrameState = { ...frameState };
   const currentStep = currentStepRef.current;
   const callbackArgs = callbackArgsRef.current;
@@ -100,7 +99,7 @@ export function runTourFrame({
   return newFrameState;
 }
 
-export function rafLoop(tourFrame: Omit<TourState, 'frameState'>) {
+export function rafLoop<TStep extends WaymarkStep>(tourFrame: Omit<TourState<TStep>, 'frameState'>) {
   const tick = () => {
     const newFrameState = runTourFrame({ ...tourFrame, frameState: tourFrame.tourStore.frameState });
     const frameId = requestAnimationFrame(tick);

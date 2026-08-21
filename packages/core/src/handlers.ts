@@ -1,21 +1,20 @@
-import type { TutorialStep, TutorialStore } from '../types';
-import { advanceTour, prevTour, setTourReady, unfocusTour } from './storeHelpers';
-import type { CallbackArgs } from './storeHelpers';
+import { advanceTour, prevTour, setTourReady, unfocusTour } from './index';
+import type { CallbackArgs, TutorialStore, WaymarkStep } from './index';
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export type TutorialEventContext = {
+export type TutorialEventContext<TStep extends WaymarkStep = WaymarkStep> = {
   tourStore: TutorialStore;
-  currentStep: TutorialStep;
+  currentStep: TStep;
   selector: string | undefined;
   highlightPadding: number;
-  callbackArgs: CallbackArgs;
+  callbackArgs: CallbackArgs<TStep>;
 };
 
 // Clicks inside the <Highlight> halo (rect + padding) count as on-target,
 // even if the underlying DOM target is a parent of the highlighted element.
-function isClickWithinVisualHighlight(e: MouseEvent, ctx: TutorialEventContext) {
+function isClickWithinVisualHighlight<TStep extends WaymarkStep>(e: MouseEvent, ctx: TutorialEventContext<TStep>) {
   if (!ctx.selector) return false;
   if (e.target instanceof Element && e.target.closest(ctx.selector)) return true;
   const rect = ctx.tourStore.getHighlightedElementRect();
@@ -29,7 +28,7 @@ function isClickWithinVisualHighlight(e: MouseEvent, ctx: TutorialEventContext) 
   );
 }
 
-export function handleTutorialClick(e: MouseEvent, ctx: TutorialEventContext) {
+export function handleTutorialClick<TStep extends WaymarkStep>(e: MouseEvent, ctx: TutorialEventContext<TStep>) {
   if (!(e.target instanceof Element)) return;
   if (!e.target.isConnected) return;
   if (isClickWithinVisualHighlight(e, ctx)) {
@@ -47,7 +46,7 @@ export function handleTutorialClick(e: MouseEvent, ctx: TutorialEventContext) {
   unfocusTour(ctx.tourStore, ctx.callbackArgs);
 }
 
-export function handleTutorialKeyDown(e: KeyboardEvent, ctx: TutorialEventContext) {
+export function handleTutorialKeyDown<TStep extends WaymarkStep>(e: KeyboardEvent, ctx: TutorialEventContext<TStep>) {
   if (!ctx.tourStore.getFocused()) return;
 
   const { activeElement } = document;
