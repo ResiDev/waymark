@@ -16,7 +16,7 @@ export function DefaultPopover({
   hasTarget,
   next,
   prev,
-  cancel,
+  exit,
 }: TutorialRenderProps) {
   const buttonStyle: React.CSSProperties = {
     background: 'none',
@@ -79,7 +79,7 @@ export function DefaultPopover({
           alignItems: 'center',
         }}
       >
-        <button style={buttonStyle} onClick={cancel}>
+        <button style={buttonStyle} onClick={exit}>
           Skip
         </button>
         <div style={{ display: 'flex', gap: 8 }}>

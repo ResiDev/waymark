@@ -25,7 +25,7 @@ export type TutorialRenderProps = {
   next: () => void;
   prev: () => void;
   reset: () => void;
-  cancel: () => void;
+  exit: () => void;
 };
 
 // Core's callback types are generic over the step so React consumers keep the

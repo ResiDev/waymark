@@ -10,7 +10,7 @@ type TutorialProps = {
   id: string;
   active: boolean;
   steps: Array<TutorialStep>;
-  onCancel: () => void;
+  onExit: () => void;
   children?: (props: TutorialRenderProps) => React.ReactNode;
   callbacks?: TourCallbacks;
   highlightPadding?: number;
@@ -28,15 +28,15 @@ function ActiveTutorial({
   id,
   steps,
   children,
-  onCancel,
+  onExit,
   callbacks,
   highlightPadding = 20,
 }: TutorialProps) {
-  const { step, currentStep, highlight, selector, ready, next, prev, focused, focus, reset, cancel } = useTutorial({
+  const { step, currentStep, highlight, selector, ready, next, prev, focused, focus, reset, exit } = useTutorial({
     id,
     callbacks,
     steps,
-    onCancel,
+    onExit,
     highlightPadding,
   });
   if (!currentStep) return null;
@@ -49,7 +49,7 @@ function ActiveTutorial({
       step,
       ready,
       callbacks,
-      cancel,
+      exit,
       totalSteps: steps.length,
       next,
       prev,

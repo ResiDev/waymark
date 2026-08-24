@@ -3,7 +3,7 @@ export { rafLoop, runTourFrame } from './rafLoop';
 export { handleTutorialClick, handleTutorialKeyDown } from './handlers';
 export {
   advanceTour,
-  cancelTour,
+  exitTour,
   focusTour,
   prevTour,
   resetTour,

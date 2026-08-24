@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import {
   advanceTour,
-  cancelTour,
+  exitTour,
   createTourStore,
   focusTour,
   handleTutorialClick,
@@ -25,13 +25,13 @@ export function useTutorial({
   id,
   steps,
   callbacks,
-  onCancel,
+  onExit,
   highlightPadding,
 }: {
   id: string;
   steps: Array<TutorialStep>;
   callbacks?: TourCallbacks;
-  onCancel: () => void;
+  onExit: () => void;
   highlightPadding: number;
 }) {
   const finished = useRef<boolean>(false);
@@ -94,7 +94,7 @@ export function useTutorial({
   }, [tourStore, prev]);
   const unfocus = useCallback(() => unfocusTour(tourStore, callbackArgsRef.current), [tourStore]);
   const reset = useCallback(() => resetTour(tourStore, callbackArgsRef.current), [tourStore]);
-  const cancel = useCallback(() => cancelTour(onCancel, callbackArgsRef.current), [onCancel]);
+  const exit = useCallback(() => exitTour(onExit, callbackArgsRef.current), [onExit]);
 
   // Capture the user's focused element when the tour starts so we can
   // restore it when the tour deactivates (e.g. they were typing in an input).
@@ -175,6 +175,6 @@ export function useTutorial({
     focus,
     unfocus,
     reset,
-    cancel,
+    exit,
   };
 }

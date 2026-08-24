@@ -1,12 +1,19 @@
 /** Where the popover sits relative to the highlighted target. Pure geometry. */
-export type Placement = 'above' | 'below' | 'left' | 'right';
+export type Placement = "above" | "below" | "left" | "right";
 
-type BaseAutoAdvanced = { disableAutoAdvance?: boolean; gateNext?: boolean; delayMs?: number };
+type BaseAutoAdvanced = {
+  disableAutoAdvance?: boolean;
+  gateNext?: boolean;
+  delayMs?: number;
+};
 
 export type AutoAdvances =
-  | ({ type: 'click' } & BaseAutoAdvanced)
-  | ({ type: 'state'; check: (el?: Element) => boolean } & BaseAutoAdvanced)
-  | ({ type: 'event'; event: keyof HTMLElementEventMap | Array<keyof HTMLElementEventMap> } & BaseAutoAdvanced);
+  | ({ type: "click" } & BaseAutoAdvanced)
+  | ({ type: "state"; check: (el?: Element) => boolean } & BaseAutoAdvanced)
+  | ({
+      type: "event";
+      event: keyof HTMLElementEventMap | Array<keyof HTMLElementEventMap>;
+    } & BaseAutoAdvanced);
 
 type TargetedByDataAttribute = { dataTour: string; selector?: never };
 type TargetedBySelector = { dataTour?: never; selector: string };
@@ -22,7 +29,7 @@ type Untargeted = { dataTour?: never; selector?: never };
 export type WaymarkStep = {
   advanceWhen?: AutoAdvances;
   /** Defaults to 'once' when omitted. */
-  scrollIntoView?: 'always' | 'once' | 'never';
+  scrollIntoView?: "always" | "once" | "never";
 } & (TargetedByDataAttribute | TargetedBySelector | Untargeted);
 
 export type FrameState = {
@@ -30,7 +37,6 @@ export type FrameState = {
   scrolledIntoViewOnce: boolean;
   ariaAnnotatedElement: Element | null;
   timeoutId: ReturnType<typeof setTimeout> | undefined;
-  highlightTargetStatus: 'searching' | 'found' | 'waiting-for-highlight-target' | 'lost';
   frameId: number | undefined;
 };
 
@@ -75,7 +81,9 @@ export type TourCallbackContext<TStep extends WaymarkStep = WaymarkStep> = {
   currentStep: TStep | null;
 };
 
-type TourCallbackFn<TStep extends WaymarkStep> = (ctx: TourCallbackContext<TStep>) => void;
+type TourCallbackFn<TStep extends WaymarkStep> = (
+  ctx: TourCallbackContext<TStep>,
+) => void;
 
 /** Callbacks available on both individual steps and at the tour level. */
 export type StepCallbacks<TStep extends WaymarkStep = WaymarkStep> = {
@@ -83,13 +91,14 @@ export type StepCallbacks<TStep extends WaymarkStep = WaymarkStep> = {
   onUnfocus?: TourCallbackFn<TStep>;
   onAdvance?: TourCallbackFn<TStep>;
   onPrev?: TourCallbackFn<TStep>;
-  onCancel?: TourCallbackFn<TStep>;
+  onExit?: TourCallbackFn<TStep>;
 };
 
 /** Tour-level callbacks extend step callbacks with tour-wide lifecycle hooks. */
-export type TourCallbacks<TStep extends WaymarkStep = WaymarkStep> = StepCallbacks<TStep> & {
-  onReset?: TourCallbackFn<TStep>;
-  onFinish?: TourCallbackFn<TStep>;
-  onStart?: TourCallbackFn<TStep>;
-  onReady?: TourCallbackFn<TStep>;
-};
+export type TourCallbacks<TStep extends WaymarkStep = WaymarkStep> =
+  StepCallbacks<TStep> & {
+    onReset?: TourCallbackFn<TStep>;
+    onFinish?: TourCallbackFn<TStep>;
+    onStart?: TourCallbackFn<TStep>;
+    onReady?: TourCallbackFn<TStep>;
+  };

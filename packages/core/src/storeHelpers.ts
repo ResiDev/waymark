@@ -35,10 +35,10 @@ export function resetTour<TStep extends WaymarkStep>(store: TutorialStore, { tou
   tourCallbacks?.onReset?.(context);
 }
 
-export function cancelTour<TStep extends WaymarkStep>(onCancel: () => void, { tourCallbacks, stepCallbacks, context }: CallbackArgs<TStep>) {
-  onCancel();
-  tourCallbacks?.onCancel?.(context);
-  stepCallbacks?.onCancel?.(context);
+export function exitTour<TStep extends WaymarkStep>(onExit: () => void, { tourCallbacks, stepCallbacks, context }: CallbackArgs<TStep>) {
+  onExit();
+  tourCallbacks?.onExit?.(context);
+  stepCallbacks?.onExit?.(context);
 }
 
 export function setTourReady<TStep extends WaymarkStep>(
