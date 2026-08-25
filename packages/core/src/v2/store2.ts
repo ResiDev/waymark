@@ -42,10 +42,10 @@ const reduce = (
   state: TourSnapshot,
   e: Event,
   {
-    isGated,
+    hasGate,
     canAutoAdvance,
   }: {
-    isGated: (stepNumber: number) => boolean;
+    hasGate: (stepNumber: number) => boolean;
     canAutoAdvance: (stepNumber: number) => boolean;
   },
 ): TourSnapshot => {
@@ -53,7 +53,7 @@ const reduce = (
     ...state,
     step,
     focused: true,
-    canAdvance: !isGated(step),
+    canAdvance: !hasGate(step),
     highlightTargetStatus: "searching" as const,
     highlightedElementRect: null,
   });
@@ -65,7 +65,7 @@ const reduce = (
       return { ...state, canAdvance: true };
     }
     case "advance": {
-      if (!isGated(state.step)) return state;
+      if (!state.canAdvance) return state;
       return goTo(state.step + 1);
     }
     case "prev": {
@@ -128,7 +128,7 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
     step.callbacks?.[name]?.(context);
   };
 
-  const isGated = (stepNumber: number) =>
+  const hasGate = (stepNumber: number) =>
     !!config.getStep(stepNumber).advanceWhen?.gateNext;
   const canAutoAdvance = (stepNumber: number) => {
     const advanceWhen = config.getStep(stepNumber).advanceWhen;
@@ -137,7 +137,7 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
 
   const dispatch = (e: Event) => {
     const currStepNumber = state.step; // capture for callbacks
-    const next = reduce(state, e, { isGated, canAutoAdvance });
+    const next = reduce(state, e, { hasGate, canAutoAdvance });
     if (next === state) return; // avoid calling listeners if same
     if (next.step !== state.step) resetRuntime(); // reset on each new step
     state = next;
