@@ -104,7 +104,7 @@ export type Event =
       [TAction in Action]: { type: TAction };
     }[Action]
   | LoopEvent
-  | { type: "gateConditionMet" }; // Not an action or strictly a loop event because could be triggered by loop or browser event
+  | { type: "advanceConditionMet" }; // Not an action or strictly a loop event because could be triggered by loop or browser event
 
 export type ActionHandlers = {
   [TAction in Action]: () => void;
@@ -127,13 +127,11 @@ export type Config<CallbackArgs> = {
   getStep: (i: number) => WaymarkStep<CallbackArgs>;
   root: Document | Element;
   tourCallbacks: TourCallbacks<CallbackArgs>;
+  /** Halo around the target, in px. Clicks within it count as target clicks. */
+  highlightPadding: number;
 };
 
 export type Tour = ActionHandlers & {
   subscribe: (cb: () => void) => () => void; // when subs hit 0 stop looping until subs go to 1 again
   getSnapshot: () => TourSnapshot;
-  /** Input report, not a verb: "the user clicked the highlighted target."
-   * The store decides what that means for the current step (gate unlock,
-   * auto-advance, or nothing), so it has no callback of its own. */
-  targetClick: () => void;
 };

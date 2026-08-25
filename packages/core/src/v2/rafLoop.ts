@@ -74,26 +74,17 @@ export function runFrame<CallbackArgs>({
     newRuntime.frameState.scrolledIntoViewOnce = true;
   }
 
-  // auto advance: when the check passes, arm a deadline (now when there is
-  // no delay). The loop is its own clock: resetRuntime clearing the deadline
-  // on step change is also the cancellation.
+  // Auto advance event if the check has been met, and after required delay
   if (
     step.advanceWhen?.type === "state" &&
     step.advanceWhen.check(el ?? undefined)
   ) {
-    if (!step.advanceWhen.disableAutoAdvance) {
-      newRuntime.frameState.autoAdvanceAt ??=
-        now + (step.advanceWhen.delayMs ?? 0);
-    }
-    if (step.advanceWhen.gateNext) {
-      events.push({ type: "gateConditionMet" });
-    }
+    newRuntime.frameState.autoAdvanceAt ??=
+      now + (step.advanceWhen.delayMs ?? 0);
   }
-  if (
-    newRuntime.frameState.autoAdvanceAt !== undefined &&
-    now >= newRuntime.frameState.autoAdvanceAt
-  ) {
-    events.push({ type: "advance" });
+  const conditionMetAt = newRuntime.frameState.autoAdvanceAt;
+  if (conditionMetAt !== undefined && now >= conditionMetAt) {
+    events.push({ type: "advanceConditionMet" }); // same frame if previous condition = now
   }
 
   // target present/missing transitions; the reducer owns the state changes.

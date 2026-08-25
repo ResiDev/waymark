@@ -1,4 +1,5 @@
 import { assertUnreachable } from "../utils";
+import { handleTourClick, handleTourKeyDown } from "./handlers";
 import { runFrame, stepSelector } from "./rafLoop";
 import { getCallbackName, isAction } from "./types";
 import type {
@@ -39,7 +40,13 @@ const sameRect = (a: DOMRect | null, b: DOMRect | null): boolean => {
 const reduce = (
   state: TourSnapshot,
   e: Event,
-  { isGated }: { isGated: (stepNumber: number) => boolean },
+  {
+    isGated,
+    canAutoAdvance,
+  }: {
+    isGated: (stepNumber: number) => boolean;
+    canAutoAdvance: (stepNumber: number) => boolean;
+  },
 ): TourSnapshot => {
   const goTo = (step: number) => ({
     ...state,
@@ -51,8 +58,9 @@ const reduce = (
   });
 
   switch (e.type) {
-    case "gateConditionMet": {
-      if (state.canAdvance) return state;
+    case "advanceConditionMet": {
+      if (canAutoAdvance(state.step)) return goTo(state.step + 1);
+      if (state.canAdvance) return state; // already open; nothing to announce. Avoid state changes each frame
       return { ...state, canAdvance: true };
     }
     case "advance": {
@@ -99,7 +107,6 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
     highlightedElement: null,
     frameState: initialFrameState(),
   };
-  let frameId: number | undefined;
 
   // Was disposeFrameState: drop everything the loop accumulated for the
   // current step so the next tick starts from "searching".
@@ -128,10 +135,12 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
 
   const isGated = (stepNumber: number) =>
     !!config.getStep(stepNumber).advanceWhen?.gateNext;
+  const canAutoAdvance = (stepNumber: number) =>
+    !config.getStep(stepNumber).advanceWhen?.disableAutoAdvance;
 
   const dispatch = (e: Event) => {
     const currStepNumber = state.step; // capture for callbacks
-    const next = reduce(state, e, { isGated });
+    const next = reduce(state, e, { isGated, canAutoAdvance });
     if (next === state) return; // avoid calling listeners if same
     if (next.step !== state.step) resetRuntime(); // reset on each new step
     state = next;
@@ -139,6 +148,7 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
     if (isAction(e.type)) fireCallback(e.type, currStepNumber);
   };
 
+  let frameId: number | undefined;
   const tick = () => {
     const step = config.getStep(state.step);
     const result = runFrame({
@@ -158,11 +168,35 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
     frameId = requestAnimationFrame(tick);
   };
 
+  const ctx = () => ({
+    snapshot: state,
+    step: config.getStep(state.step),
+    highlightPadding: config.highlightPadding,
+  });
+  const handle = (e: Event | undefined) => {
+    if (e) dispatch(e);
+  };
+  let inputs: AbortController | undefined;
+
   const start = () => {
-    if (frameId === undefined) tick();
+    if (frameId !== undefined) return;
+    inputs = new AbortController();
+    const { signal } = inputs;
+    window.addEventListener("click", (e) => handle(handleTourClick(e, ctx())), {
+      capture: true,
+      signal,
+    });
+    window.addEventListener(
+      "keydown",
+      (e) => handle(handleTourKeyDown(e, ctx())),
+      { signal },
+    );
+    tick();
   };
 
   const stop = () => {
+    inputs?.abort();
+    inputs = undefined;
     if (frameId !== undefined) cancelAnimationFrame(frameId);
     frameId = undefined;
     resetRuntime();
@@ -180,12 +214,6 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
       };
     },
     advance: () => dispatch({ type: "advance" }),
-    targetClick: () => {
-      const step = config.getStep(state.step);
-      if (step.advanceWhen?.type !== "click") return; // remove all non-clicks
-      if (step.advanceWhen.gateNext) dispatch({ type: "gateConditionMet" });
-      if (!step.advanceWhen.disableAutoAdvance) dispatch({ type: "advance" });
-    },
     prev: () => dispatch({ type: "prev" }),
     focus: () => dispatch({ type: "focus" }),
     unfocus: () => dispatch({ type: "unfocus" }),
