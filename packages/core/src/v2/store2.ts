@@ -6,8 +6,7 @@ import type {
   Config,
   Tour,
   Event,
-  FrameState,
-  TourRuntime,
+  StepRuntime,
   TourSnapshot,
   Action,
 } from "./types";
@@ -23,10 +22,12 @@ function initialSnapshot(initCanAdvance: boolean): TourSnapshot {
   };
 }
 
-const initialFrameState = (): FrameState => ({
+const initialStepRuntime = (): StepRuntime => ({
+  highlightedElement: null,
   scrolledIntoViewOnce: false,
   ariaAnnotatedElement: null,
   autoAdvanceAt: undefined,
+  targetListenersController: null,
 });
 
 const sameRect = (a: DOMRect | null, b: DOMRect | null): boolean => {
@@ -52,7 +53,7 @@ const reduce = (
     ...state,
     step,
     focused: true,
-    canAdvance: isGated(step),
+    canAdvance: !isGated(step),
     highlightTargetStatus: "searching" as const,
     highlightedElementRect: null,
   });
@@ -64,7 +65,7 @@ const reduce = (
       return { ...state, canAdvance: true };
     }
     case "advance": {
-      if (isGated(state.step)) return state;
+      if (!isGated(state.step)) return state;
       return goTo(state.step + 1);
     }
     case "prev": {
@@ -103,21 +104,15 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
   let state = initialSnapshot(!config.getStep(0).advanceWhen?.gateNext);
   const listeners = new Set<() => void>();
 
-  let runtime: TourRuntime = {
-    highlightedElement: null,
-    frameState: initialFrameState(),
-  };
+  let runtime: StepRuntime = initialStepRuntime();
 
-  // Was disposeFrameState: drop everything the loop accumulated for the
+  // Drop everything the loop accumulated for the
   // current step so the next tick starts from "searching".
   const resetRuntime = () => {
-    const { ariaAnnotatedElement } = runtime.frameState;
-    ariaAnnotatedElement?.removeAttribute("aria-haspopup");
-    ariaAnnotatedElement?.removeAttribute("aria-expanded");
-    runtime = {
-      highlightedElement: null,
-      frameState: initialFrameState(),
-    };
+    runtime.ariaAnnotatedElement?.removeAttribute("aria-haspopup");
+    runtime.ariaAnnotatedElement?.removeAttribute("aria-expanded");
+    runtime.targetListenersController?.abort();
+    runtime = initialStepRuntime();
   };
 
   const fireCallback = (action: Action, currStepNumber: number) => {
@@ -135,8 +130,10 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
 
   const isGated = (stepNumber: number) =>
     !!config.getStep(stepNumber).advanceWhen?.gateNext;
-  const canAutoAdvance = (stepNumber: number) =>
-    !config.getStep(stepNumber).advanceWhen?.disableAutoAdvance;
+  const canAutoAdvance = (stepNumber: number) => {
+    const advanceWhen = config.getStep(stepNumber).advanceWhen;
+    return !!advanceWhen && !advanceWhen.disableAutoAdvance;
+  };
 
   const dispatch = (e: Event) => {
     const currStepNumber = state.step; // capture for callbacks
@@ -149,7 +146,25 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
   };
 
   let frameId: number | undefined;
+
+  const bindTargetListeners = (el: Element | null) => {
+    runtime.targetListenersController?.abort();
+    runtime.targetListenersController = null;
+    const aw = config.getStep(state.step).advanceWhen;
+    if (!el || aw?.type !== "event") return;
+    const c = new AbortController();
+    for (const name of [aw.event].flat()) {
+      el.addEventListener(
+        name,
+        () => dispatch({ type: "advanceConditionMet" }),
+        { signal: c.signal },
+      );
+    }
+    runtime.targetListenersController = c;
+  };
+
   const tick = () => {
+    const prevEl = runtime.highlightedElement;
     const step = config.getStep(state.step);
     const result = runFrame({
       state,
@@ -159,6 +174,8 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
       now: performance.now(),
     });
     runtime = result.runtime;
+    if (runtime.highlightedElement !== prevEl)
+      bindTargetListeners(runtime.highlightedElement);
     for (const e of result.events) {
       const stepBefore = state.step;
       dispatch(e);
@@ -176,6 +193,7 @@ export function createTour<CallbackArgs>(config: Config<CallbackArgs>): Tour {
   const handle = (e: Event | undefined) => {
     if (e) dispatch(e);
   };
+
   let inputs: AbortController | undefined;
 
   const start = () => {

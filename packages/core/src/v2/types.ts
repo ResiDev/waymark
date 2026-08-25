@@ -110,17 +110,13 @@ export type ActionHandlers = {
   [TAction in Action]: () => void;
 };
 
-// Raf loop state. Private scratch: nothing outside the store sees this.
-export type FrameState = {
+export type StepRuntime = {
+  highlightedElement: Element | null;
   scrolledIntoViewOnce: boolean;
   ariaAnnotatedElement: Element | null;
   /** performance.now() deadline for a pending auto-advance; the loop is its own clock. */
   autoAdvanceAt: number | undefined;
-};
-
-export type TourRuntime = {
-  highlightedElement: Element | null;
-  frameState: FrameState;
+  targetListenersController: AbortController | null;
 };
 
 export type Config<CallbackArgs> = {
