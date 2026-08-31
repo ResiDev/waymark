@@ -14,7 +14,17 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "waymark": ["../core/src/index.ts"]
+    }
   },
-  "include": ["src", "tsup.config.ts", "vitest.config.ts", "vitest.setup.ts"]
+  "include": [
+    "src/index.ts",
+    "src/v5",
+    "tsup.config.ts",
+    "vitest.config.ts",
+    "vitest.setup.ts"
+  ]
 }
