@@ -1,6 +1,6 @@
 import { selectorFor } from "./tutorial";
 import type { AdvanceRule } from "./tutorial";
-import type { Location, Step } from "./types";
+import type { Location, Snapshot, Step } from "./types";
 
 /**
  * The whole of what a Run knows. `console.log(state)` shows all of it.
@@ -29,8 +29,8 @@ export type State = Readonly<{
 }>;
 
 /** The Tutorial with each Step's Advance rule worked out once, up front. */
-export type Definition = Readonly<{
-  steps: readonly Step[];
+export type Definition<TStep extends Step = Step> = Readonly<{
+  steps: readonly TStep[];
   rules: readonly (AdvanceRule | undefined)[];
 }>;
 
@@ -74,6 +74,25 @@ export function canAdvance(state: State, definition: Definition): boolean {
     state.phase === "running" &&
     (state.conditionMet || definition.rules[state.index] === undefined)
   );
+}
+
+/** What a renderer sees: pure over (State, Definition), rebuilt only when it changes. */
+export function buildSnapshot<TStep extends Step>(
+  state: State,
+  definition: Definition<TStep>,
+): Snapshot<TStep> {
+  const steps = definition.steps;
+  return state.phase === "running"
+    ? {
+        phase: "running",
+        step: steps[state.index],
+        stepIndex: state.index,
+        stepCount: steps.length,
+        canAdvance: canAdvance(state, definition),
+        collapsed: state.collapsed,
+        waymark: state.location,
+      }
+    : { phase: state.phase, stepIndex: state.index, stepCount: steps.length };
 }
 
 /** True when two States produce identical Snapshots — scratch is invisible. */

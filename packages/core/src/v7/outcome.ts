@@ -20,8 +20,14 @@ export type Outcome = Readonly<{
   scrollTo?: Element;
 }>;
 
+/** Shared by every Outcome with nothing to say, so quiet frames allocate less. */
+export const NOTHING: readonly Announcement[] = [];
+
 /**
  * An Outcome with nothing to announce. Passing the State that came in is how
  * every rule says "refused".
  */
-export const silent = (state: State): Outcome => ({ state, announcements: [] });
+export const silent = (state: State): Outcome => ({
+  state,
+  announcements: NOTHING,
+});

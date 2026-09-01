@@ -20,6 +20,7 @@
     "src/v5",
     "src/v6",
     "src/v7",
+    "src/v8",
     "tsup.config.ts",
     "vitest.config.ts",
     "vitest.setup.ts"

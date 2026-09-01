@@ -24,6 +24,15 @@ const createV7 = (c: { root: Document; highlightPadding: number }) =>
     { root: c.root, waymarkPadding: c.highlightPadding },
   );
 
+import { createRun as createRunV8 } from "./v8/run";
+import { defineTutorial as defineTutorialV8 } from "./v8/tutorial";
+
+const createV8 = (c: { root: Document; highlightPadding: number }) =>
+  createRunV8(
+    defineTutorialV8([{ waymark: "t", advance: { state: () => false } }]),
+    { root: c.root, waymarkPadding: c.highlightPadding },
+  );
+
 const createV6 = (c: { root: Document; highlightPadding: number }) =>
   createRunV6(
     defineTutorial([{ waymark: "t", advance: { state: () => false } }]),
@@ -49,10 +58,15 @@ let frame: FrameRequestCallback | null = null;
 globalThis.requestAnimationFrame = (cb) => { frame = cb; return 1; };
 globalThis.cancelAnimationFrame = () => {};
 
-function run(label: string, make: (c: ConfigV2<undefined> & ConfigV3<undefined>) => { subscribe: (cb: () => void) => () => void }, moving: boolean) {
+function run(label: string, make: (c: ConfigV2<undefined> & ConfigV3<undefined>) => { subscribe: (cb: () => void) => () => void; getSnapshot?: () => unknown }, moving: boolean) {
   const tour = make(setup(moving));
   let notified = 0;
-  const unsub = tour.subscribe(() => notified++);
+  // Read on every notify, like useSyncExternalStore would — otherwise the
+  // bench flatters lazy snapshot building and penalizes eager.
+  const unsub = tour.subscribe(() => {
+    notified++;
+    tour.getSnapshot?.();
+  });
   // warm up
   for (let i = 0; i < 20_000; i++) frame!(performance.now());
   notified = 0;
@@ -72,6 +86,7 @@ test("bench", () => {
       run("v5", createV5, moving);
       run("v6", createV6, moving);
       run("v7", createV7, moving);
+      run("v8", createV8, moving);
     }
   }
 });

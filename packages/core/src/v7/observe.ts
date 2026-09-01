@@ -1,3 +1,4 @@
+import { NOTHING } from "./outcome";
 import type { Outcome } from "./outcome";
 import { ABSENT, LOST, SEARCHING } from "./state";
 import type { Definition, State } from "./state";
@@ -25,26 +26,40 @@ export type Reading = Readonly<{
   now: number;
 }>;
 
-const sameLocation = (a: Location, b: Location): boolean => {
-  if (a.status !== b.status) return false;
-  if (a.status !== "found" || b.status !== "found") return true;
-  return (
-    a.rect.x === b.rect.x &&
-    a.rect.y === b.rect.y &&
-    a.rect.width === b.rect.width &&
-    a.rect.height === b.rect.height
-  );
-};
+/**
+ * The Reading's rect may be the browser's own DOMRect; it is compared first
+ * and copied into plain data only when it turns out to be news, so a still
+ * frame allocates nothing here.
+ */
+const copyRect = (rect: Rect): Rect => ({
+  x: rect.x,
+  y: rect.y,
+  top: rect.top,
+  right: rect.right,
+  bottom: rect.bottom,
+  left: rect.left,
+  width: rect.width,
+  height: rect.height,
+});
 
 /** Searching → found → lost. A Waymark once seen is never searching again. */
 function locate(state: State, reading: Reading, step: Step): Location {
   if (selectorFor(step) === undefined) return ABSENT;
-  const seen: Location = reading.rect
-    ? { status: "found", rect: reading.rect }
-    : state.location.status === "searching"
-      ? SEARCHING
-      : LOST;
-  return sameLocation(seen, state.location) ? state.location : seen;
+  const rect = reading.rect;
+  if (rect === null) {
+    return state.location.status === "searching" ? SEARCHING : LOST;
+  }
+  const previous = state.location;
+  if (
+    previous.status === "found" &&
+    previous.rect.x === rect.x &&
+    previous.rect.y === rect.y &&
+    previous.rect.width === rect.width &&
+    previous.rect.height === rect.height
+  ) {
+    return previous;
+  }
+  return { status: "found", rect: copyRect(rect) };
 }
 
 /** Scroll an off-screen Waymark into view: once by default, never collapsed. */
@@ -108,5 +123,5 @@ export function observe(
 
   return due
     ? { ...meetCondition(looked, rule, definition), scrollTo }
-    : { state: looked, announcements: [], scrollTo };
+    : { state: looked, announcements: NOTHING, scrollTo };
 }

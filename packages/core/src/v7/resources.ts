@@ -35,13 +35,23 @@ const sameDeps = (
  * Brings one resource in line with its deps. `open` does the work and returns
  * the way to undo it. Deps that have not changed cost nothing.
  */
-export function keepInSync(
-  resource: Resource,
-  deps: readonly unknown[] | null,
-  open: () => () => void,
-): void {
+export function keepInSync({
+  resource,
+  deps,
+  open,
+}: {
+  resource: Resource;
+  deps: readonly unknown[] | null;
+  open: () => () => void;
+}): void {
   if (sameDeps(resource.deps, deps)) return;
   resource.close();
   resource.deps = deps;
-  resource.close = deps === CLOSED ? noop : open();
+
+  if (deps !== CLOSED) {
+    const cleanup = open();
+    resource.close = cleanup;
+  } else {
+    resource.close = noop;
+  }
 }

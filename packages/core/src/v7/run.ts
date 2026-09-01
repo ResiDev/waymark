@@ -2,12 +2,14 @@ import { decide } from "./decide";
 import type { Input } from "./decide";
 import { keyAction, whereClicked } from "./input";
 import type { InputContext } from "./input";
+import { observe } from "./observe";
 import type { Reading } from "./observe";
-import type { Announcement } from "./outcome";
+import type { Announcement, Outcome } from "./outcome";
 import { CLOSED, createResource, keepInSync, OPEN } from "./resources";
-import { canAdvance, enterStep, rendersTheSame } from "./state";
+import { buildSnapshot, enterStep, rendersTheSame } from "./state";
 import type { Definition, State } from "./state";
 import { advanceRule, selectorFor } from "./tutorial";
+import type { AdvanceRule } from "./tutorial";
 import type {
   Action,
   Rect,
@@ -16,6 +18,7 @@ import type {
   Snapshot,
   Step,
   Tutorial,
+  UiElements,
 } from "./types";
 
 /**
@@ -28,26 +31,124 @@ import type {
  *
  * It enforces no rules. Moving between Steps is `decide` handing back a State
  * built by `enterStep`, and the resources noticing that their deps changed.
+ *
+ * Everything that can live at module scope does: only the functions that read
+ * or write the Run's mutable cells — `state`, `snapshot`, `listeners` — are
+ * closures inside `createRun`.
  */
 
 const NO_UI = { dialog: null, beacon: null };
-
-const copyRect = (rect: DOMRect): Rect => ({
-  x: rect.x,
-  y: rect.y,
-  top: rect.top,
-  right: rect.right,
-  bottom: rect.bottom,
-  left: rect.left,
-  width: rect.width,
-  height: rect.height,
-});
 
 const inViewport = (rect: Rect): boolean =>
   rect.bottom > 0 &&
   rect.right > 0 &&
   rect.top < globalThis.innerHeight &&
   rect.left < globalThis.innerWidth;
+
+/** A Reading the driver may write into. Reused every frame; see `createRun`. */
+type ReadingBuffer = { -readonly [K in keyof Reading]: Reading[K] };
+
+/** The only DOM reads of a frame, packaged as data into the given buffer. */
+const readPage = (
+  root: Document | Element,
+  state: State,
+  definition: Definition,
+  into: ReadingBuffer,
+): Reading => {
+  const selector = selectorFor(definition.steps[state.index]);
+  const element =
+    selector === undefined
+      ? null
+      : state.element?.isConnected
+        ? state.element
+        : root.querySelector(selector);
+  const rect = element ? element.getBoundingClientRect() : null;
+  into.element = element;
+  into.rect = rect;
+  into.inView = rect !== null && inViewport(rect);
+  into.conditionHolds =
+    definition.rules[state.index]?.byCheck?.(element) ?? false;
+  into.now = performance.now();
+  return into;
+};
+
+/** What the input functions need to know, read off the State. */
+const inputContext = (
+  state: State,
+  padding: number,
+  ui: UiElements,
+): InputContext => ({
+  collapsed: state.collapsed,
+  element: state.element,
+  rect: state.location.status === "found" ? state.location.rect : null,
+  padding,
+  ui,
+});
+
+/** A tick can end the Run, which closes this loop from inside itself. */
+const openFrameLoop = (tick: () => void) => {
+  let live = true;
+  /** requestAnimationFrame id of the pending tick. */
+  let frameId = requestAnimationFrame(function loop() {
+    tick();
+    if (live) frameId = requestAnimationFrame(loop);
+  });
+  return () => {
+    live = false;
+    cancelAnimationFrame(frameId);
+  };
+};
+
+const openWindowInput = (
+  onClick: (event: MouseEvent) => void,
+  onKeyDown: (event: KeyboardEvent) => void,
+) => {
+  const control = new AbortController();
+  const { signal } = control;
+  window.addEventListener("click", onClick, { capture: true, signal });
+  window.addEventListener("keydown", onKeyDown, { signal });
+  return () => control.abort();
+};
+
+/** Tells assistive technology that the Waymark has a popover attached. */
+const openWaymarkAria = (element: Element) => {
+  element.setAttribute("aria-haspopup", "dialog");
+  element.setAttribute("aria-expanded", "true");
+  return () => {
+    element.removeAttribute("aria-haspopup");
+    element.removeAttribute("aria-expanded");
+  };
+};
+
+const notify = (listeners: ReadonlySet<() => void>): void => {
+  for (const listener of listeners) listener();
+};
+
+/** Hands one Announcement to the caller's onEvent, dressed up as a RunEvent. */
+const announce = <TStep extends Step>(
+  onEvent: RunOptions<TStep>["onEvent"],
+  steps: readonly TStep[],
+  snapshot: Snapshot<TStep>,
+  announcement: Announcement,
+): void =>
+  onEvent?.({
+    type: announcement.type,
+    step: steps[announcement.stepIndex],
+    stepIndex: announcement.stepIndex,
+    snapshot,
+  });
+
+const openWaymarkEvents = (
+  element: Element,
+  names: readonly string[],
+  fire: () => void,
+) => {
+  const control = new AbortController();
+  for (const name of names) {
+    element.addEventListener(name, fire, { signal: control.signal });
+  }
+  return () => control.abort();
+};
 
 export function createRun<TStep extends Step>(
   tutorial: Tutorial<TStep>,
@@ -57,92 +158,61 @@ export function createRun<TStep extends Step>(
   const padding = options.waymarkPadding ?? 0;
   const ui = options.ui ?? (() => NO_UI);
   const steps = tutorial.steps;
-  const definition: Definition = { steps, rules: steps.map(advanceRule) };
+  const definition: Definition<TStep> = {
+    steps,
+    rules: steps.map(advanceRule),
+  };
 
   const listeners = new Set<() => void>();
   let state: State = enterStep(options.startAt ?? 0, definition);
   let hasAnnouncedStart = false;
 
-  // ---- the snapshot: built where the State changes, so it cannot go stale ----
+  // ---- the snapshot: rebuilt where the State changes, so it cannot go stale --
 
-  const buildSnapshot = (): Snapshot<TStep> =>
-    state.phase === "running"
-      ? {
-          phase: "running",
-          step: steps[state.index],
-          stepIndex: state.index,
-          stepCount: steps.length,
-          canAdvance: canAdvance(state, definition),
-          collapsed: state.collapsed,
-          waymark: state.location,
-        }
-      : { phase: state.phase, stepIndex: state.index, stepCount: steps.length };
-
-  let snapshot: Snapshot<TStep> = buildSnapshot();
+  let snapshot: Snapshot<TStep> = buildSnapshot(state, definition);
   const getSnapshot = (): Snapshot<TStep> => snapshot;
 
-  const notify = () => {
-    for (const listener of listeners) listener();
-  };
-
-  const announce = (announcement: Announcement) =>
-    options.onEvent?.({
-      type: announcement.type,
-      step: steps[announcement.stepIndex],
-      stepIndex: announcement.stepIndex,
-      snapshot,
-    });
-
-  // ---- the only DOM reads of a frame, packaged as data ----------------------
-
-  const readPage = (): Reading => {
-    const selector = selectorFor(steps[state.index]);
-    const element =
-      selector === undefined
-        ? null
-        : state.element?.isConnected
-          ? state.element
-          : root.querySelector(selector);
-    const rect = element ? copyRect(element.getBoundingClientRect()) : null;
-    return {
-      element,
-      rect,
-      inView: rect !== null && inViewport(rect),
-      conditionHolds: definition.rules[state.index]?.byCheck?.(element) ?? false,
-      now: performance.now(),
-    };
+  // One Reading, reused every frame. Safe because observe never keeps a
+  // Reading: it takes the element reference out and copies the rect only when
+  // it is news. The rect itself is the browser's own DOMRect, uncopied here.
+  const reading: ReadingBuffer = {
+    element: null,
+    rect: null,
+    inView: false,
+    conditionHolds: false,
+    now: 0,
   };
 
   // ---- the one place the State changes --------------------------------------
 
-  const dispatch = (input: Input) => {
-    const outcome = decide(state, input, definition);
+  const commit = (outcome: Outcome) => {
     if (outcome.state !== state) {
       const renderChanged = !rendersTheSame(state, outcome.state);
       state = outcome.state;
-      if (renderChanged) snapshot = buildSnapshot();
+      if (renderChanged) snapshot = buildSnapshot(state, definition);
       syncResources();
-      if (renderChanged) notify();
+      if (renderChanged) notify(listeners);
     }
-    for (const announcement of outcome.announcements) announce(announcement);
+    for (const announcement of outcome.announcements) {
+      announce(options.onEvent, steps, snapshot, announcement);
+    }
     outcome.scrollTo?.scrollIntoView?.({ behavior: "smooth", block: "center" });
   };
 
-  const look = () => dispatch({ kind: "frame", reading: readPage() });
+  const dispatch = (input: Input) => commit(decide(state, input, definition));
+
+  /** The frame path skips the Input envelope: observe is fed directly. */
+  const look = () => {
+    const page = readPage(root, state, definition, reading);
+    const outcome = observe(state, page, definition);
+    commit(outcome);
+  };
 
   // ---- what the user is doing ----------------------------------------------
 
-  const inputContext = (): InputContext => ({
-    collapsed: state.collapsed,
-    element: state.element,
-    rect: state.location.status === "found" ? state.location.rect : null,
-    padding,
-    ui: ui(),
-  });
-
   /** On the Waymark: perhaps the condition. Away from it: put the Run away. */
   const onClick = (event: MouseEvent) => {
-    const hit = whereClicked(event, inputContext());
+    const hit = whereClicked(event, inputContext(state, padding, ui()));
     if (hit === "waymark") {
       if (definition.rules[state.index]?.byClick) {
         dispatch({ kind: "conditionMet", now: performance.now() });
@@ -153,7 +223,7 @@ export function createRun<TStep extends Step>(
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    const action = keyAction(event, inputContext());
+    const action = keyAction(event, inputContext(state, padding, ui()));
     if (action) dispatch({ kind: "act", action });
   };
 
@@ -167,67 +237,55 @@ export function createRun<TStep extends Step>(
   /** No subscribers, or a Run that has ended, means nothing should be live. */
   const isWatched = () => listeners.size > 0 && state.phase === "running";
 
-  /** A tick can end the Run, which closes this loop from inside itself. */
-  const openFrameLoop = () => {
-    let live = true;
-    let frame = requestAnimationFrame(function tick() {
-      look();
-      if (live) frame = requestAnimationFrame(tick);
-    });
-    return () => {
-      live = false;
-      cancelAnimationFrame(frame);
-    };
-  };
-
-  const openWindowInput = () => {
-    const control = new AbortController();
-    const { signal } = control;
-    window.addEventListener("click", onClick, { capture: true, signal });
-    window.addEventListener("keydown", onKeyDown, { signal });
-    return () => control.abort();
-  };
-
-  /** Tells assistive technology that the Waymark has a popover attached. */
-  const openWaymarkAria = (element: Element) => {
-    element.setAttribute("aria-haspopup", "dialog");
-    element.setAttribute("aria-expanded", "true");
-    return () => {
-      element.removeAttribute("aria-haspopup");
-      element.removeAttribute("aria-expanded");
-    };
-  };
-
-  const openWaymarkEvents = (element: Element, names: readonly string[]) => {
-    const control = new AbortController();
-    for (const name of names) {
-      element.addEventListener(
-        name,
-        () => dispatch({ kind: "conditionMet", now: performance.now() }),
-        { signal: control.signal },
-      );
-    }
-    return () => control.abort();
-  };
+  // What the resources were last derived from; when none of it has changed,
+  // there is nothing to diff — the common case on a frame that only moved.
+  let derivedFrom: {
+    watched: boolean;
+    element: Element | null;
+    rule: AdvanceRule | undefined;
+  } = { watched: false, element: null, rule: undefined };
 
   function syncResources() {
     const watched = isWatched();
     const element = state.element;
     const rule = definition.rules[state.index];
+    if (
+      watched === derivedFrom.watched &&
+      element === derivedFrom.element &&
+      rule === derivedFrom.rule
+    ) {
+      return;
+    }
+    derivedFrom = { watched, element, rule };
 
-    keepInSync(frameLoop, watched ? OPEN : CLOSED, openFrameLoop);
-    keepInSync(windowInput, watched ? OPEN : CLOSED, openWindowInput);
+    keepInSync({
+      resource: frameLoop,
+      deps: watched ? OPEN : CLOSED,
+      open: () => openFrameLoop(look),
+    });
 
-    keepInSync(waymarkAria, watched && element ? [element] : CLOSED, () =>
-      openWaymarkAria(element!),
-    );
+    keepInSync({
+      resource: windowInput,
+      deps: watched ? OPEN : CLOSED,
+      open: () => openWindowInput(onClick, onKeyDown),
+    });
+
+    keepInSync({
+      resource: waymarkAria,
+      deps: watched && element ? [element] : CLOSED,
+      open: () => openWaymarkAria(element!),
+    });
 
     // One AdvanceRule object per Step, so these deps change when the Step does.
-    keepInSync(
-      waymarkEvents,
-      watched && element && rule?.byEvents.length ? [element, rule] : CLOSED,
-      () => openWaymarkEvents(element!, rule!.byEvents),
-    );
+    keepInSync({
+      resource: waymarkEvents,
+      deps:
+        watched && element && rule?.byEvents.length ? [element, rule] : CLOSED,
+      open: () =>
+        openWaymarkEvents(element!, rule!.byEvents, () =>
+          dispatch({ kind: "conditionMet", now: performance.now() }),
+        ),
+    });
   }
 
   return {
@@ -240,7 +298,10 @@ export function createRun<TStep extends Step>(
         look(); // Locate now, so the first paint is not a frame behind.
         if (!hasAnnouncedStart) {
           hasAnnouncedStart = true;
-          announce({ type: "start", stepIndex: state.index });
+          announce(options.onEvent, steps, snapshot, {
+            type: "start",
+            stepIndex: state.index,
+          });
         }
       }
       return () => {
