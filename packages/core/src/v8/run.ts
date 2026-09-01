@@ -3,7 +3,13 @@ import { act, observe } from "./rules";
 import type { Reading } from "./rules";
 import { enter } from "./state";
 import type { Outcome, State } from "./state";
-import { checkOf, conditionOf, eventsOf, hasWaymark, selectorOf } from "./tutorial";
+import {
+  checkOf,
+  conditionOf,
+  eventsOf,
+  hasWaymark,
+  selectorOf,
+} from "./tutorial";
 import type {
   Action,
   Rect,
@@ -86,6 +92,21 @@ const attach = (element: Element, step: Step, onEvent: () => void) => {
   };
 };
 
+/** Hands one Run event to `onEvent`: the Step it happened on, and the Run as it stands after. */
+const announce = <TStep extends Step>({
+  onEvent,
+  steps,
+  type,
+  stepIndex,
+  after,
+}: {
+  onEvent: RunOptions<TStep>["onEvent"];
+  steps: readonly TStep[];
+  type: RunEventType;
+  stepIndex: number;
+  after: Snapshot<TStep>;
+}) => onEvent?.({ type, step: steps[stepIndex], stepIndex, snapshot: after });
+
 export function createRun<TStep extends Step>(
   tutorial: Tutorial<TStep>,
   options: RunOptions<TStep> = {},
@@ -98,17 +119,25 @@ export function createRun<TStep extends Step>(
   let state: State<TStep> = enter(tutorial, options.startAt ?? 0);
   let started = false;
 
-  const announce = (type: RunEventType, stepIndex: number) =>
-    options.onEvent?.({
-      type,
-      step: tutorial.steps[stepIndex],
-      stepIndex,
-      snapshot: state.snapshot,
-    });
-
   // ---- the one place the State changes --------------------------------------
 
+  /**
+   * Obeys an Outcome, in this order:
+   *
+   *   1. scroll     fire and forget, so it goes first and cannot go stale
+   *   2. store      the new State, if there is one
+   *   3. sync       the live things follow the State
+   *   4. notify     subscribers, only if the Snapshot is a new object
+   *   5. announce   Run events, after notify, so an onEvent handler always
+   *                 sees a renderer that already knows
+   *
+   * A listener or onEvent handler may call `act` and nest another commit;
+   * the events of this one are still stamped with the Step it left.
+   */
   const commit = (outcome: Outcome<TStep>) => {
+    // `scrollIntoView` is optional only because jsdom does not implement it.
+    outcome.scrollTo?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+
     const before = state;
     if (outcome.state !== before) {
       state = outcome.state;
@@ -117,9 +146,16 @@ export function createRun<TStep extends Step>(
         for (const listener of listeners) listener();
       }
     }
-    // Events are stamped with the Step they happened on: the one before the change.
-    for (const type of outcome.events) announce(type, before.snapshot.stepIndex);
-    outcome.scrollTo?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+
+    for (const type of outcome.events) {
+      announce({
+        onEvent: options.onEvent,
+        steps: tutorial.steps,
+        type,
+        stepIndex: before.snapshot.stepIndex,
+        after: state.snapshot,
+      });
+    }
   };
 
   // ---- one frame -------------------------------------------------------------
@@ -163,7 +199,8 @@ export function createRun<TStep extends Step>(
     collapsed: state.snapshot.phase === "running" && state.snapshot.collapsed,
     element: state.element,
     rect:
-      state.snapshot.phase === "running" && state.snapshot.waymark.status === "found"
+      state.snapshot.phase === "running" &&
+      state.snapshot.waymark.status === "found"
         ? state.snapshot.waymark.rect
         : null,
     padding,
@@ -174,7 +211,10 @@ export function createRun<TStep extends Step>(
   const onClick = (event: MouseEvent) => {
     const hit = whereClicked(event, inputContext());
     if (hit === "waymark") {
-      if (state.snapshot.phase === "running" && conditionOf(state.snapshot.step) === "click") {
+      if (
+        state.snapshot.phase === "running" &&
+        conditionOf(state.snapshot.step) === "click"
+      ) {
         satisfy();
       }
     } else if (hit === "away") {
@@ -194,7 +234,9 @@ export function createRun<TStep extends Step>(
   // Waymark has been found, and is redone when the element or the Step changes.
 
   let stopWatching: (() => void) | undefined;
-  let attached: { element: Element; step: Step; detach: () => void } | undefined;
+  let attached:
+    | { element: Element; step: Step; detach: () => void }
+    | undefined;
 
   /** The running Snapshot while someone is subscribed to see it; otherwise nothing should be live. */
   const watched = (): Running<TStep> | undefined =>
@@ -237,7 +279,13 @@ export function createRun<TStep extends Step>(
         look(); // Locate now, so the first paint is not a frame behind.
         if (!started) {
           started = true;
-          announce("start", running.stepIndex);
+          announce({
+            onEvent: options.onEvent,
+            steps: tutorial.steps,
+            type: "start",
+            stepIndex: running.stepIndex,
+            after: state.snapshot,
+          });
         }
       }
       return () => {

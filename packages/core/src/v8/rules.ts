@@ -34,6 +34,7 @@ export function act<TStep extends Step>(
   tutorial: Tutorial<TStep>,
 ): Outcome<TStep> {
   const snapshot = state.snapshot;
+  // Reset is the one Action a finished Run accepts, so it comes before the guard.
   if (action === "reset") return { state: enter(tutorial, 0), events: ["reset"] };
   if (snapshot.phase !== "running") return quietly(state);
 
