@@ -193,11 +193,8 @@ export function createRun<TStep extends Step>(
   // and someone is subscribed. The attachment exists while watching and a
   // Waymark has been found, and is redone when the element or the Step changes.
 
-  const noop = () => {};
   let stopWatching: (() => void) | undefined;
-  let attachedTo: Element | null = null;
-  let attachedStep: Step | undefined;
-  let detach = noop;
+  let attached: { element: Element; step: Step; detach: () => void } | undefined;
 
   /** The running Snapshot while someone is subscribed to see it; otherwise nothing should be live. */
   const watched = (): Running<TStep> | undefined =>
@@ -220,11 +217,12 @@ export function createRun<TStep extends Step>(
 
     const element = running ? state.element : null;
     const step = running && element ? running.step : undefined;
-    if (element !== attachedTo || step !== attachedStep) {
-      detach();
-      attachedTo = element;
-      attachedStep = step;
-      detach = element && step ? attach(element, step, satisfy) : noop;
+    if (element !== attached?.element || step !== attached?.step) {
+      attached?.detach();
+      attached =
+        element && step
+          ? { element, step, detach: attach(element, step, satisfy) }
+          : undefined;
     }
   }
 
