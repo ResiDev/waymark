@@ -49,13 +49,13 @@ One thing the user should accomplish. A task has a stable id, may carry a tutori
 _Avoid_: Item, milestone, goal, step
 
 **Progress**:
-One user's live record of a checklist: which tasks are done, and which one is being guided right now. Done-ness is what gets stored; guiding is not.
+One user's live record of a checklist: which tasks are done, and which one is active right now. Done-ness is what gets stored; the active task is not.
 _Avoid_: Session, state, checklist instance
 
 **Completion condition**:
 Application state that marks a task done, whether or not its tutorial ever ran. A task that states one cannot be ticked off by finishing its tutorial alone; a task that states none is done when its tutorial finishes or the application says so.
 _Avoid_: Trigger, auto-complete, detection
 
-**Guiding**:
-A task whose tutorial is currently running as a run. At most one task is guided at a time.
-_Avoid_: Active task, current tutorial
+**Active task**:
+The task whose tutorial is currently running as a run. At most one task is active at a time.
+_Avoid_: Guiding, current tutorial, open task
