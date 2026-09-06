@@ -1,19 +1,19 @@
 # Waymark
 
-Waymark describes and runs guided tutorials over a browser interface. A tutorial says what the user should do; a run records what is happening while one user moves through it. Each step may point the user at a waymark: an element in the page marked out for them.
+Waymark describes and runs guided walkthroughs over a browser interface. A walkthrough says what the user should do; a run records what is happening while one user moves through it. Each step may point the user at a waymark: an element in the page marked out for them.
 
 ## Language
 
-**Tutorial**:
-An ordered definition of the guidance shown to a user. A tutorial can be run more than once.
-_Avoid_: Tour, flow
+**Walkthrough**:
+An ordered definition of the guidance shown to a user. A walkthrough can be run more than once.
+_Avoid_: Tutorial, guide, tour, flow
 
 **Run**:
-One live execution of a tutorial, including its current step and whether advancement is available.
-_Avoid_: Store, tutorial instance
+One live execution of a walkthrough, including its current step and whether advancement is available.
+_Avoid_: Store, walkthrough instance
 
 **Step**:
-One instruction in a tutorial. A step may point at a waymark and may state an advance condition.
+One instruction in a walkthrough. A step may point at a waymark and may state an advance condition.
 _Avoid_: Screen, stage
 
 **Waymark**:
@@ -37,25 +37,29 @@ A run whose step popover is hidden and represented by a beacon while the run rem
 _Avoid_: Unfocused run
 
 **UI**:
-The tutorial's own elements in the page — the dialog and the beacon — which a click on does not count as clicking away. Any element can opt in with `data-waymark-ui`.
+The walkthrough's own elements in the page — the dialog and the beacon — which a click on does not count as clicking away. Any element can opt in with `data-waymark-ui`.
 _Avoid_: View
 
-**Checklist**:
-An unordered set of tasks that together make up a user's onboarding. A checklist can be followed by many users. It is to a progress what a tutorial is to a run.
-_Avoid_: Journey, onboarding flow, tour
+**Checklists**:
+A group of named checklists sharing one user's task completion and at most one active walkthrough run. Separate groups have independent completion records.
+_Avoid_: Onboarding, checklist definition, registry
 
 **Task**:
-One thing the user should accomplish. A task has a stable id, may carry a tutorial that shows how, may state a completion condition, and may name tasks that must be done first.
+One thing the user should accomplish. A task has a stable id, may offer a walkthrough and a completion condition, and may appear in several checklists that share its completion.
 _Avoid_: Item, milestone, goal, step
 
-**Progress**:
-One user's live record of a checklist: which tasks are done, and which one is active right now. Done-ness is what gets stored; the active task is not.
-_Avoid_: Session, state, checklist instance
+**Checklist**:
+A named, ordered view of tasks and their shared completion. The same task can appear in several checklists without needing to be accomplished again.
+_Avoid_: Progress, session, checklist instance
+
+**Context**:
+Application information used to check whether checklist tasks are complete, even when their walkthroughs never ran. It describes the application, not the checklist's completion record.
+_Avoid_: Facts, state, input
 
 **Completion condition**:
-Application state that marks a task done, whether or not its tutorial ever ran. A task that states one cannot be ticked off by finishing its tutorial alone; a task that states none is done when its tutorial finishes or the application says so.
+A check of application context that determines whether a task is done, whether or not its walkthrough ever ran. A task that states one cannot be ticked off by finishing its walkthrough alone; a task that states none is done when its walkthrough finishes or the application says so.
 _Avoid_: Trigger, auto-complete, detection
 
 **Active task**:
-The task whose tutorial is currently running as a run. At most one task is active at a time.
-_Avoid_: Guiding, current tutorial, open task
+The task whose walkthrough is currently running as a run. At most one task is active across a group of checklists at a time.
+_Avoid_: Guiding, current walkthrough, open task
