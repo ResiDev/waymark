@@ -154,7 +154,10 @@ export function createRun<TStep extends Step>(
       for (let cursor = 0; cursor < queue.length; cursor++) {
         const outcome = queue[cursor]();
         // `scrollIntoView` is optional only because jsdom does not implement it.
-        outcome.scrollTo?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+        outcome.scrollTo?.scrollIntoView?.({
+          behavior: "smooth",
+          block: "center",
+        });
 
         const before = state;
         if (outcome.state !== before) {
@@ -184,34 +187,51 @@ export function createRun<TStep extends Step>(
     }
 
     if (errors.length === 1) throw errors[0];
-    if (errors.length > 1) throw new AggregateError(errors, "Run callbacks failed.");
+    if (errors.length > 1)
+      throw new AggregateError(errors, "Run callbacks failed.");
   };
 
   // ---- one frame -------------------------------------------------------------
 
   /** The only DOM reads of a frame, packaged as data. */
-  const readPage = (step: TStep, mode: "check" | "satisfied" | "locate"): Reading => {
-    const element = state.element?.isConnected
-      ? state.element
-      : hasWaymark(step)
-        ? root.querySelector(selectorOf(step))
-        : null;
+  const readPage = (
+    step: TStep,
+    mode: "check" | "satisfied" | "locate",
+  ): Reading => {
+    const selector = hasWaymark(step) ? selectorOf(step) : undefined;
+
+    const cached = state.element;
+    const canReuseTarget =
+      cached?.isConnected &&
+      root.contains(cached) &&
+      selector !== undefined &&
+      cached.matches(selector);
+
+    const element =
+      selector === undefined
+        ? null
+        : canReuseTarget
+          ? cached
+          : root.querySelector(selector);
     const rect = element ? element.getBoundingClientRect() : null;
     return {
       element,
       rect,
       inView: rect !== null && inViewport(rect),
-      condition: mode === "satisfied"
-        ? "satisfied"
-        : mode === "check" && checkOf(step)?.(element)
-          ? "holds"
-          : "unmet",
+      condition:
+        mode === "satisfied"
+          ? "satisfied"
+          : mode === "check" && checkOf(step)?.(element)
+            ? "holds"
+            : "unmet",
       now: performance.now(),
     };
   };
 
   /** Read the page and calculate an outcome against the current state. */
-  function evaluatePage(mode: "check" | "satisfied" | "locate" = "check"): Outcome<TStep> {
+  function evaluatePage(
+    mode: "check" | "satisfied" | "locate" = "check",
+  ): Outcome<TStep> {
     if (state.snapshot.phase !== "running") return noChange(state);
     return observe(state, readPage(state.snapshot.step, mode), tutorial);
   }
@@ -305,7 +325,11 @@ export function createRun<TStep extends Step>(
       attached?.detach();
       attached =
         element && step
-          ? { element, step, detach: attach(element, step, handleConditionSatisfied) }
+          ? {
+              element,
+              step,
+              detach: attach(element, step, handleConditionSatisfied),
+            }
           : undefined;
     }
   }

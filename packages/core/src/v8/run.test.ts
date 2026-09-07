@@ -104,6 +104,44 @@ describe("createRun", () => {
     expect(view.snapshot.waymark).toEqual({ status: "lost" });
   });
 
+  it.each(["moved outside root", "renamed"])("replaces a cached target that was %s", (change) => {
+    const root = document.createElement("section");
+    document.body.append(root);
+    const target = addTarget("save");
+    root.append(target);
+    const view = watch(createRun(defineTutorial([{ waymark: "save" }]), { root }));
+
+    if (change === "moved outside root") document.body.append(target);
+    else target.dataset.waymark = "other";
+    flush();
+
+    expect(view.snapshot.waymark.status).toBe("lost");
+    expect(target).not.toHaveAttribute("aria-haspopup");
+
+    const replacement = addTarget("save", { x: 40, left: 40 });
+    root.append(replacement);
+    flush();
+
+    expect(view.snapshot.waymark).toMatchObject({ status: "found", rect: { x: 40 } });
+    expect(replacement).toHaveAttribute("aria-haspopup", "dialog");
+    view.stop();
+  });
+
+  it("reuses a valid cached target without searching the root again", () => {
+    const root = document.createElement("section");
+    document.body.append(root);
+    root.append(addTarget("save"));
+    const query = vi.spyOn(root, "querySelector");
+    const view = watch(createRun(defineTutorial([{ waymark: "save" }]), { root }));
+
+    flush();
+    flush();
+
+    expect(query).toHaveBeenCalledTimes(1);
+    expect(view.snapshot.waymark.status).toBe("found");
+    view.stop();
+  });
+
   it("has no waymark to look for on a step without one", () => {
     const view = watch(createRun(defineTutorial([{}])));
 
