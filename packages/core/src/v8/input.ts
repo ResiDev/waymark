@@ -33,16 +33,16 @@ export function whereClicked(event: MouseEvent, ctx: InputContext): ClickHit {
   const node = event.target;
   if (!(node instanceof Element) || !node.isConnected) return "ui";
 
-  // The halo counts, so a click on the padding around a small waymark still
-  // reads as a click on it, and so does a click on a child of the waymark.
-  if (ctx.element?.contains(node)) return "waymark";
-  if (ctx.rect && within(ctx.rect, ctx.padding, event.clientX, event.clientY)) {
-    return "waymark";
-  }
-
+  // Tutorial controls take precedence over the target and its padding.
   const { dialog, beacon } = ctx.ui;
   if (dialog?.contains(node) || beacon?.contains(node)) return "ui";
   if (node.closest("[data-waymark-ui]")) return "ui";
+
+  if (ctx.element?.contains(node)) return "waymark";
+  // Keyboard activation has no pointer position; its default 0,0 is not a hit.
+  if (event.detail > 0 && ctx.rect && within(ctx.rect, ctx.padding, event.clientX, event.clientY)) {
+    return "waymark";
+  }
 
   return "away";
 }
@@ -86,6 +86,10 @@ export function keyAction(
   ctx: InputContext,
 ): Action | undefined {
   if (ctx.collapsed) return undefined;
+
+  const alreadyHandled = event.defaultPrevented;
+  const hasShortcutModifier = event.altKey || event.ctrlKey || event.metaKey;
+  if (alreadyHandled || hasShortcutModifier) return undefined;
 
   switch (event.key) {
     case "Escape":

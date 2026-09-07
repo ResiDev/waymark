@@ -35,7 +35,7 @@ const addTarget = (waymark: string, rect: Partial<DOMRect> = {}) => {
 
 const clickAt = (node: Element, x: number, y: number) =>
   node.dispatchEvent(
-    new MouseEvent("click", { bubbles: true, clientX: x, clientY: y }),
+    new MouseEvent("click", { bubbles: true, detail: 1, clientX: x, clientY: y }),
   );
 
 const press = (key: string) =>
@@ -182,6 +182,63 @@ describe("createRun", () => {
 
     clickAt(document.body, 400, 400);
     expect(view.snapshot.collapsed).toBe(true);
+  });
+
+  it.each(["dialog", "beacon", "marked"])("gives %s UI precedence over the target and its padding", (kind) => {
+    const target = addTarget("save");
+    const button = document.createElement("button");
+    if (kind === "marked") {
+      button.dataset.waymarkUi = "";
+      target.append(button);
+    } else document.body.append(button);
+    const run = createRun(defineTutorial([{ waymark: "save", advance: "click" }, {}]), {
+      waymarkPadding: 20,
+      ui: () => ({
+        dialog: kind === "dialog" ? button : null,
+        beacon: kind === "beacon" ? button : null,
+      }),
+    });
+    const view = watch(run);
+
+    clickAt(button, 135, 70);
+
+    expect(view.snapshot).toMatchObject({ stepIndex: 0, collapsed: false });
+    view.stop();
+  });
+
+  it("ignores keyboard click coordinates but accepts keyboard activation of the target", () => {
+    const target = addTarget("save", { x: 0, y: 0, top: 0, left: 0 });
+    const away = document.createElement("button");
+    document.body.append(away);
+    const run = createRun(defineTutorial([{ waymark: "save", advance: "click" }, {}]));
+    const view = watch(run);
+
+    away.click(); // Keyboard/programmatic activation has detail 0 and coordinates 0,0.
+    expect(view.snapshot).toMatchObject({ stepIndex: 0, collapsed: true });
+    run.act("resume");
+    target.click();
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it.each(["altKey", "ctrlKey", "metaKey", "defaultPrevented"])("leaves %s key events alone", (kind) => {
+    const run = createRun(defineTutorial([{}, {}]));
+    const view = watch(run);
+    const event = new KeyboardEvent("keydown", {
+      key: "ArrowRight",
+      bubbles: true,
+      cancelable: true,
+      ...(kind === "defaultPrevented" ? {} : { [kind]: true }),
+    });
+    if (kind === "defaultPrevented") event.preventDefault();
+
+    window.dispatchEvent(event);
+
+    expect(view.snapshot.stepIndex).toBe(0);
+    expect(event.defaultPrevented).toBe(kind === "defaultPrevented");
+    press("ArrowRight");
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
   });
 
   it("takes the arrow keys and Escape", () => {
