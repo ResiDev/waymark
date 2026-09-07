@@ -1,14 +1,15 @@
 # Waymark core v8 — glossary
 
 Two halves. The **public** terms are what an application author or a renderer
-speaks (all declared in `types.ts`). The **machinery** terms are what the code
-inside core speaks; there are ten of them, and no others.
+speaks (all declared in `types.ts`, and shared with the project's
+[CONTEXT.md](../../../../CONTEXT.md)). The **machinery** terms are what the
+code inside core speaks; there are eleven of them, and no others.
 
 ## Public terms
 
-**Tutorial** — An ordered definition of guidance, built by `defineTutorial`.
-Runnable more than once. Its only content is `steps`.
-_Avoid_: tour, flow.
+**Walkthrough** — An ordered definition of guidance, built by
+`defineWalkthrough`. Runnable more than once. Its only content is `steps`.
+_Avoid_: tutorial, tour, flow.
 
 **Step** — One instruction. May name a Waymark, may state an Advance
 condition, and says how to scroll. Carries no content: an adapter extends the
@@ -19,8 +20,8 @@ _Avoid_: screen, stage.
 (or reached by `selector`). A Step without one is general guidance.
 _Avoid_: target, highlight, selector.
 
-**Run** — One live execution of a Tutorial: `act`, `getSnapshot`, `subscribe`.
-It watches the page only while Watched (below).
+**Run** — One live execution of a Walkthrough: `act`, `getSnapshot`,
+`subscribe`. It watches the page only while Mounted (below).
 _Avoid_: store, instance.
 
 **Location** — Where the Run believes the current Step's Waymark is:
@@ -42,8 +43,8 @@ _Avoid_: ready, gate-next.
 stays resumable. Clicking away collapses; `resume` brings it back.
 _Avoid_: unfocused.
 
-**UI** — The tutorial's own elements (dialog and beacon), which a click on is
-not a click away. Any element can opt in with `data-waymark-ui`.
+**UI** — The walkthrough's own elements (dialog and beacon), which a click on
+is not a click away. Any element can opt in with `data-waymark-ui`.
 
 **Action** — One of the six things a Run can be asked to do: `advance`,
 `previous`, `collapse`, `resume`, `reset`, `exit`. The Run may refuse.
@@ -58,29 +59,33 @@ Snapshot as it stands *after*.
 
 ## Machinery terms
 
-**State** — The whole of what a Run knows: the Snapshot, plus Scratch.
-Immutable; only `enter` and `end` build one from nothing. `state.ts`.
+**State** — The whole of what a Run knows: the Snapshot, two facts about the
+Run as a whole (`started`, `mounted`), and Scratch. Immutable; only `enter`
+and `end` build one from nothing, and both carry the Run-wide facts across.
+`state.ts`.
 
-**Scratch** — The part of State no renderer sees, all of it about the
-current Step: the Waymark `element`, whether a Signal has latched, whether
-the once-scroll has happened, and `heldSince`. Entering a Step resets it by
-construction, because entering a Step *is* a fresh State.
+**Scratch** — The part of State about the current Step only, which no
+renderer sees: the Waymark `element`, whether a condition has been
+Satisfied, whether the once-scroll has happened, and `heldSince`. Entering a
+Step resets it by construction, because entering a Step *is* a fresh State.
 
 **Step generation** — The counter `state.stepGeneration`, incremented whenever
 `enter` or `end` changes the step, including reset and returning to the same
-index. Queued signals capture this counter and are ignored if it has changed.
+index. A StepRead is stamped with it and ignored if it has since changed.
 
-**Rule** — One of the two pure functions that turn a State into an Outcome:
-`act(state, action)` for what the user asked, `observe(state, reading)` for
-what the page shows. Every behaviour in Waymark is in one of them. `rules.ts`.
+**Rule** — One of the three pure functions that turn a State into an Outcome:
+`act(state, action)` for what the user asked, `observe(state, read)` for what
+the page shows, `mount(state, mounted)` for subscribers arriving or leaving.
+Every behaviour in Waymark is in one of them. `rules.ts`.
 
-**Reading** — One coherent look at the page, taken by the Driver in a single
-frame and handed to `observe` as plain data: the element, its rect, whether
-it is in view, how the condition stands, and the time. Elements inside it
-are identity tokens, never read from.
+**StepRead** — One look at the current Step, taken by the Driver and handed
+to `observe` as plain data: the Waymark element, its rect, whether it is in
+view, how the condition stands, and the time. Usually taken once a frame;
+taken on the spot when the Waymark is clicked or fires one of the Step's
+events. Elements inside it are identity tokens, never read from.
 
 **Satisfied** — The user has done what a click or event condition asked. The
-page holds no trace of a click, so the Driver reports it on a Reading
+page holds no trace of a click, so the Driver reports it on a StepRead
 (`condition: "satisfied"`) taken on the spot, and it latches into Scratch:
 from then on the condition holds for good and never needs meeting again.
 A `state` check, by contrast, only ever `"holds"` for the look it was true.
@@ -89,37 +94,59 @@ A `state` check, by contrast, only ever `"holds"` for the look it was true.
 announce, and perhaps an element to scroll to. The *same* State by identity
 means "nothing happened", which is also how a Rule says "refused".
 
-**Driver** — The impure half, all of it in `run.ts`: read the page, commit
-Work, keep the live things in line. It enforces no rules.
+**Message** — What waits in the Driver's queue: plain data naming something
+that happened. An Action; a StepRead stamped with its Step generation; or
+the Run being mounted or unmounted. `apply` is the one door: it routes a
+Message to its Rule. Because a Message is data, a Run is a fold over its
+Messages, and a recorded session can be replayed with no DOM.
 
-**Work** — A Rule waiting to be applied: a function that, run against the
-State as it stands *then*, yields an Outcome. The Driver keeps a queue of it
-and obeys one item in full (store, sync, notify, announce) before the next.
-Work requested from inside a notification joins the back of the queue, so
+**Driver** — The impure half, all of it in `run.ts`: take StepReads, send
+Messages, reconcile the Live watchers. It decides nothing. It obeys one
+Message in full (scroll, store, reconcile, notify, announce) before the next.
+A Message sent from inside a notification joins the back of the queue, so
 every event of a change carries the Snapshot that change produced. Between
 drains the queue is empty.
 
-**Watched** — A running Run with at least one subscriber. Only then do the
-two live things exist: *watching* (the frame loop and the window's clicks and
-keys) and the *attachment* to the Waymark (ARIA attributes and the Step's
-event listeners). Both are derived from the State after every change, never
-started or stopped by hand.
+**Mounted** — A Run with at least one subscriber, recorded in State by the
+`mount` Rule. The Driver sends `mounted` when the first subscriber arrives
+and `unmounted` when the last leaves; nothing in between. Unmounting closes
+every Live watcher and drops a `state` check's clock, since no look can prove
+it kept holding in the gap. Progress, the collapsed flag and a Satisfied
+condition survive.
+
+**Live watchers** — The three things that exist only while the Run is
+Mounted and running: the window's *input* listeners, one animation *frame*
+request, and the *attachment* to the Waymark (ARIA attributes and the Step's
+event listeners, while the gate is shut). `liveWatchers(state)` is the pure
+description of which should exist; the Driver's `reconcile` opens and closes
+only the difference. Nothing live is ever started or stopped by hand.
+
+## How a Run starts
+
+1. The first `subscribe` sends `mounted`, then a StepRead of the current Step.
+2. `mount` records the Run as Mounted. `reconcile` opens the input
+   listeners and, if the Step needs one, requests a frame.
+3. `observe` sees a Run that has not started. That look only locates: the
+   condition is not consulted, so nothing can move the Run on. It records
+   `started` and announces `start` with the Waymark already found.
 
 ## How one frame flows
 
-1. The frame loop queues `evaluatePage` through `commit`.
-2. `readPage` makes a Reading: reuse the cached element if still connected,
-   else query for it; measure it; run the Step's check.
-3. `observe` works out the Location, whether to scroll, and the condition's
+1. The frame fires. The Driver takes a StepRead and sends it.
+2. `readStep` reuses the cached element if it is still connected, inside the
+   root and matching the selector, else queries for it; measures it; runs
+   the Step's check.
+3. `apply` drops the read if the Step generation has moved on; otherwise
+   `observe` works out the Location, whether to scroll, and the condition's
    clock. If nothing changed it returns the very same State.
-4. `commit` runs that Work, stores the State, calls `sync` (which usually
-   finds nothing to do), notifies subscribers only if the Snapshot is a new
-   object, and announces the Outcome's events.
+4. The Driver stores the State, reconciles (which re-requests the frame if
+   the Step still wants one), notifies subscribers only if the Snapshot is a
+   new object, and announces the Outcome's events.
 
 A click on the Waymark is the same flow with the condition `"satisfied"`,
-bound to the step generation it happened in. A key press or an `act()` call goes
-through `act` instead of `observe`, then the same `commit`. Any of them
-called from inside a notification waits its turn in the queue.
+stamped with the Step generation it happened in. A key press or an `act()`
+call is an Action Message instead. Any of them sent from inside a
+notification waits its turn in the queue.
 
 ## The condition clock
 
@@ -130,19 +157,36 @@ for `delayMs`; with no delay, holding is being due. Because a satisfied
 condition never stops holding, a click still counts after its delay; because
 a check can stop holding, a flickering check starts its delay over.
 
+## What the Message queue changed
+
+- `Work` (a closure that read the State ambiently) became `Message` (data).
+  The queue is now a log, and `apply` the only way through it.
+- `started` and the subscriber count left the Driver. Both are facts a Rule
+  needs, so both are in State, and the first look and the unmount clock
+  reset are Rules rather than Driver bookkeeping.
+- `sync`, which compared the live things to the State by hand, became
+  `reconcile` against `liveWatchers(state)`, a pure description. Whether a
+  frame is wanted, whether to listen for the Step's events, and what
+  `aria-expanded` should say are all fields of that description.
+- The self-rescheduling frame loop became one frame at a time, requested
+  only while the Step has something the next look could change. A Step
+  with no Waymark and no shut `state` check costs no frames.
+
 ## What v8 took out of v7
 
 - The `decide` switchboard and the `Input` envelope: two named Rules instead
-  of three input kinds, one of which bypassed the switchboard anyway.
+  of three input kinds, one of which bypassed the switchboard anyway. (The
+  Message queue brings an envelope back, but only at the queue boundary,
+  where it carries the Step generation and makes a session replayable.)
 - The second condition clock: click and event conditions used to arm the
   clock through a separate path with different disarm rules. Now a click is
-  a Reading whose condition is satisfied.
+  a StepRead whose condition is satisfied.
 - `buildSnapshot` and `rendersTheSame`: the Snapshot is held in the State,
   so "did the renderer's view change?" is an identity check.
 - `Announcement`: a Run event is stamped with the Step index of the State it
   left, which is the same for every event, so a Rule just names the type.
 - `Definition` and `AdvanceRule`: a Step is read on the spot through five
-  small accessors in `tutorial.ts`, with nothing precomputed or cached.
-- The `Resource` / `keepInSync` / deps system and its memo layer: two live
-  things, each an open-and-return-close function, compared by hand in `sync`.
+  small accessors in `walkthrough.ts`, with nothing precomputed or cached.
+- The `Resource` / `keepInSync` / deps system and its memo layer: three live
+  watchers described by one pure function and reconciled in one place.
 - The reused Reading buffer: measured as noise.
