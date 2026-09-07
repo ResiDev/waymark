@@ -94,6 +94,52 @@ describe("createRun", () => {
     expect(target).not.toHaveAttribute("aria-haspopup");
   });
 
+  it.each(["unsubscribe", "exit", "advance"])("restores authored ARIA attributes on %s", (cleanup) => {
+    const target = addTarget("save");
+    target.setAttribute("aria-haspopup", "menu");
+    target.setAttribute("aria-expanded", "false");
+    const run = createRun(defineTutorial([{ waymark: "save" }, {}]));
+    const view = watch(run);
+    expect(target).toHaveAttribute("aria-haspopup", "dialog");
+    expect(target).toHaveAttribute("aria-expanded", "true");
+
+    if (cleanup === "unsubscribe") view.stop();
+    else run.act(cleanup === "exit" ? "exit" : "advance");
+
+    expect(target).toHaveAttribute("aria-haspopup", "menu");
+    expect(target).toHaveAttribute("aria-expanded", "false");
+    view.stop();
+  });
+
+  it("updates expanded state on collapse and resume without losing original values", () => {
+    const target = addTarget("save");
+    target.setAttribute("aria-expanded", "");
+    const run = createRun(defineTutorial([{ waymark: "save" }]));
+    const view = watch(run);
+
+    run.act("collapse");
+    expect(target).toHaveAttribute("aria-expanded", "false");
+    run.act("resume");
+    expect(target).toHaveAttribute("aria-expanded", "true");
+    view.stop();
+
+    expect(target).not.toHaveAttribute("aria-haspopup");
+    expect(target).toHaveAttribute("aria-expanded", "");
+  });
+
+  it("attaches a newly found target as collapsed when the run is collapsed", () => {
+    const run = createRun(defineTutorial([{ waymark: "save" }]));
+    const view = watch(run);
+    run.act("collapse");
+    const target = addTarget("save");
+
+    flush();
+
+    expect(target).toHaveAttribute("aria-expanded", "false");
+    view.stop();
+    expect(target).not.toHaveAttribute("aria-expanded");
+  });
+
   it("reports a waymark as lost once it leaves the page", () => {
     const target = addTarget("save");
     const view = watch(createRun(defineTutorial([{ waymark: "save" }])));

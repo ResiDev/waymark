@@ -81,16 +81,20 @@ const watch = (
  * and listens for the Step's events, if it names any.
  */
 const attach = (element: Element, step: Step, onEvent: () => void) => {
+  const originalAttributes = ["aria-haspopup", "aria-expanded"].map(
+    (name) => [name, element.getAttribute(name)] as const,
+  );
   element.setAttribute("aria-haspopup", "dialog");
-  element.setAttribute("aria-expanded", "true");
   const control = new AbortController();
   for (const name of eventsOf(step)) {
     element.addEventListener(name, onEvent, { signal: control.signal });
   }
   return () => {
     control.abort();
-    element.removeAttribute("aria-haspopup");
-    element.removeAttribute("aria-expanded");
+    for (const [name, value] of originalAttributes) {
+      if (value === null) element.removeAttribute(name);
+      else element.setAttribute(name, value);
+    }
   };
 };
 
@@ -331,6 +335,12 @@ export function createRun<TStep extends Step>(
               detach: attach(element, step, handleConditionSatisfied),
             }
           : undefined;
+    }
+    if (element && running) {
+      const expanded = String(!running.collapsed);
+      if (element.getAttribute("aria-expanded") !== expanded) {
+        element.setAttribute("aria-expanded", expanded);
+      }
     }
   }
 
