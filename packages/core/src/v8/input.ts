@@ -18,7 +18,7 @@ export type InputContext = Readonly<{
 
 /**
  * - `waymark` — on the Waymark, or within the halo drawn around it.
- * - `ui` — on the tutorial's own UI, or on something that opted out.
+ * - `ui` — on the walkthrough's own UI, or on something that opted out.
  * - `away` — the user has turned their attention elsewhere.
  */
 export type ClickHit = "waymark" | "ui" | "away";
@@ -33,7 +33,7 @@ export function whereClicked(event: MouseEvent, ctx: InputContext): ClickHit {
   const node = event.target;
   if (!(node instanceof Element) || !node.isConnected) return "ui";
 
-  // Tutorial controls take precedence over the target and its padding.
+  // Walkthrough UI takes precedence over the target and its padding.
   const { dialog, beacon } = ctx.ui;
   if (dialog?.contains(node) || beacon?.contains(node)) return "ui";
   if (node.closest("[data-waymark-ui]")) return "ui";

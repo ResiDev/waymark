@@ -1,36 +1,35 @@
 import { keyAction, whereClicked } from "./input";
-import { act, observe } from "./rules";
-import type { Reading } from "./rules";
-import { enter, noChange } from "./state";
-import type { Outcome, State } from "./state";
+import { apply, liveWatchers } from "./rules";
+import type { Attachment, Message, StepRead } from "./rules";
+import { enter } from "./state";
+import type { State } from "./state";
 import {
   checkOf,
   conditionOf,
   eventsOf,
   hasWaymark,
   selectorOf,
-} from "./tutorial";
+} from "./walkthrough";
 import type {
   Action,
   Rect,
   Run,
   RunOptions,
-  Running,
   Snapshot,
   Step,
-  Tutorial,
   UiElements,
+  Walkthrough,
 } from "./types";
 
 /**
  * The driver: everything impure, and nothing else.
  *
- *   readPage()   every DOM read of a frame, packaged as one Reading
- *   commit()     the one place the State changes, one piece of Work at a time
- *   sync()       the two live things, brought in line with the State
+ *   readStep()    every DOM read of a look, packaged as one StepRead
+ *   send()        the one place the State changes: a Message in, one at a time
+ *   reconcile()   the live watchers, brought in line with what the State wants
  *
- * It enforces no rules. Moving between Steps is `act` or `observe` handing
- * back a State built by `enter`, and `sync` noticing that the Step changed.
+ * It decides nothing. Every change is `apply` handing back a State, and every
+ * live thing exists because `liveWatchers` said it should.
  */
 
 const NO_UI: UiElements = { dialog: null, beacon: null };
@@ -41,53 +40,35 @@ const inViewport = (rect: Rect): boolean =>
   rect.top < globalThis.innerHeight &&
   rect.left < globalThis.innerWidth;
 
-// ---- the live things, each a function that opens and returns how to close --
+// ---- the live watchers, each a function that opens and returns how to close --
 
-/** A tick can end the Run, which closes this loop from inside itself. */
-const openFrameLoop = (tick: () => void) => {
-  let live = true;
-  let frameId = requestAnimationFrame(function loop() {
-    try {
-      tick();
-    } finally {
-      if (live) frameId = requestAnimationFrame(loop);
-    }
-  });
-  return () => {
-    live = false;
-    cancelAnimationFrame(frameId);
-  };
-};
-
-/** Watching: a frame loop, and the window's clicks and keys. */
-const watch = (
-  tick: () => void,
+/** Input: the window's clicks and keys. */
+const openInput = (
   onClick: (event: MouseEvent) => void,
   onKeyDown: (event: KeyboardEvent) => void,
 ) => {
-  const closeLoop = openFrameLoop(tick);
   const control = new AbortController();
   const { signal } = control;
   window.addEventListener("click", onClick, { capture: true, signal });
   window.addEventListener("keydown", onKeyDown, { signal });
-  return () => {
-    closeLoop();
-    control.abort();
-  };
+  return () => control.abort();
 };
 
 /**
  * Attaches the Run to a Waymark: tells assistive technology it has a popover,
- * and listens for the Step's events, if it names any.
+ * and listens for the Step's events while there is something to hear.
  */
-const attach = (element: Element, step: Step, onEvent: () => void) => {
+const attach = (to: Attachment, onEvent: () => void) => {
+  const { element } = to;
   const originalAttributes = ["aria-haspopup", "aria-expanded"].map(
     (name) => [name, element.getAttribute(name)] as const,
   );
   element.setAttribute("aria-haspopup", "dialog");
   const control = new AbortController();
-  for (const name of eventsOf(step)) {
-    element.addEventListener(name, onEvent, { signal: control.signal });
+  if (to.listening) {
+    for (const name of eventsOf(to.step)) {
+      element.addEventListener(name, onEvent, { signal: control.signal });
+    }
   }
   return () => {
     control.abort();
@@ -99,53 +80,46 @@ const attach = (element: Element, step: Step, onEvent: () => void) => {
 };
 
 export function createRun<TStep extends Step>(
-  tutorial: Tutorial<TStep>,
+  walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep> = {},
 ): Run<TStep> {
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;
 
   const listeners = new Set<() => void>();
-  let state: State<TStep> = enter(tutorial, options.startAt ?? 0);
-  let started = false;
+  let state: State<TStep> = enter(walkthrough, options.startAt ?? 0);
 
   // ---- the one place the State changes --------------------------------------
 
-  /**
-   * Something that, run against the State as it stands *then*, says what
-   * happens. Handed to `commit` instead of a finished Outcome so that work
-   * requested from inside a notification sees the State it will be applied to.
-   */
-  type Work = () => Outcome<TStep>;
-
-  const queue: Work[] = [];
+  const queue: Message[] = [];
   let draining = false;
 
   /**
-   * Runs Work in order, one item at a time. Each item is obeyed in full:
+   * Applies Messages in order, one at a time. Each is obeyed in full:
    *
-   *   1. scroll     fire and forget, so it goes first and cannot go stale
-   *   2. store      the new State, if there is one
-   *   3. sync       the live things follow the State
-   *   4. notify     subscribers, only if the Snapshot is a new object
-   *   5. announce   Run events, after notify, so an onEvent handler always
-   *                 sees a renderer that already knows
+   *   1. scroll      fire and forget, so it goes first and cannot go stale
+   *   2. store       the new State
+   *   3. reconcile   the live watchers follow the State
+   *   4. notify      subscribers, only if the Snapshot is a new object
+   *   5. announce    Run events, after notify, so an onEvent handler always
+   *                  sees a renderer that already knows
    *
-   * A listener or onEvent handler may call `act`, or cause a DOM event the
-   * Run is listening for. That Work joins the queue and runs once this item
-   * has been notified and announced in full, so every event of a change
-   * carries the Snapshot that change produced, never one a callback made
-   * afterwards. Between drains the queue is empty and `draining` is false.
+   * A listener or onEvent handler may call `act`, subscribe, or cause a DOM
+   * event the Run is listening for. That Message joins the queue and runs
+   * once this one has been notified and announced in full, so every event of
+   * a change carries the Snapshot that change produced, never one a callback
+   * made afterwards. Between drains the queue is empty and `draining` is false.
    *
    * A callback that throws does not stop the others, nor the rest of the
    * queue; its error is thrown once the drain is over.
    */
-  const commit = (work: Work) => {
-    queue.push(work);
+  const send = (message: Message) => {
+    queue.push(message);
     if (draining) return;
     draining = true;
 
     const errors: unknown[] = [];
+
     const invoke = (callback: () => void) => {
       try {
         callback();
@@ -156,7 +130,7 @@ export function createRun<TStep extends Step>(
 
     try {
       for (let cursor = 0; cursor < queue.length; cursor++) {
-        const outcome = queue[cursor]();
+        const outcome = apply(state, queue[cursor], walkthrough);
         // `scrollIntoView` is optional only because jsdom does not implement it.
         outcome.scrollTo?.scrollIntoView?.({
           behavior: "smooth",
@@ -164,10 +138,11 @@ export function createRun<TStep extends Step>(
         });
 
         const before = state;
-        if (outcome.state !== before) {
-          state = outcome.state;
-          sync();
-        }
+        state = outcome.state;
+        // Always, not only on change: a frame that has just fired must be
+        // re-requested even when its look found nothing new.
+        reconcile();
+
         const after = state.snapshot;
         if (after !== before.snapshot) {
           for (const listener of [...listeners]) {
@@ -178,7 +153,7 @@ export function createRun<TStep extends Step>(
           invoke(() =>
             options.onEvent?.({
               type,
-              step: tutorial.steps[before.snapshot.stepIndex],
+              step: walkthrough.steps[before.snapshot.stepIndex],
               stepIndex: before.snapshot.stepIndex,
               snapshot: after,
             }),
@@ -195,13 +170,10 @@ export function createRun<TStep extends Step>(
       throw new AggregateError(errors, "Run callbacks failed.");
   };
 
-  // ---- one frame -------------------------------------------------------------
+  // ---- one look --------------------------------------------------------------
 
-  /** The only DOM reads of a frame, packaged as data. */
-  const readPage = (
-    step: TStep,
-    mode: "check" | "satisfied" | "locate",
-  ): Reading => {
+  /** The only DOM reads of a look, packaged as data. */
+  const readStep = (step: TStep, satisfied: boolean): StepRead => {
     const selector = hasWaymark(step) ? selectorOf(step) : undefined;
 
     const cached = state.element;
@@ -222,42 +194,27 @@ export function createRun<TStep extends Step>(
       element,
       rect,
       inView: rect !== null && inViewport(rect),
-      condition:
-        mode === "satisfied"
-          ? "satisfied"
-          : mode === "check" && checkOf(step)?.(element)
-            ? "holds"
-            : "unmet",
+      // The look that starts a Run does not consult the check (see `observe`),
+      // so it is not run: it is the author's code, and its answer would be dropped.
+      condition: satisfied
+        ? "satisfied"
+        : state.started && checkOf(step)?.(element)
+          ? "holds"
+          : "unmet",
       now: performance.now(),
     };
   };
 
-  /** Read the page and calculate an outcome against the current state. */
-  function evaluatePage(
-    mode: "check" | "satisfied" | "locate" = "check",
-  ): Outcome<TStep> {
-    if (state.snapshot.phase !== "running") return noChange(state);
-    return observe(state, readPage(state.snapshot.step, mode), tutorial);
-  }
-
-  function handleConditionSatisfied() {
-    const generation = state.stepGeneration;
-    commit(() => {
-      if (state.stepGeneration !== generation) return noChange(state);
-      return evaluatePage("satisfied");
+  /** Look at the current Step now, and queue what was seen. Nothing to see once the Run is over. */
+  const sendRead = (satisfied: boolean) => {
+    const snapshot = state.snapshot;
+    if (snapshot.phase !== "running") return;
+    send({
+      kind: "read",
+      stepGeneration: state.stepGeneration,
+      read: readStep(snapshot.step, satisfied),
     });
-  }
-
-  /** Locate and announce startup in one commit, before conditions can advance. */
-  function initialize(): Outcome<TStep> {
-    sync();
-    const running = getWatchedSnapshot();
-    if (!running) return noChange(state);
-    if (started) return evaluatePage();
-    const outcome = evaluatePage("locate");
-    started = true;
-    return { ...outcome, events: ["start"] };
-  }
+  };
 
   // ---- what the user is doing ------------------------------------------------
 
@@ -281,84 +238,87 @@ export function createRun<TStep extends Step>(
         state.snapshot.phase === "running" &&
         conditionOf(state.snapshot.step) === "click"
       ) {
-        handleConditionSatisfied();
+        sendRead(true);
       }
     } else if (hit === "away") {
-      commit(() => act(state, "collapse", tutorial));
+      send({ kind: "act", action: "collapse" });
     }
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
     const action = keyAction(event, getInputContext());
-    if (action) commit(() => act(state, action, tutorial));
+    if (action) send({ kind: "act", action });
   };
 
-  // ---- the two live things, derived from the State ---------------------------
-  //
-  // Watching (the frame loop and window input) exists while the Run is running
-  // and someone is subscribed. The attachment exists while watching and a
-  // Waymark has been found, and is redone when the element or the Step changes.
+  // ---- the live watchers, reconciled with the State after every Message ------
 
-  let stopWatching: (() => void) | undefined;
-  let attached:
-    | { element: Element; step: Step; detach: () => void }
-    | undefined;
+  let closeInput: (() => void) | undefined;
+  let frame: number | undefined;
+  let attached: { to: Attachment; detach: () => void } | undefined;
 
-  /** The running Snapshot while someone is subscribed to see it; otherwise nothing should be live. */
-  const getWatchedSnapshot = (): Running<TStep> | undefined =>
-    listeners.size > 0 && state.snapshot.phase === "running"
-      ? state.snapshot
-      : undefined;
+  /** One frame, one look. `reconcile` requests the next if the Step still wants one. */
+  const tick = () => {
+    frame = undefined;
+    sendRead(false);
+  };
 
-  function sync() {
-    const running = getWatchedSnapshot();
-    // Start or stop only when the State and the loop disagree. When they agree
-    // (watching and should be, or not watching and should not be) there is
-    // nothing to do, and that is the common case: sync runs after every change.
-    const shouldWatch = running !== undefined;
-    if (shouldWatch && stopWatching === undefined) {
-      stopWatching = watch(() => commit(evaluatePage), onClick, onKeyDown);
-    } else if (!shouldWatch && stopWatching !== undefined) {
-      stopWatching();
-      stopWatching = undefined;
+  function reconcile() {
+    const live = liveWatchers(state);
+
+    if (live.input && closeInput === undefined) {
+      closeInput = openInput(onClick, onKeyDown);
+    } else if (!live.input && closeInput !== undefined) {
+      closeInput();
+      closeInput = undefined;
     }
 
-    const element = running ? state.element : null;
-    const step = running && element ? running.step : undefined;
-    if (element !== attached?.element || step !== attached?.step) {
+    if (live.frame && frame === undefined) {
+      frame = requestAnimationFrame(tick);
+    } else if (!live.frame && frame !== undefined) {
+      cancelAnimationFrame(frame);
+      frame = undefined;
+    }
+
+    const want = live.waymark;
+    const have = attached?.to;
+    if (
+      want?.element !== have?.element ||
+      want?.stepGeneration !== have?.stepGeneration ||
+      want?.listening !== have?.listening
+    ) {
       attached?.detach();
-      attached =
-        element && step
-          ? {
-              element,
-              step,
-              detach: attach(element, step, handleConditionSatisfied),
-            }
-          : undefined;
+      attached = want
+        ? { to: want, detach: attach(want, () => sendRead(true)) }
+        : undefined;
     }
-    if (element && running) {
-      const expanded = String(!running.collapsed);
-      if (element.getAttribute("aria-expanded") !== expanded) {
-        element.setAttribute("aria-expanded", expanded);
+    if (want) {
+      const expanded = String(want.expanded);
+      if (want.element.getAttribute("aria-expanded") !== expanded) {
+        want.element.setAttribute("aria-expanded", expanded);
       }
     }
   }
 
   return {
-    act: (action: Action) => commit(() => act(state, action, tutorial)),
+    act: (action: Action) => send({ kind: "act", action }),
     getSnapshot: (): Snapshot<TStep> => state.snapshot,
     subscribe: (listener) => {
+      const first = listeners.size === 0;
       listeners.add(listener);
-      try {
-        commit(initialize);
-      } catch (error) {
-        listeners.delete(listener);
-        sync();
-        throw error;
+      if (first) {
+        try {
+          send({ kind: "mounted" });
+          sendRead(false);
+        } catch (error) {
+          listeners.delete(listener);
+          if (listeners.size === 0) send({ kind: "unmounted" });
+          throw error;
+        }
       }
       return () => {
-        listeners.delete(listener);
-        sync();
+        if (listeners.delete(listener) && listeners.size === 0) {
+          send({ kind: "unmounted" });
+        }
       };
     },
   };

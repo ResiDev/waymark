@@ -1,19 +1,19 @@
-import type { AdvanceCondition, Step, Tutorial } from "./types";
+import type { AdvanceCondition, Step, Walkthrough } from "./types";
 
 /**
- * Builds a Tutorial, and is the only place that knows how a Step is written.
+ * Builds a Walkthrough, and is the only place that knows how a Step is written.
  *
- * `defineTutorial` checks the Steps once, up front. The readers below are how
+ * `defineWalkthrough` checks the Steps once, up front. The readers below are how
  * everything else looks at a Step: they take the sugar off `advance` on the
  * spot, so no other module has to know that `advance: "click"` and
  * `advance: { when: "click" }` mean the same thing, and nothing needs to be
  * precomputed or cached.
  */
-export function defineTutorial<const TStep extends Step>(
+export function defineWalkthrough<const TStep extends Step>(
   steps: readonly TStep[],
-): Tutorial<TStep> {
+): Walkthrough<TStep> {
   if (steps.length === 0) {
-    throw new Error("A tutorial needs at least one step.");
+    throw new Error("A walkthrough needs at least one step.");
   }
   steps.forEach((step, index) => {
     if (step.waymark !== undefined && step.selector !== undefined) {

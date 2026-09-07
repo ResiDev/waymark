@@ -1,37 +1,46 @@
-import { hasWaymark } from "./tutorial";
+import { hasWaymark } from "./walkthrough";
 import type {
   Location,
   RunEventType,
   Running,
   Snapshot,
   Step,
-  Tutorial,
+  Walkthrough,
 } from "./types";
 
 /**
  * The whole of what a Run knows.
  *
- * It is the Snapshot a renderer sees, plus Scratch about the current Step that
- * no renderer sees. The Snapshot is held, not derived: a rule that changes
- * something visible makes a new Snapshot, and one that only touches Scratch
- * leaves the old one in place. So the driver has one question to ask after
- * any rule — "is the Snapshot the same object?" — and that answers both
- * "should I notify?" and "does the renderer need a new read?".
+ * It is the Snapshot a renderer sees, two facts about the Run as a whole that
+ * no renderer sees, and Scratch about the current Step. The Snapshot is held,
+ * not derived: a rule that changes something visible makes a new Snapshot,
+ * and one that only touches the rest leaves the old one in place. So the
+ * driver has one question to ask after any rule — "is the Snapshot the same
+ * object?" — and that answers both "should I notify?" and "does the renderer
+ * need a new read?".
  *
  * Only `enter` and `end` build a State from nothing; every rule copies one
- * and changes a field. That is what keeps Scratch from outliving its Step.
+ * and changes a field. That is what keeps Scratch from outliving its Step,
+ * and what carries the Run-wide facts from one Step to the next.
  */
 export type State<TStep extends Step = Step> = Readonly<{
   snapshot: Snapshot<TStep>;
   /**
    * Increments when entering or ending a step, including reset and returning
-   * to the same index. Queued signals with an older generation are ignored.
+   * to the same index. A StepRead stamped with an older generation is ignored.
    */
   stepGeneration: number;
 
+  // ---- About the Run as a whole; carried from Step to Step -----------------
+
+  /** `start` has been announced. Once per Run: reset does not repeat it. */
+  started: boolean;
+  /** Someone is subscribed. The one fact about the outside a rule needs. */
+  mounted: boolean;
+
   // ---- Scratch: about the current Step; reset by entering one -------------
 
-  /** The Waymark element. Kept so the next frame does not search, and so the driver can attach to it. */
+  /** The Waymark element. Kept so the next look does not search, and so the driver can attach to it. */
   element: Element | null;
   /** The user has clicked the Waymark, or it has fired one of the Step's events. For good: the condition holds from then on. */
   satisfied: boolean;
@@ -67,24 +76,29 @@ export const ABSENT: Location = { status: "absent" };
 export const SEARCHING: Location = { status: "searching" };
 export const LOST: Location = { status: "lost" };
 
-/** Enter a step with fresh internal state and the caller's next generation. */
+/**
+ * A fresh State for a Step. With a `previous` State the Run-wide facts carry
+ * over and the step generation moves on; without one, this is the Run's first.
+ */
 export function enter<TStep extends Step>(
-  tutorial: Tutorial<TStep>,
+  walkthrough: Walkthrough<TStep>,
   index: number,
-  stepGeneration = 0,
+  previous?: State<TStep>,
 ): State<TStep> {
-  const step = tutorial.steps[index];
+  const step = walkthrough.steps[index];
   return {
     snapshot: {
       phase: "running",
       step,
       stepIndex: index,
-      stepCount: tutorial.steps.length,
+      stepCount: walkthrough.steps.length,
       canAdvance: step.advance === undefined,
       collapsed: false,
       waymark: hasWaymark(step) ? SEARCHING : ABSENT,
     },
-    stepGeneration,
+    stepGeneration: previous ? previous.stepGeneration + 1 : 0,
+    started: previous?.started ?? false,
+    mounted: previous?.mounted ?? false,
     element: null,
     satisfied: false,
     scrolled: false,
@@ -94,14 +108,18 @@ export function enter<TStep extends Step>(
 
 /** A Run that is over. No Step is current, so it holds no Scratch at all. */
 export function end<TStep extends Step>(
-  tutorial: Tutorial<TStep>,
+  previous: State<TStep>,
   phase: "completed" | "exited",
-  index: number,
-  stepGeneration = 0,
 ): State<TStep> {
   return {
-    snapshot: { phase, stepIndex: index, stepCount: tutorial.steps.length },
-    stepGeneration,
+    snapshot: {
+      phase,
+      stepIndex: previous.snapshot.stepIndex,
+      stepCount: previous.snapshot.stepCount,
+    },
+    stepGeneration: previous.stepGeneration + 1,
+    started: previous.started,
+    mounted: previous.mounted,
     element: null,
     satisfied: false,
     scrolled: false,

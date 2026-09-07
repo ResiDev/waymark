@@ -1,4 +1,4 @@
-export { defineTutorial } from "./tutorial";
+export { defineWalkthrough } from "./walkthrough";
 export { createRun } from "./run";
 export { actions } from "./types";
 export type {
@@ -15,6 +15,6 @@ export type {
   Running,
   Snapshot,
   Step,
-  Tutorial,
+  Walkthrough,
   UiElements,
 } from "./types";

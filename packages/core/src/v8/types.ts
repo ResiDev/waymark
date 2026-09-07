@@ -2,7 +2,7 @@
  * Waymark's public vocabulary, in one place. See GLOSSARY.md for the terms in
  * prose; this file is their shape.
  *
- * A Tutorial is a definition, a Run is one live execution of it, and a Step is
+ * A Walkthrough is a definition, a Run is one live execution of it, and a Step is
  * one instruction that may point at a Waymark — an element in the page marked
  * `data-waymark` — and may state an Advance condition. A renderer reads a
  * Snapshot and sends Actions; that is the whole of the surface.
@@ -66,8 +66,8 @@ export type Step = Readonly<{
   scroll?: "once" | "always" | "never";
 }>;
 
-/** An ordered definition, built by `defineTutorial`. Runnable more than once. */
-export type Tutorial<TStep extends Step = Step> = Readonly<{
+/** An ordered definition, built by `defineWalkthrough`. Runnable more than once. */
+export type Walkthrough<TStep extends Step = Step> = Readonly<{
   steps: readonly TStep[];
 }>;
 
@@ -136,7 +136,7 @@ export type RunEvent<TStep extends Step = Step> = Readonly<{
 }>;
 
 /**
- * The parts of the tutorial's own UI, so that clicks on them are not mistaken
+ * The parts of the walkthrough's own UI, so that clicks on them are not mistaken
  * for the user clicking away. Elements carrying `data-waymark-ui` count too, no
  * registration needed.
  */
@@ -157,7 +157,7 @@ export type RunOptions<TStep extends Step = Step> = Readonly<{
 }>;
 
 /**
- * One live execution of a Tutorial.
+ * One live execution of a Walkthrough.
  *
  * The Run watches the page only while someone is subscribed and the Run is
  * still going: no subscribers, or a finished Run, means no frame loop and no
