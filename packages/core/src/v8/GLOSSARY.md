@@ -2,7 +2,7 @@
 
 Two halves. The **public** terms are what an application author or a renderer
 speaks (all declared in `types.ts`). The **machinery** terms are what the code
-inside core speaks; there are eight of them, and no others.
+inside core speaks; there are ten of them, and no others.
 
 ## Public terms
 
@@ -66,6 +66,10 @@ current Step: the Waymark `element`, whether a Signal has latched, whether
 the once-scroll has happened, and `heldSince`. Entering a Step resets it by
 construction, because entering a Step *is* a fresh State.
 
+**Step generation** — The counter `state.stepGeneration`, incremented whenever
+`enter` or `end` changes the step, including reset and returning to the same
+index. Queued signals capture this counter and are ignored if it has changed.
+
 **Rule** — One of the two pure functions that turn a State into an Outcome:
 `act(state, action)` for what the user asked, `observe(state, reading)` for
 what the page shows. Every behaviour in Waymark is in one of them. `rules.ts`.
@@ -85,8 +89,15 @@ A `state` check, by contrast, only ever `"holds"` for the look it was true.
 announce, and perhaps an element to scroll to. The *same* State by identity
 means "nothing happened", which is also how a Rule says "refused".
 
-**Driver** — The impure half, all of it in `run.ts`: read the page, commit an
-Outcome, keep the live things in line. It enforces no rules.
+**Driver** — The impure half, all of it in `run.ts`: read the page, commit
+Work, keep the live things in line. It enforces no rules.
+
+**Work** — A Rule waiting to be applied: a function that, run against the
+State as it stands *then*, yields an Outcome. The Driver keeps a queue of it
+and obeys one item in full (store, sync, notify, announce) before the next.
+Work requested from inside a notification joins the back of the queue, so
+every event of a change carries the Snapshot that change produced. Between
+drains the queue is empty.
 
 **Watched** — A running Run with at least one subscriber. Only then do the
 two live things exist: *watching* (the frame loop and the window's clicks and
@@ -96,17 +107,19 @@ started or stopped by hand.
 
 ## How one frame flows
 
-1. The frame loop calls `look()`.
+1. The frame loop queues `evaluatePage` through `commit`.
 2. `readPage` makes a Reading: reuse the cached element if still connected,
    else query for it; measure it; run the Step's check.
 3. `observe` works out the Location, whether to scroll, and the condition's
    clock. If nothing changed it returns the very same State.
-4. `commit` stores the State, calls `sync` (which usually finds nothing to
-   do), and notifies subscribers only if the Snapshot is a new object.
+4. `commit` runs that Work, stores the State, calls `sync` (which usually
+   finds nothing to do), notifies subscribers only if the Snapshot is a new
+   object, and announces the Outcome's events.
 
-A click on the Waymark is the same flow with the condition `"satisfied"`. A key press or
-an `act()` call goes through `act` instead of `observe`, then the same
-`commit`.
+A click on the Waymark is the same flow with the condition `"satisfied"`,
+bound to the step generation it happened in. A key press or an `act()` call goes
+through `act` instead of `observe`, then the same `commit`. Any of them
+called from inside a notification waits its turn in the queue.
 
 ## The condition clock
 

@@ -252,6 +252,177 @@ describe("createRun", () => {
     ]);
   });
 
+  it("finishes announcing a change before obeying an act it caused", () => {
+    const events: string[] = [];
+    const run = createRun(defineTutorial([{}]), {
+      onEvent: (event: RunEvent) => {
+        events.push(`${event.type}:${event.snapshot.phase}`);
+        if (event.type === "advance") run.act("reset");
+      },
+    });
+    watch(run);
+
+    run.act("advance");
+
+    // Without the queue, reset would land between advance and finish, and
+    // finish would carry the running snapshot the reset produced.
+    expect(events).toEqual([
+      "start:running",
+      "advance:completed",
+      "finish:completed",
+      "reset:running",
+    ]);
+    expect(run.getSnapshot().phase).toBe("running");
+  });
+
+  it("lets every listener see a change before a listener's act moves it on", () => {
+    const run = createRun(defineTutorial([{}, {}, {}]));
+    const seenByFirst: number[] = [];
+    const seenBySecond: number[] = [];
+    run.subscribe(() => {
+      seenByFirst.push(run.getSnapshot().stepIndex);
+      if (run.getSnapshot().stepIndex === 1) run.act("advance");
+    });
+    run.subscribe(() => seenBySecond.push(run.getSnapshot().stepIndex));
+
+    run.act("advance");
+
+    expect(seenByFirst).toEqual([1, 2]);
+    expect(seenBySecond).toEqual([1, 2]);
+  });
+
+  it("ignores a condition met on a step the run has since left", () => {
+    const target = addTarget("save");
+    const run = createRun(
+      defineTutorial([
+        { waymark: "save", advance: "click" },
+        { waymark: "save", advance: "click" },
+      ]),
+      { startAt: 1 },
+    );
+    const view = watch(run);
+    let once = true;
+    run.subscribe(() => {
+      if (!once) return;
+      once = false;
+      // Both join the queue behind this notification, in this order.
+      run.act("previous");
+      clickAt(target, 50, 40);
+    });
+
+    run.act("collapse");
+
+    // The click was raised on step 1; by the time it runs, step 0 is current.
+    // Unguarded, it would satisfy step 0's click and move the run back to 1.
+    expect(view.snapshot.stepIndex).toBe(0);
+    expect(view.snapshot.canAdvance).toBe(false);
+  });
+
+  it("keeps going when a listener throws, and reports the error after", () => {
+    const events: string[] = [];
+    const run = createRun(defineTutorial([{}]), {
+      onEvent: (event: RunEvent) => events.push(event.type),
+    });
+    watch(run);
+    const seen: string[] = [];
+    const broken = run.subscribe(() => {
+      throw new Error("renderer broke");
+    });
+    run.subscribe(() => seen.push(run.getSnapshot().phase));
+
+    expect(() => run.act("advance")).toThrow("renderer broke");
+
+    expect(seen).toEqual(["completed"]);
+    expect(events).toEqual(["start", "advance", "finish"]);
+    expect(frames.size).toBe(0);
+    // The queue is clear: the run still answers.
+    broken();
+    run.act("reset");
+    expect(run.getSnapshot().phase).toBe("running");
+  });
+
+  it("gathers several callback errors into one", () => {
+    const run = createRun(defineTutorial([{}]));
+    watch(run);
+    run.subscribe(() => {
+      throw new Error("one");
+    });
+    run.subscribe(() => {
+      throw new Error("two");
+    });
+
+    expect(() => run.act("exit")).toThrow(AggregateError);
+  });
+
+  it("announces start before checking an immediately satisfied condition", () => {
+    const events: string[] = [];
+    const check = vi.fn(() => true);
+    const run = createRun(
+      defineTutorial([{ advance: { when: { state: check } } }]),
+      { onEvent: (event) => events.push(`${event.type}:${event.snapshot.phase}`) },
+    );
+    watch(run);
+
+    expect(events).toEqual(["start:running"]);
+    expect(check).not.toHaveBeenCalled();
+    flush();
+    expect(events).toEqual(["start:running", "advance:completed", "finish:completed"]);
+    expect(frames.size).toBe(0);
+  });
+
+  it("finishes the start handler before running its actions", () => {
+    const seen: string[] = [];
+    const run = createRun(defineTutorial([{}]), {
+      onEvent: (event) => {
+        seen.push(event.type);
+        if (event.type === "start") {
+          run.act("exit");
+          seen.push(run.getSnapshot().phase);
+        }
+      },
+    });
+    watch(run);
+
+    expect(seen).toEqual(["start", "running", "exit"]);
+    expect(run.getSnapshot().phase).toBe("exited");
+    expect(frames.size).toBe(0);
+  });
+
+  it("continues observing after a frame subscriber throws", () => {
+    const run = createRun(defineTutorial([{ waymark: "later" }]));
+    const view = watch(run);
+    const stopBroken = run.subscribe(() => { throw new Error("renderer"); });
+    const target = addTarget("later");
+
+    expect(() => flush()).toThrow("renderer");
+    stopBroken();
+    expect(frames.size).toBe(1);
+    target.remove();
+    flush();
+    expect(view.snapshot.waymark.status).toBe("lost");
+    view.stop();
+    expect(frames.size).toBe(0);
+  });
+
+  it.each(["subscriber", "start handler"])("cleans up when the initial %s throws", (source) => {
+    const target = addTarget("save");
+    const fail = () => { throw new Error("startup failed"); };
+    const run = createRun(defineTutorial([{ waymark: "save" }]), {
+      onEvent: (event) => { if (source === "start handler" && event.type === "start") fail(); },
+    });
+
+    expect(() => run.subscribe(source === "subscriber" ? fail : () => {}))
+      .toThrow("startup failed");
+    expect(frames.size).toBe(0);
+    expect(target).not.toHaveAttribute("aria-haspopup");
+    press("Escape");
+    expect(run.getSnapshot()).toMatchObject({ collapsed: false });
+    const view = watch(run);
+    run.act("collapse");
+    expect(view.snapshot.collapsed).toBe(true);
+    view.stop();
+  });
+
   it("rejects a tutorial that cannot be run", () => {
     expect(() => defineTutorial([])).toThrow(/at least one step/);
     expect(() =>

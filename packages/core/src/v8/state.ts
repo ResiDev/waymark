@@ -23,6 +23,11 @@ import type {
  */
 export type State<TStep extends Step = Step> = Readonly<{
   snapshot: Snapshot<TStep>;
+  /**
+   * Increments when entering or ending a step, including reset and returning
+   * to the same index. Queued signals with an older generation are ignored.
+   */
+  stepGeneration: number;
 
   // ---- Scratch: about the current Step; reset by entering one -------------
 
@@ -49,8 +54,8 @@ export type Outcome<TStep extends Step = Step> = Readonly<{
 /** Shared by every Outcome with nothing to say, so quiet frames allocate less. */
 export const NO_EVENTS: readonly RunEventType[] = [];
 
-/** An Outcome with nothing to announce. Given the State that came in, it means "refused". */
-export const quietly = <TStep extends Step>(
+/** Preserve the state without events or scrolling. */
+export const noChange = <TStep extends Step>(
   state: State<TStep>,
 ): Outcome<TStep> => ({
   state,
@@ -62,10 +67,11 @@ export const ABSENT: Location = { status: "absent" };
 export const SEARCHING: Location = { status: "searching" };
 export const LOST: Location = { status: "lost" };
 
-/** Entering a Step *is* this object: a fresh State, so no Scratch survives. */
+/** Enter a step with fresh internal state and the caller's next generation. */
 export function enter<TStep extends Step>(
   tutorial: Tutorial<TStep>,
   index: number,
+  stepGeneration = 0,
 ): State<TStep> {
   const step = tutorial.steps[index];
   return {
@@ -78,6 +84,7 @@ export function enter<TStep extends Step>(
       collapsed: false,
       waymark: hasWaymark(step) ? SEARCHING : ABSENT,
     },
+    stepGeneration,
     element: null,
     satisfied: false,
     scrolled: false,
@@ -90,9 +97,11 @@ export function end<TStep extends Step>(
   tutorial: Tutorial<TStep>,
   phase: "completed" | "exited",
   index: number,
+  stepGeneration = 0,
 ): State<TStep> {
   return {
     snapshot: { phase, stepIndex: index, stepCount: tutorial.steps.length },
+    stepGeneration,
     element: null,
     satisfied: false,
     scrolled: false,

@@ -1,4 +1,4 @@
-import { end, enter, ABSENT, LOST, NO_EVENTS, quietly, SEARCHING, show } from "./state";
+import { end, enter, ABSENT, LOST, NO_EVENTS, noChange, SEARCHING, show } from "./state";
 import type { Outcome, State } from "./state";
 import { delayOf, hasWaymark, isAuto } from "./tutorial";
 import type { Action, Location, Rect, Step, Tutorial } from "./types";
@@ -22,9 +22,10 @@ function leave<TStep extends Step>(
   tutorial: Tutorial<TStep>,
 ): Outcome<TStep> {
   const from = state.snapshot.stepIndex;
+  const stepGeneration = state.stepGeneration + 1;
   return from + 1 < tutorial.steps.length
-    ? { state: enter(tutorial, from + 1), events: ["advance"] }
-    : { state: end(tutorial, "completed", from), events: ["advance", "finish"] };
+    ? { state: enter(tutorial, from + 1, stepGeneration), events: ["advance"] }
+    : { state: end(tutorial, "completed", from, stepGeneration), events: ["advance", "finish"] };
 }
 
 /** What an Action does. The one answer to "may the user do this?". */
@@ -34,27 +35,28 @@ export function act<TStep extends Step>(
   tutorial: Tutorial<TStep>,
 ): Outcome<TStep> {
   const snapshot = state.snapshot;
+  const stepGeneration = state.stepGeneration + 1;
   // Reset is the one Action a finished Run accepts, so it comes before the guard.
-  if (action === "reset") return { state: enter(tutorial, 0), events: ["reset"] };
-  if (snapshot.phase !== "running") return quietly(state);
+  if (action === "reset") return { state: enter(tutorial, 0, stepGeneration), events: ["reset"] };
+  if (snapshot.phase !== "running") return noChange(state);
 
   switch (action) {
     case "advance":
-      return snapshot.canAdvance ? leave(state, tutorial) : quietly(state);
+      return snapshot.canAdvance ? leave(state, tutorial) : noChange(state);
     case "previous":
       return snapshot.stepIndex === 0
-        ? quietly(state)
-        : { state: enter(tutorial, snapshot.stepIndex - 1), events: ["previous"] };
+        ? noChange(state)
+        : { state: enter(tutorial, snapshot.stepIndex - 1, stepGeneration), events: ["previous"] };
     case "collapse":
       return snapshot.collapsed
-        ? quietly(state)
+        ? noChange(state)
         : { state: show(state, snapshot, { collapsed: true }), events: ["collapse"] };
     case "resume":
       return snapshot.collapsed
         ? { state: show(state, snapshot, { collapsed: false }), events: ["resume"] }
-        : quietly(state);
+        : noChange(state);
     case "exit":
-      return { state: end(tutorial, "exited", snapshot.stepIndex), events: ["exit"] };
+      return { state: end(tutorial, "exited", snapshot.stepIndex, stepGeneration), events: ["exit"] };
   }
 }
 
@@ -136,7 +138,7 @@ export function observe<TStep extends Step>(
   tutorial: Tutorial<TStep>,
 ): Outcome<TStep> {
   const snapshot = state.snapshot;
-  if (snapshot.phase !== "running") return quietly(state);
+  if (snapshot.phase !== "running") return noChange(state);
   const step = snapshot.step;
 
   const waymark = locate(snapshot.waymark, reading, step);
@@ -155,7 +157,7 @@ export function observe<TStep extends Step>(
   const shown = waymark === snapshot.waymark ? snapshot : { ...snapshot, waymark };
   const looked: State<TStep> = !changed
     ? state
-    : { snapshot: shown, element: reading.element, satisfied, scrolled, heldSince };
+    : { ...state, snapshot: shown, element: reading.element, satisfied, scrolled, heldSince };
 
   const due =
     !snapshot.canAdvance &&

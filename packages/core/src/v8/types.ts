@@ -164,6 +164,11 @@ export type RunOptions<TStep extends Step = Step> = Readonly<{
  * global listeners.
  */
 export type Run<TStep extends Step = Step> = Readonly<{
+  /**
+   * Completes before returning, except when called inside a subscriber or
+   * onEvent handler. Those calls enqueue the action and return immediately;
+   * it runs after the current change's notifications and events finish.
+   */
   act: (action: Action) => void;
   getSnapshot: () => Snapshot<TStep>;
   subscribe: (listener: () => void) => () => void;

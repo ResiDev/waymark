@@ -210,6 +210,20 @@ describe("rules", () => {
     });
   });
 
+  it("increments the step generation on every move, even back to the same step", () => {
+    const { tutorial, state } = start([{}, {}]);
+    expect(state.stepGeneration).toBe(0);
+
+    const next = act(state, "advance", tutorial).state;
+    const back = act(next, "previous", tutorial).state;
+    const again = act(back, "reset", tutorial).state;
+
+    expect([next.stepGeneration, back.stepGeneration, again.stepGeneration]).toEqual([1, 2, 3]);
+    expect(again.snapshot).not.toBe(state.snapshot);
+    // A refused action is not a move.
+    expect(act(again, "previous", tutorial).state.stepGeneration).toBe(3);
+  });
+
   it("announces finishing as well as the advance that finished it", () => {
     const { tutorial } = start([{}, {}]);
 
