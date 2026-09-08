@@ -286,6 +286,88 @@ describe("createRun", () => {
     expect(view.snapshot).toMatchObject({ stepIndex: 0, canAdvance: true });
   });
 
+  it("checks a step without a waymark without querying the DOM", () => {
+    const root = document.createElement("section");
+    const query = vi.spyOn(root, "querySelector");
+    const check = vi.fn(() => true);
+    const view = watch(createRun(defineWalkthrough([{ advance: { state: check } }, {}]), { root }));
+
+    flush();
+
+    expect(check).toHaveBeenCalledWith(null);
+    expect(query).not.toHaveBeenCalled();
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("keeps measuring the waymark after its advance check has unlocked", () => {
+    const target = addTarget("ready");
+    const measure = vi.spyOn(target, "getBoundingClientRect");
+    const check = vi.fn(() => true);
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "ready", advance: { when: { state: check }, then: "unlock" } },
+    ])));
+
+    flush();
+    expect(view.snapshot.canAdvance).toBe(true);
+    expect(check).toHaveBeenCalledTimes(1);
+    measure.mockClear();
+    flush();
+    expect(measure).toHaveBeenCalledTimes(1);
+    expect(check).toHaveBeenCalledTimes(1);
+    view.stop();
+  });
+
+  it("checks the element it measured on the same look, and notifies once", () => {
+    const check = vi.fn((element: Element | null) => element !== null);
+    const run = createRun(defineWalkthrough([
+      { waymark: "later", advance: { state: check } }, {},
+    ]));
+    const view = watch(run);
+    const seen: unknown[] = [];
+    const stop = run.subscribe(() => seen.push(run.getSnapshot()));
+    const target = addTarget("later");
+
+    flush();
+
+    expect(check).toHaveBeenCalledWith(target);
+    expect(seen).toMatchObject([
+      { stepIndex: 1, canAdvance: true, waymark: { status: "absent" } },
+    ]);
+    stop();
+    view.stop();
+  });
+
+  it("rejects an advance result when the check itself resets the step", () => {
+    const check = vi.fn(() => true);
+    const run = createRun(defineWalkthrough([{ advance: { state: check } }, {}]));
+    const view = watch(run);
+    check.mockImplementationOnce(() => {
+      run.act("reset");
+      return true;
+    });
+
+    flush();
+    expect(view.snapshot.stepIndex).toBe(0);
+    flush();
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("checks a satisfied event's delay without needing a state predicate", () => {
+    const target = addTarget("ready");
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "ready", advance: { when: { event: "change" }, delayMs: 50 } }, {},
+    ])));
+    target.dispatchEvent(new Event("change"));
+    target.remove();
+    flush(49);
+    expect(view.snapshot.stepIndex).toBe(0);
+    flush(1);
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
   it("advances by itself when the condition says so, after its delay", () => {
     addTarget("ready");
     let ready = false;
@@ -584,6 +666,22 @@ describe("createRun", () => {
     expect(frames.size).toBe(0);
   });
 
+  it("announces start before actions caused by the initial waymark notification", () => {
+    addTarget("save");
+    const events: string[] = [];
+    const run = createRun(defineWalkthrough([{ waymark: "save" }]), {
+      onEvent: event => events.push(event.type),
+    });
+    const stop = run.subscribe(() => {
+      if (run.getSnapshot().phase === "running") run.act("exit");
+    });
+
+    expect(events).toEqual(["start", "exit"]);
+    expect(run.getSnapshot().phase).toBe("exited");
+    expect(frames.size).toBe(0);
+    stop();
+  });
+
   it("finishes the start handler before running its actions", () => {
     const seen: string[] = [];
     const run = createRun(defineWalkthrough([{}]), {
@@ -600,6 +698,54 @@ describe("createRun", () => {
     expect(seen).toEqual(["start", "running", "exit"]);
     expect(run.getSnapshot().phase).toBe("exited");
     expect(frames.size).toBe(0);
+  });
+
+  it("continues observing and restarts the condition delay after a state check throws", () => {
+    const failure = new Error("state check failed");
+    const check = vi.fn(() => true);
+    const run = createRun(defineWalkthrough([
+      { advance: { when: { state: check }, delayMs: 50 } }, {},
+    ]));
+    const view = watch(run);
+
+    flush();
+    check.mockImplementationOnce(() => { throw failure; });
+    expect(() => flush(25)).toThrow(failure);
+    expect(frames.size).toBe(1);
+    expect(view.snapshot.stepIndex).toBe(0);
+
+    flush(25);
+    expect(view.snapshot.stepIndex).toBe(0);
+    flush(49);
+    expect(view.snapshot.stepIndex).toBe(0);
+    flush(1);
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("reports both check and subscriber errors after scheduling the next frame", () => {
+    const checkError = new Error("check failed");
+    const subscriberError = new Error("subscriber failed");
+    const check = vi.fn(() => false);
+    const run = createRun(defineWalkthrough([
+      { waymark: "later", advance: { state: check } }, {},
+    ]));
+    const view = watch(run);
+    const stopBroken = run.subscribe(() => { throw subscriberError; });
+    addTarget("later");
+    check.mockImplementationOnce(() => { throw checkError; });
+
+    let reported: unknown;
+    try { flush(); } catch (error) { reported = error; }
+
+    expect(reported).toBeInstanceOf(AggregateError);
+    expect((reported as AggregateError).errors).toEqual([checkError, subscriberError]);
+    expect(frames.size).toBe(1);
+    stopBroken();
+    check.mockReturnValue(true);
+    flush();
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
   });
 
   it("continues observing after a frame subscriber throws", () => {

@@ -71,18 +71,29 @@ Step resets it by construction, because entering a Step *is* a fresh State.
 
 **Step generation** — The counter `state.stepGeneration`, incremented whenever
 `enter` or `end` changes the step, including reset and returning to the same
-index. A StepRead is stamped with it and ignored if it has since changed.
+index. Each read is stamped with it and ignored if it has since changed.
 
-**Rule** — One of the four pure functions that turn a State into an Outcome:
-`act(state, action)` for what the user asked, `observe(state, read)` for what
-the page shows, `satisfy(state, now)` for a click or event condition met,
-`mount(state, mounted)` for subscribers arriving or leaving. Every behaviour
-in Waymark is in one of them. `rules.ts`.
+**Rule** — A pure function that turns a State into an Outcome. `act` handles
+user actions, `observe` applies a StepRead, `satisfy` records clicks and
+events, `start` announces startup, and `mount` handles subscription changes.
+`observe` is two smaller rules in order: `observeWaymark` for location and
+scrolling, then `observeAdvance` for the condition's clock. `rules.ts`.
 
 **StepRead** — One look at the current Step, taken by the Driver once a
-frame and handed to `observe` as plain data: the Waymark element, its rect,
-whether it is in view, whether the `state` check holds, and the time.
-Elements inside it are identity tokens, never read from.
+frame and handed to `observe` as plain data. It has two optional halves,
+and the Driver includes only what the State needs.
+
+**WaymarkRead** — The measured Waymark element, its rect, and whether it
+intersects the viewport. Present when the Step has a Waymark. `observeWaymark`
+uses it without reading the DOM or touching the advance condition. Elements
+inside it are identity tokens, never read from.
+
+**AdvanceRead** — Whether the state check holds, and the observation time.
+Present while advancement is shut and there is a check or a running delay.
+The check is run on the element the same look measured. `observeAdvance`
+uses it to update the condition's clock and advance or unlock. A satisfied
+click or event uses the same half to check its delay, with no predicate or
+geometry involved.
 
 **Satisfied** — The user has done what a click or event condition asked. The
 page holds no trace of a click, so it arrives as its own Message (`click` or
@@ -94,14 +105,13 @@ by contrast, only ever holds for the look it was true. Both share one clock.
 announce, and perhaps an element to scroll to. The *same* State by identity
 means "nothing happened", which is also how a Rule says "refused".
 
-**Message** — What waits in the Driver's queue: plain data naming something
-that happened. An Action; a StepRead; a click, with what it hit; a Waymark
-firing one of the Step's events; or the Run being mounted or unmounted. All
-but the first and last two are stamped with the Step generation they
-happened in. `apply` is the one door: it routes a Message to its Rule, and it
-alone knows what a click or an event means to the current Step. Because a
-Message is data, a Run is a fold over its Messages, and a recorded session
-can be replayed with no DOM.
+**Message** — Data queued by the Driver: an Action, a StepRead, a click with
+what it hit, a Waymark firing one of the Step's events, startup, or the Run
+being mounted or unmounted. Reads, clicks and Waymark events carry the Step
+generation they happened in. `apply` is the one door: it routes a Message to
+its Rule, and it alone knows what a click or an event means to the current
+Step. Because a Message is data, a Run is a fold over its Messages, and a
+recorded session can be replayed with no DOM.
 
 **Driver** — The impure half, all of it in `run.ts`: take StepReads, turn
 frames, clicks, keys and Waymark events into Messages, reconcile the Live
@@ -129,22 +139,28 @@ hand.
 
 ## How a Run starts
 
-1. The first `subscribe` sends `mounted`, then a StepRead of the current Step.
+1. The first `subscribe` sends `mounted`, then a StepRead of the current
+   Step with `start` queued behind it, so `start` precedes anything a
+   subscriber does on seeing the first look.
 2. `mount` records the Run as Mounted. `reconcile` opens the input
    listeners and, if the Step needs one, requests a frame.
-3. `observe` sees a Run that has not started. That look only locates: the
-   condition is not consulted, so nothing can move the Run on. It records
-   `started` and announces `start` with the Waymark already found.
+3. The first look only locates: a Run that has not started needs no
+   AdvanceRead, so nothing can move the Run on before `start`.
+4. `start` records `started` and announces it. Once started it is a no-op,
+   so a later subscribe after unmounting sends it again harmlessly.
 
 ## How one frame flows
 
 1. The frame fires. The Driver takes a StepRead and sends it.
-2. `readStep` reuses the cached element if it is still connected, inside the
-   root and matching the selector, else queries for it; measures it; runs
-   the Step's check.
+2. If the Step has a Waymark, `measureWaymark` reuses the cached element if
+   it is still connected, inside the root and matching the selector, else
+   queries for it; then measures it. If advancement is still shut and there
+   is a check or a running delay, the check is run on that element. A
+   throwing check counts as false, and its error is thrown once the read
+   has been sent, so the next frame is still requested.
 3. `apply` drops the read if the Step generation has moved on; otherwise
-   `observe` works out the Location, whether to scroll, and the condition's
-   clock. If nothing changed it returns the very same State.
+   `observe` works out the Location and whether to scroll, then the
+   condition's clock. If nothing changed it returns the very same State.
 4. The Driver stores the State, reconciles (which re-requests the frame if
    the Step still wants one), notifies subscribers only if the Snapshot is a
    new object, and announces the Outcome's events.
@@ -169,7 +185,7 @@ a check can stop holding, a flickering check starts its delay over.
 - `Work` (a closure that read the State ambiently) became `Message` (data).
   The queue is now a log, and `apply` the only way through it.
 - `started` and the subscriber count left the Driver. Both are facts a Rule
-  needs, so both are in State, and the first look and the unmount clock
+  needs, so both are in State, and `start` and the unmount clock
   reset are Rules rather than Driver bookkeeping.
 - `sync`, which compared the live things to the State by hand, became
   `reconcile` against `liveWatchers(state)`, a pure description. Whether a
@@ -178,7 +194,7 @@ a check can stop holding, a flickering check starts its delay over.
 - The self-rescheduling frame loop became one frame at a time, requested
   only while the Step has something the next look could change. A Step
   with no Waymark and no shut `state` check costs no frames.
-- A click stopped taking a StepRead on the spot. It is a Message of its
+- A click stopped measuring the page on the spot. It is a Message of its
   own, and what it means is decided in `apply`, not in the click handler.
   Only the frame and the first subscribe take StepReads.
 
@@ -189,7 +205,7 @@ a check can stop holding, a flickering check starts its delay over.
   Message queue brings an envelope back, but only at the queue boundary,
   where it carries the Step generation and makes a session replayable.)
 - The second condition clock: click and event conditions used to arm the
-  clock through a separate path with different disarm rules. Now `observe`
+  clock through a separate path with different disarm rules. Now `observeAdvance`
   and `satisfy` share `whenDue`, and `heldSince` is the only clock.
 - `buildSnapshot` and `rendersTheSame`: the Snapshot is held in the State,
   so "did the renderer's view change?" is an identity check.

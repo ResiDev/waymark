@@ -1,6 +1,6 @@
 import { keyAction, whereClicked } from "./input";
-import { apply, liveWatchers, sameWaymarkAria, sameWaymarkEvents } from "./rules";
-import type { Message, StepRead, WaymarkAria, WaymarkEvents } from "./rules";
+import { apply, liveWatchers, needsAdvanceRead, sameWaymarkAria, sameWaymarkEvents } from "./rules";
+import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
 import { enter } from "./state";
 import type { State } from "./state";
 import { checkOf, hasWaymark, selectorOf } from "./walkthrough";
@@ -18,7 +18,7 @@ import type {
 /**
  * The driver: everything impure, and nothing else.
  *
- *   readStep()    every DOM read of a look, packaged as one StepRead
+ *   sendRead()    every DOM read of a look, packaged as one StepRead
  *   send()        the one place the State changes: a Message in, one at a time
  *   reconcile()   the live watchers, brought in line with what the State wants
  *
@@ -92,6 +92,12 @@ const listenToWaymarkEvents = ({ element, events }: WaymarkEvents, onEvent: () =
   return () => control.abort();
 };
 
+/** Report callback errors after all pending work has had a chance to finish. */
+const reportErrors = (errors: readonly unknown[]) => {
+  if (errors.length === 1) throw errors[0];
+  if (errors.length > 1) throw new AggregateError(errors, "Run callbacks failed.");
+};
+
 export function createRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep> = {},
@@ -126,8 +132,8 @@ export function createRun<TStep extends Step>(
    * A callback that throws does not stop the others, nor the rest of the
    * queue; its error is thrown once the drain is over.
    */
-  const send = (message: Message) => {
-    queue.push(message);
+  const send = (...messages: Message[]) => {
+    queue.push(...messages);
     if (draining) return;
     draining = true;
 
@@ -178,15 +184,13 @@ export function createRun<TStep extends Step>(
       draining = false;
     }
 
-    if (errors.length === 1) throw errors[0];
-    if (errors.length > 1)
-      throw new AggregateError(errors, "Run callbacks failed.");
+    reportErrors(errors);
   };
 
   // ---- one look --------------------------------------------------------------
 
-  /** The only DOM reads of a look, packaged as data. */
-  const readStep = (step: TStep): StepRead => {
+  /** Find the step's waymark and measure its position and viewport overlap. */
+  const measureWaymark = (step: TStep): WaymarkRead => {
     const selector = hasWaymark(step) ? selectorOf(step) : undefined;
 
     const cached = state.element;
@@ -207,22 +211,52 @@ export function createRun<TStep extends Step>(
       element,
       rect,
       inView: rect !== null && inViewport(rect),
-      // The look that starts a Run does not consult the check (see `observe`),
-      // so it is not run: it is the author's code, and its answer would be dropped.
-      holds: state.started && checkOf(step)?.(element) === true,
-      now: performance.now(),
     };
   };
 
-  /** Look at the current Step now, and queue what was seen. Nothing to see once the Run is over. */
-  const sendRead = () => {
+  /**
+   * Look at the current Step now and send what was seen, then `after`.
+   * The look carries only the parts the State needs: a measurement for a
+   * Step with a Waymark, and the check while advancement is still shut. The
+   * check runs on the element this same look measured, so it never sees a
+   * stale one. Nothing to see once the Run is over.
+   *
+   * A throwing check counts as false, which breaks the condition's delay.
+   * Its error is thrown only once the look has been sent, so reconciliation
+   * can still schedule the next frame.
+   */
+  const sendRead = (...after: Message[]) => {
     const snapshot = state.snapshot;
     if (snapshot.phase !== "running") return;
-    send({
-      kind: "stepRead",
-      stepGeneration: state.stepGeneration,
-      stepRead: readStep(snapshot.step),
-    });
+    const step = snapshot.step;
+    // Stamped before the check runs: the check is the author's code and may act on the Run.
+    const stepGeneration = state.stepGeneration;
+    const waymark = hasWaymark(step) ? measureWaymark(step) : undefined;
+
+    let advance: AdvanceRead | undefined;
+    let failure: { error: unknown } | undefined;
+    if (needsAdvanceRead(state)) {
+      let holds = false;
+      try {
+        holds = checkOf(step)?.(waymark?.element ?? null) === true;
+      } catch (error) {
+        failure = { error };
+      }
+      advance = { holds, now: performance.now() };
+    }
+
+    const stepRead: StepRead = { waymark, advance };
+    const read: Message[] =
+      waymark || advance
+        ? [{ kind: "stepRead", stepGeneration, stepRead }]
+        : [];
+    try {
+      send(...read, ...after);
+    } catch (error) {
+      if (failure) throw new AggregateError([failure.error, error], "Run callbacks failed.");
+      throw error;
+    }
+    if (failure) throw failure.error;
   };
 
   // ---- what the user is doing ------------------------------------------------
@@ -290,7 +324,9 @@ export function createRun<TStep extends Step>(
       if (first) {
         try {
           send({ kind: "mounted" });
-          sendRead();
+          // Queued with the first look so that `start` precedes anything a
+          // subscriber does on seeing it. Once started it is a no-op.
+          sendRead({ kind: "start" });
         } catch (error) {
           listeners.delete(listener);
           if (listeners.size === 0) send({ kind: "unmounted" });

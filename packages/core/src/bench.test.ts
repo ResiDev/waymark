@@ -25,7 +25,7 @@ const createV7 = (c: { root: Document; highlightPadding: number }) =>
   );
 
 import { createRun as createRunV8 } from "./v8/run";
-import { defineTutorial as defineTutorialV8 } from "./v8/tutorial";
+import { defineWalkthrough as defineTutorialV8 } from "./v8/walkthrough";
 
 const createV8 = (c: { root: Document; highlightPadding: number }) =>
   createRunV8(

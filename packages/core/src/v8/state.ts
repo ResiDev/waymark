@@ -27,7 +27,7 @@ export type State<TStep extends Step = Step> = Readonly<{
   snapshot: Snapshot<TStep>;
   /**
    * Increments when entering or ending a step, including reset and returning
-   * to the same index. A StepRead stamped with an older generation is ignored.
+   * to the same index. Reads stamped with an older generation are ignored.
    */
   stepGeneration: number;
 

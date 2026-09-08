@@ -1,39 +1,35 @@
 import { describe, expect, it } from "vitest";
-import { act, apply, liveWatchers, mount, observe, satisfy } from "./rules";
-import type { Message, StepRead } from "./rules";
+import { act, apply, liveWatchers, mount, observe, observeAdvance, observeWaymark, satisfy } from "./rules";
+import type { AdvanceRead, Message, WaymarkRead } from "./rules";
 import { enter } from "./state";
 import type { State } from "./state";
 import { defineWalkthrough } from "./walkthrough";
 import type { Step, Walkthrough } from "./types";
 
-/**
- * Every rule in Waymark, exercised with plain objects: no document, no frame
- * loop, no elements. `act`, `observe` and `mount` are the whole of core's
- * behaviour, so this is what it costs to test it. A Run is a fold over its
- * Messages, so a whole session fits in a list.
- */
+/** Pure rules exercised independently with plain observations and queued messages. */
 
 /** The driver hands back the same element every frame; so does this. */
 const WAYMARK = {} as Element;
 
 /** A Waymark that is present, on screen, with its condition unmet. */
-const seen = (over: Partial<StepRead> = {}): StepRead => ({
+const seen = (over: Partial<WaymarkRead> = {}): WaymarkRead => ({
   element: WAYMARK,
   rect: { x: 0, y: 0, top: 0, right: 10, bottom: 10, left: 0, width: 10, height: 10 },
   inView: true,
+  ...over,
+});
+
+const checked = (over: Partial<AdvanceRead> = {}): AdvanceRead => ({
   holds: false,
   now: 1000,
   ...over,
 });
 
-const frame = (state: State, walkthrough: Walkthrough, read: StepRead) =>
-  observe(state, read, walkthrough);
-
 /** The user clicked the Waymark, as the driver reports it. */
 const click = (state: State, walkthrough: Walkthrough, now = 1000) =>
   apply(state, { kind: "click", stepGeneration: state.stepGeneration, hit: "waymark", now }, walkthrough);
 
-/** A Run that has had its first look, so its condition is consulted from here on. */
+/** A mounted run whose startup has already been announced. */
 const start = (steps: readonly Step[]) => {
   const walkthrough = defineWalkthrough(steps);
   const state: State = { ...enter(walkthrough, 0), started: true, mounted: true };
@@ -41,12 +37,70 @@ const start = (steps: readonly Step[]) => {
 };
 
 describe("rules", () => {
-  it("hands back the same state when nothing happened", () => {
-    const { walkthrough, state } = start([{ waymark: "a" }, {}]);
-    const looked = frame(state, walkthrough, seen()).state;
+  it("updates waymark geometry without resetting an advance condition's delay", () => {
+    const { state, walkthrough } = start([
+      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+    ]);
+    const holding = observeAdvance(state, checked({ holds: true }), walkthrough).state;
+    const found = observeWaymark(holding, seen()).state;
+    const lost = observeWaymark(found, seen({ element: null, rect: null })).state;
+    expect(lost.heldSince).toBe(1000);
+    expect(lost.snapshot).toMatchObject({ canAdvance: false, waymark: { status: "lost" } });
+  });
 
-    expect(frame(looked, walkthrough, seen()).state).toBe(looked);
-    expect(frame(looked, walkthrough, seen()).events).toEqual([]);
+  it("unlocks from an advance read without changing the waymark or requesting a scroll", () => {
+    const { state, walkthrough } = start([
+      { waymark: "a", advance: { when: { state: () => true }, then: "unlock" } },
+    ]);
+    const found = observeWaymark(state, seen()).state;
+    const unlocked = observeAdvance(found, checked({ holds: true }), walkthrough);
+    expect(unlocked.state.snapshot).toMatchObject({ canAdvance: true });
+    expect(unlocked.state.snapshot.phase === "running" && unlocked.state.snapshot.waymark)
+      .toBe(found.snapshot.phase === "running" && found.snapshot.waymark);
+    expect(unlocked.state.element).toBe(WAYMARK);
+    expect(unlocked.scrollTo).toBeUndefined();
+  });
+
+  it("rejects a read from an earlier visit to the same step", () => {
+    const { state, walkthrough } = start([{ waymark: "a", advance: { state: () => true } }, {}]);
+    const reset = act(state, "reset", walkthrough).state;
+    const read: Message = {
+      kind: "stepRead",
+      stepGeneration: state.stepGeneration,
+      stepRead: { waymark: seen(), advance: checked({ holds: true }) },
+    };
+    expect(apply(reset, read, walkthrough).state).toBe(reset);
+  });
+
+  it("applies the measurement first, then the check on one look", () => {
+    const { state, walkthrough } = start([
+      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+      { waymark: "b" },
+    ]);
+    const offScreen = seen({ inView: false });
+
+    // Arming the clock keeps the scroll the measurement asked for.
+    const armed = observe(state, { waymark: offScreen, advance: checked({ holds: true }) }, walkthrough);
+    expect(armed.scrollTo).toBe(WAYMARK);
+    expect(armed.state).toMatchObject({ heldSince: 1000, snapshot: { waymark: { status: "found" } } });
+
+    // Leaving the step drops it: no scrolling to a waymark just left.
+    const gone = observe(armed.state, { waymark: offScreen, advance: checked({ holds: true, now: 1050 }) }, walkthrough);
+    expect(gone.state.snapshot.stepIndex).toBe(1);
+    expect(gone.scrollTo).toBeUndefined();
+
+    // Either half may be missing.
+    expect(observe(state, { waymark: seen() }, walkthrough).state.element).toBe(WAYMARK);
+    expect(observe(state, { advance: checked({ holds: true }) }, walkthrough).state.heldSince).toBe(1000);
+    expect(observe(state, {}, walkthrough).state).toBe(state);
+  });
+
+  it("hands back the same state when nothing happened", () => {
+    const { state } = start([{ waymark: "a" }, {}]);
+    const looked = observeWaymark(state, seen()).state;
+
+    expect(observeWaymark(looked, seen()).state).toBe(looked);
+    expect(observeWaymark(looked, seen()).events).toEqual([]);
   });
 
   it("keeps the snapshot when only scratch changed", () => {
@@ -54,8 +108,8 @@ describe("rules", () => {
       { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
       {},
     ]);
-    const looked = frame(state, walkthrough, seen()).state;
-    const holding = frame(looked, walkthrough, seen({ holds: true, now: 1000 }));
+    const looked = observeWaymark(state, seen()).state;
+    const holding = observeAdvance(looked, checked({ holds: true, now: 1000 }), walkthrough);
 
     // Arming the clock is scratch; the renderer sees nothing new until it is due.
     expect(holding.state).not.toBe(looked);
@@ -81,11 +135,11 @@ describe("rules", () => {
       {},
     ]);
 
-    const armed = frame(state, walkthrough, seen({ holds: true, now: 1000 }));
+    const armed = observeAdvance(state, checked({ holds: true, now: 1000 }), walkthrough);
     expect(armed.state.snapshot.stepIndex).toBe(0);
     expect(armed.state.heldSince).toBe(1000);
 
-    const due = frame(armed.state, walkthrough, seen({ holds: true, now: 1050 }));
+    const due = observeAdvance(armed.state, checked({ holds: true, now: 1050 }), walkthrough);
     expect(due.state.snapshot.stepIndex).toBe(1);
     expect(due.events).toEqual(["advance"]);
   });
@@ -96,9 +150,9 @@ describe("rules", () => {
       {},
     ]);
 
-    const armed = frame(state, walkthrough, seen({ holds: true, now: 1000 }));
-    const dropped = frame(armed.state, walkthrough, seen({ holds: false, now: 1020 }));
-    const late = frame(dropped.state, walkthrough, seen({ holds: true, now: 1060 }));
+    const armed = observeAdvance(state, checked({ holds: true, now: 1000 }), walkthrough);
+    const dropped = observeAdvance(armed.state, checked({ holds: false, now: 1020 }), walkthrough);
+    const late = observeAdvance(dropped.state, checked({ holds: true, now: 1060 }), walkthrough);
 
     expect(dropped.state.heldSince).toBeUndefined();
     expect(late.state.snapshot.stepIndex).toBe(0); // the clock started again at 1060
@@ -112,8 +166,8 @@ describe("rules", () => {
     ]);
 
     const clicked = click(state, walkthrough, 1000);
-    const waiting = frame(clicked.state, walkthrough, seen({ now: 1020 }));
-    const due = frame(waiting.state, walkthrough, seen({ now: 1050 }));
+    const waiting = observeAdvance(clicked.state, checked({ now: 1020 }), walkthrough);
+    const due = observeAdvance(waiting.state, checked({ now: 1050 }), walkthrough);
 
     expect(waiting.state.heldSince).toBe(1000);
     expect(due.state.snapshot.stepIndex).toBe(1);
@@ -144,42 +198,42 @@ describe("rules", () => {
   });
 
   it("asks for a scroll once, then stops asking", () => {
-    const { walkthrough, state } = start([{ waymark: "a" }]);
+    const { state } = start([{ waymark: "a" }]);
     const offScreen = seen({ inView: false });
 
-    const first = frame(state, walkthrough, offScreen);
-    const second = frame(first.state, walkthrough, offScreen);
+    const first = observeWaymark(state, offScreen);
+    const second = observeWaymark(first.state, offScreen);
 
     expect(first.scrollTo).toBe(WAYMARK);
     expect(second.scrollTo).toBeUndefined();
   });
 
   it("keeps asking on a step that scrolls always", () => {
-    const { walkthrough, state } = start([{ waymark: "a", scroll: "always" }]);
+    const { state } = start([{ waymark: "a", scroll: "always" }]);
     const offScreen = seen({ inView: false });
 
-    const first = frame(state, walkthrough, offScreen);
-    const second = frame(first.state, walkthrough, offScreen);
+    const first = observeWaymark(state, offScreen);
+    const second = observeWaymark(first.state, offScreen);
 
     expect(second.scrollTo).toBe(WAYMARK);
   });
 
   it("loses a waymark it has seen, but goes on searching for one it has not", () => {
-    const { walkthrough, state } = start([{ waymark: "a" }]);
+    const { state } = start([{ waymark: "a" }]);
     const gone = seen({ element: null, rect: null });
 
-    const never = frame(state, walkthrough, gone);
+    const never = observeWaymark(state, gone);
     expect(never.state.snapshot).toMatchObject({ waymark: { status: "searching" } });
 
-    const found = frame(state, walkthrough, seen());
-    const lost = frame(found.state, walkthrough, gone);
+    const found = observeWaymark(state, seen());
+    const lost = observeWaymark(found.state, gone);
     expect(lost.state.snapshot).toMatchObject({ waymark: { status: "lost" } });
   });
 
   it("drops every trace of a step when it leaves it", () => {
     const { walkthrough, state } = start([{ waymark: "a", advance: "click" }, { waymark: "b" }]);
 
-    const looked = frame(state, walkthrough, seen({ inView: false }));
+    const looked = observeWaymark(state, seen({ inView: false }));
     const met = click(looked.state, walkthrough);
 
     expect(met.state).toMatchObject({
@@ -193,7 +247,7 @@ describe("rules", () => {
 
   it("carries no step scratch once the run is over", () => {
     const { walkthrough, state } = start([{ waymark: "a" }]);
-    const looked = frame(state, walkthrough, seen());
+    const looked = observeWaymark(state, seen());
 
     const exited = act(looked.state, "exit", walkthrough);
 
@@ -210,7 +264,7 @@ describe("rules", () => {
     const exited = act(enter(walkthrough, 1), "exit", walkthrough).state;
 
     expect(act(exited, "advance", walkthrough).state).toBe(exited);
-    expect(frame(exited, walkthrough, seen()).state).toBe(exited);
+    expect(observeWaymark(exited, seen()).state).toBe(exited);
     expect(act(exited, "reset", walkthrough).state.snapshot).toMatchObject({
       phase: "running",
       stepIndex: 0,
@@ -240,26 +294,27 @@ describe("rules", () => {
     expect(outcome.events).toEqual(["advance", "finish"]);
   });
 
-  it("only locates on the look that starts the run, and announces start", () => {
+  it("keeps startup separate from both observations", () => {
     const walkthrough = defineWalkthrough([{ waymark: "a", advance: { state: () => true } }, {}]);
     const fresh = enter(walkthrough, 0);
-
-    const first = frame(fresh, walkthrough, seen({ holds: true }));
-
-    // The check is not consulted: start comes before anything can move the run.
-    expect(first.events).toEqual(["start"]);
-    expect(first.state).toMatchObject({
-      started: true,
+    const found = observeWaymark(fresh, seen());
+    expect(found.events).toEqual([]);
+    expect(found.state).toMatchObject({
+      started: false,
       heldSince: undefined,
       snapshot: { stepIndex: 0, waymark: { status: "found" } },
     });
+    expect(observeAdvance(found.state, checked({ holds: true }), walkthrough).state).toBe(found.state);
 
-    const second = frame(first.state, walkthrough, seen({ holds: true }));
-    expect(second.state.snapshot.stepIndex).toBe(1);
-    expect(second.events).toEqual(["advance"]);
+    const started = apply(found.state, { kind: "start" }, walkthrough);
+    expect(started.events).toEqual(["start"]);
+    expect(apply(started.state, { kind: "start" }, walkthrough).events).toEqual([]);
+    const advanced = observeAdvance(started.state, checked({ holds: true }), walkthrough);
+    expect(advanced.state.snapshot.stepIndex).toBe(1);
+    expect(advanced.events).toEqual(["advance"]);
   });
 
-  it("lets nothing move a run that has not had its first look", () => {
+  it("ignores satisfaction before startup", () => {
     const walkthrough = defineWalkthrough([{ waymark: "a", advance: "click" }, {}]);
     const fresh = { ...enter(walkthrough, 0), mounted: true };
 
@@ -271,13 +326,13 @@ describe("rules", () => {
 
     const again = act(state, "reset", walkthrough).state;
     expect(again.started).toBe(true);
-    expect(frame(again, walkthrough, seen()).events).toEqual([]);
+    expect(observeWaymark(again, seen()).events).toEqual([]);
   });
 
   it("drops a click or read stamped with a step the run has since left", () => {
     const { walkthrough, state } = start([{ waymark: "a", advance: "click" }, { waymark: "a", advance: "click" }]);
     const stale: Message = { kind: "click", stepGeneration: state.stepGeneration, hit: "waymark", now: 1000 };
-    const staleRead: Message = { kind: "stepRead", stepGeneration: state.stepGeneration, stepRead: seen() };
+    const staleRead: Message = { kind: "stepRead", stepGeneration: state.stepGeneration, stepRead: { waymark: seen() } };
 
     const moved = apply(state, { kind: "act", action: "advance" }, walkthrough).state;
     expect(moved.snapshot.stepIndex).toBe(0); // the gate is shut; refused
@@ -312,7 +367,7 @@ describe("rules", () => {
 
   it("drops a state check's clock on unmount, but keeps a satisfied click's", () => {
     const check = start([{ waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } }]);
-    const armed = frame(check.state, check.walkthrough, seen({ holds: true })).state;
+    const armed = observeAdvance(check.state, checked({ holds: true }), check.walkthrough).state;
     expect(armed.heldSince).toBe(1000);
 
     const gone = mount(armed, false).state;
@@ -340,7 +395,7 @@ describe("rules", () => {
 
     const check = start([{ advance: { when: { state: () => false }, then: "unlock" } }]);
     expect(liveWatchers(check.state).frame).toBe(true);
-    const unlocked = frame(check.state, check.walkthrough, seen({ element: null, rect: null, holds: true })).state;
+    const unlocked = observeAdvance(check.state, checked({ holds: true }), check.walkthrough).state;
     expect(unlocked.snapshot).toMatchObject({ canAdvance: true });
     expect(liveWatchers(unlocked).frame).toBe(false);
   });
@@ -350,7 +405,7 @@ describe("rules", () => {
     expect(liveWatchers(state).waymarkAria).toBeUndefined();
     expect(liveWatchers(state).waymarkEvents).toBeUndefined();
 
-    const found = frame(state, walkthrough, seen()).state;
+    const found = observeWaymark(state, seen()).state;
     expect(liveWatchers(found).waymarkAria).toEqual({ element: WAYMARK, expanded: true });
     expect(liveWatchers(found).waymarkEvents).toEqual({
       element: WAYMARK, events: ["change"], stepGeneration: found.stepGeneration,
@@ -370,7 +425,8 @@ describe("rules", () => {
     const walkthrough = defineWalkthrough([{ waymark: "a", advance: "click" }, {}]);
     const session: Message[] = [
       { kind: "mounted" },
-      { kind: "stepRead", stepGeneration: 0, stepRead: seen() },
+      { kind: "stepRead", stepGeneration: 0, stepRead: { waymark: seen() } },
+      { kind: "start" },
       { kind: "click", stepGeneration: 0, hit: "waymark", now: 1016 },
       { kind: "act", action: "advance" },
       { kind: "unmounted" },
