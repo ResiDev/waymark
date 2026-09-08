@@ -118,12 +118,12 @@ every Live watcher and drops a `state` check's clock, since no look can prove
 it kept holding in the gap. Progress, the collapsed flag and a Satisfied
 condition survive.
 
-**Live watchers** — The three things that exist only while the Run is
+**Live watchers** — The four things that exist only while the Run is
 Mounted and running: the window's *input* listeners, one animation *frame*
-request, and the *attachment* to the Waymark (ARIA attributes and the Step's
-event listeners, while the gate is shut). `liveWatchers(state)` is the pure
+request, the Waymark's ARIA attributes, and the Step's event listeners while
+the gate is shut. ARIA attributes and event listeners have separate watchers. `liveWatchers(state)` is the pure
 description of which should exist. The Driver stores each as a `Watcher` with the
-key it was opened for, and `reconcile` is three calls to `syncWatcher`: same key,
+key it was opened for, and `reconcile` is four calls to `syncWatcher`: same key,
 leave it; else close and reopen. Nothing live is ever started or stopped by
 hand.
 
@@ -197,6 +197,6 @@ a check can stop holding, a flickering check starts its delay over.
   left, which is the same for every event, so a Rule just names the type.
 - `Definition` and `AdvanceRule`: a Step is read on the spot through five
   small accessors in `walkthrough.ts`, with nothing precomputed or cached.
-- The `Resource` / `keepInSync` / deps system and its memo layer: three live
+- The `Resource` / `keepInSync` / deps system and its memo layer: four live
   watchers described by one pure function and reconciled in one place.
 - The reused Reading buffer: measured as noise.

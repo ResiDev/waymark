@@ -327,8 +327,8 @@ describe("rules", () => {
   it("wants nothing live unless mounted and running", () => {
     const { walkthrough, state } = start([{ waymark: "a" }]);
 
-    expect(liveWatchers({ ...state, mounted: false })).toEqual({ input: false, frame: false, waymark: undefined });
-    expect(liveWatchers(act(state, "exit", walkthrough).state)).toEqual({ input: false, frame: false, waymark: undefined });
+    expect(liveWatchers({ ...state, mounted: false })).toEqual({ input: false, frame: false, waymarkAria: undefined, waymarkEvents: undefined });
+    expect(liveWatchers(act(state, "exit", walkthrough).state)).toEqual({ input: false, frame: false, waymarkAria: undefined, waymarkEvents: undefined });
   });
 
   it("wants a frame only while the next look could change something", () => {
@@ -347,17 +347,23 @@ describe("rules", () => {
 
   it("attaches to a found waymark, listening for events only while the gate is shut", () => {
     const { walkthrough, state } = start([{ waymark: "a", advance: { when: { event: "change" }, then: "unlock" } }]);
-    expect(liveWatchers(state).waymark).toBeUndefined();
+    expect(liveWatchers(state).waymarkAria).toBeUndefined();
+    expect(liveWatchers(state).waymarkEvents).toBeUndefined();
 
     const found = frame(state, walkthrough, seen()).state;
-    expect(liveWatchers(found).waymark).toMatchObject({ element: WAYMARK, listening: true, expanded: true });
+    expect(liveWatchers(found).waymarkAria).toEqual({ element: WAYMARK, expanded: true });
+    expect(liveWatchers(found).waymarkEvents).toEqual({
+      element: WAYMARK, events: ["change"], stepGeneration: found.stepGeneration,
+    });
 
     const collapsed = act(found, "collapse", walkthrough).state;
-    expect(liveWatchers(collapsed).waymark).toMatchObject({ expanded: false });
+    expect(liveWatchers(collapsed).waymarkAria).toMatchObject({ expanded: false });
+    expect(liveWatchers(collapsed).waymarkEvents).toEqual(liveWatchers(found).waymarkEvents);
 
     const fired: Message = { kind: "event", stepGeneration: found.stepGeneration, now: 1000 };
     const unlocked = apply(found, fired, walkthrough).state;
-    expect(liveWatchers(unlocked).waymark).toMatchObject({ listening: false });
+    expect(liveWatchers(unlocked).waymarkEvents).toBeUndefined();
+    expect(liveWatchers(unlocked).waymarkAria).toEqual(liveWatchers(found).waymarkAria);
   });
 
   it("folds a whole session from its messages", () => {

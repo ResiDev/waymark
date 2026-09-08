@@ -1,9 +1,9 @@
 import { keyAction, whereClicked } from "./input";
-import { apply, liveWatchers, sameAttachment } from "./rules";
-import type { Attachment, Message, StepRead } from "./rules";
+import { apply, liveWatchers, sameWaymarkAria, sameWaymarkEvents } from "./rules";
+import type { Message, StepRead, WaymarkAria, WaymarkEvents } from "./rules";
 import { enter } from "./state";
 import type { State } from "./state";
-import { checkOf, eventsOf, hasWaymark, selectorOf } from "./walkthrough";
+import { checkOf, hasWaymark, selectorOf } from "./walkthrough";
 import type {
   Action,
   Rect,
@@ -68,31 +68,28 @@ const openInput = (
   return () => control.abort();
 };
 
-/**
- * Attaches the Run to a Waymark: tells assistive technology it has a popover
- * and whether it is showing, and listens for the Step's events while there is
- * something to hear.
- */
-const attach = (to: Attachment, onEvent: () => void) => {
-  const { element } = to;
+/** Set the waymark's ARIA attributes and restore the authored values on cleanup. */
+const openWaymarkAria = ({ element, expanded }: WaymarkAria) => {
   const originalAttributes = ["aria-haspopup", "aria-expanded"].map(
     (name) => [name, element.getAttribute(name)] as const,
   );
   element.setAttribute("aria-haspopup", "dialog");
-  element.setAttribute("aria-expanded", String(to.expanded));
-  const control = new AbortController();
-  if (to.listening) {
-    for (const name of eventsOf(to.step)) {
-      element.addEventListener(name, onEvent, { signal: control.signal });
-    }
-  }
+  element.setAttribute("aria-expanded", String(expanded));
   return () => {
-    control.abort();
     for (const [name, value] of originalAttributes) {
       if (value === null) element.removeAttribute(name);
       else element.setAttribute(name, value);
     }
   };
+};
+
+/** Listen for the step's advance events independently of its ARIA attributes. */
+const listenToWaymarkEvents = ({ element, events }: WaymarkEvents, onEvent: () => void) => {
+  const control = new AbortController();
+  for (const name of events) {
+    element.addEventListener(name, onEvent, { signal: control.signal });
+  }
+  return () => control.abort();
 };
 
 export function createRun<TStep extends Step>(
@@ -259,7 +256,8 @@ export function createRun<TStep extends Step>(
 
   let input: Watcher<true>;
   let frame: Watcher<true>;
-  let attached: Watcher<Attachment>;
+  let waymarkAria: Watcher<WaymarkAria>;
+  let waymarkEvents: Watcher<WaymarkEvents>;
 
   const openFrame = () => {
     const id = requestAnimationFrame(() => {
@@ -270,8 +268,8 @@ export function createRun<TStep extends Step>(
     return () => cancelAnimationFrame(id);
   };
 
-  const openAttachment = (to: Attachment) =>
-    attach(to, () =>
+  const openWaymarkEvents = (to: WaymarkEvents) =>
+    listenToWaymarkEvents(to, () =>
       send({ kind: "event", stepGeneration: to.stepGeneration, now: performance.now() }),
     );
 
@@ -279,7 +277,8 @@ export function createRun<TStep extends Step>(
     const live = liveWatchers(state);
     input = syncWatcher(input, live.input || undefined, () => openInput(onClick, onKeyDown));
     frame = syncWatcher(frame, live.frame || undefined, openFrame);
-    attached = syncWatcher(attached, live.waymark, openAttachment, sameAttachment);
+    waymarkAria = syncWatcher(waymarkAria, live.waymarkAria, openWaymarkAria, sameWaymarkAria);
+    waymarkEvents = syncWatcher(waymarkEvents, live.waymarkEvents, openWaymarkEvents, sameWaymarkEvents);
   }
 
   return {

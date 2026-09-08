@@ -13,7 +13,7 @@ import type { Action, Location, Rect, Step, Walkthrough } from "./types";
  *
  * DOM measurements and check results arrive in StepRead. These rules compare
  * element references but never read or modify the elements themselves.
- * `liveWatchers` describes the listeners, frame, and attachment the driver
+ * `liveWatchers` describes the listeners, frame, and ARIA attributes the driver
  * should maintain for the resulting state.
  */
 
@@ -290,25 +290,27 @@ export function mount<TStep extends Step>(
 
 // ---- Driver subscriptions --------------------------------------------------
 
-/** ARIA attributes and advance-condition listeners to maintain on the waymark. */
-export type Attachment = Readonly<{
+/** ARIA attributes to maintain on the current waymark. */
+export type WaymarkAria = Readonly<{
   element: Element;
-  step: Step;
-  /** Forces reattachment when re-entering a step, even on the same element. */
-  stepGeneration: number;
-  /** Listen for advance-condition events until canAdvance becomes true. */
-  listening: boolean;
-  /** Value for `aria-expanded`, true while the run is not collapsed. */
   expanded: boolean;
 }>;
 
-/** Compare attachment fields so an equivalent new object does not cause reattachment. */
-export const sameAttachment = (a: Attachment, b: Attachment): boolean =>
+/** Advance-condition events to listen for during this visit to the step. */
+export type WaymarkEvents = Readonly<{
+  element: Element;
+  events: readonly string[];
+  stepGeneration: number;
+}>;
+
+export const sameWaymarkAria = (a: WaymarkAria, b: WaymarkAria): boolean =>
+  a.element === b.element && a.expanded === b.expanded;
+
+export const sameWaymarkEvents = (a: WaymarkEvents, b: WaymarkEvents): boolean =>
   a.element === b.element &&
-  a.step === b.step &&
   a.stepGeneration === b.stepGeneration &&
-  a.listening === b.listening &&
-  a.expanded === b.expanded;
+  a.events.length === b.events.length &&
+  a.events.every((event, index) => event === b.events[index]);
 
 /** Resources the driver should keep active, reconciled after each message. */
 export type LiveWatchers = Readonly<{
@@ -316,10 +318,16 @@ export type LiveWatchers = Readonly<{
   input: boolean;
   /** Schedule an animation frame for the next StepRead. */
   frame: boolean;
-  waymark: Attachment | undefined;
+  waymarkAria: WaymarkAria | undefined;
+  waymarkEvents: WaymarkEvents | undefined;
 }>;
 
-const NOTHING_LIVE: LiveWatchers = { input: false, frame: false, waymark: undefined };
+const NOTHING_LIVE: LiveWatchers = {
+  input: false,
+  frame: false,
+  waymarkAria: undefined,
+  waymarkEvents: undefined,
+};
 
 /**
  * Keep resources active only while the run is running and has subscribers.
@@ -332,20 +340,19 @@ export function liveWatchers(state: State): LiveWatchers {
   if (!state.mounted || snapshot.phase !== "running") return NOTHING_LIVE;
   const step = snapshot.step;
   const gateShut = !snapshot.canAdvance;
+  const events = eventsOf(step);
   return {
     input: true,
     frame:
       hasWaymark(step) ||
       (gateShut && (checkOf(step) !== undefined || state.heldSince !== undefined)),
-    waymark:
+    waymarkAria:
       state.element === null
         ? undefined
-        : {
-            element: state.element,
-            step,
-            stepGeneration: state.stepGeneration,
-            listening: gateShut && eventsOf(step).length > 0,
-            expanded: !snapshot.collapsed,
-          },
+        : { element: state.element, expanded: !snapshot.collapsed },
+    waymarkEvents:
+      state.element !== null && gateShut && events.length > 0
+        ? { element: state.element, events, stepGeneration: state.stepGeneration }
+        : undefined,
   };
 }

@@ -127,6 +127,64 @@ describe("createRun", () => {
     expect(target).toHaveAttribute("aria-expanded", "");
   });
 
+  it("updates ARIA independently of advance-event listeners", () => {
+    const target = addTarget("save");
+    const listen = vi.spyOn(target, "addEventListener");
+    const run = createRun(defineWalkthrough([
+      { waymark: "save", advance: { when: { event: "change" }, then: "unlock" } },
+    ]));
+    const view = watch(run);
+    const signal = (listen.mock.calls[0][2] as AddEventListenerOptions).signal!;
+
+    run.act("collapse");
+    expect(target).toHaveAttribute("aria-expanded", "false");
+    run.act("resume");
+    flush();
+    expect(target).toHaveAttribute("aria-expanded", "true");
+    expect(listen).toHaveBeenCalledTimes(1);
+    expect(signal.aborted).toBe(false);
+
+    const setAttribute = vi.spyOn(target, "setAttribute");
+    const removeAttribute = vi.spyOn(target, "removeAttribute");
+    target.dispatchEvent(new Event("change"));
+
+    expect(view.snapshot.canAdvance).toBe(true);
+    expect(signal.aborted).toBe(true);
+    expect(setAttribute).not.toHaveBeenCalled();
+    expect(removeAttribute).not.toHaveBeenCalled();
+    expect(target).toHaveAttribute("aria-expanded", "true");
+    view.stop();
+    expect(target).not.toHaveAttribute("aria-haspopup");
+  });
+
+  it("replaces event listeners on reset and rejects events queued for the old step visit", () => {
+    const target = addTarget("save");
+    const listen = vi.spyOn(target, "addEventListener");
+    const run = createRun(defineWalkthrough([
+      { waymark: "save", advance: { event: "change" } }, {},
+    ]));
+    const view = watch(run);
+    const signal = (listen.mock.calls[0][2] as AddEventListenerOptions).signal!;
+    let once = true;
+    const stop = run.subscribe(() => {
+      if (!once) return;
+      once = false;
+      run.act("reset");
+      target.dispatchEvent(new Event("change"));
+    });
+
+    run.act("collapse");
+    expect(view.snapshot.stepIndex).toBe(0);
+    expect(signal.aborted).toBe(true);
+
+    flush();
+    expect(listen).toHaveBeenCalledTimes(2);
+    target.dispatchEvent(new Event("change"));
+    expect(view.snapshot.stepIndex).toBe(1);
+    stop();
+    view.stop();
+  });
+
   it("attaches a newly found target as collapsed when the run is collapsed", () => {
     const run = createRun(defineWalkthrough([{ waymark: "save" }]));
     const view = watch(run);
