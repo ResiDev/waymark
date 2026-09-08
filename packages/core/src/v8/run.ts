@@ -1,15 +1,9 @@
 import { keyAction, whereClicked } from "./input";
-import { apply, liveWatchers } from "./rules";
+import { apply, liveWatchers, sameAttachment } from "./rules";
 import type { Attachment, Message, StepRead } from "./rules";
 import { enter } from "./state";
 import type { State } from "./state";
-import {
-  checkOf,
-  conditionOf,
-  eventsOf,
-  hasWaymark,
-  selectorOf,
-} from "./walkthrough";
+import { checkOf, eventsOf, hasWaymark, selectorOf } from "./walkthrough";
 import type {
   Action,
   Rect,
@@ -28,8 +22,10 @@ import type {
  *   send()        the one place the State changes: a Message in, one at a time
  *   reconcile()   the live watchers, brought in line with what the State wants
  *
- * It decides nothing. Every change is `apply` handing back a State, and every
- * live thing exists because `liveWatchers` said it should.
+ * It decides nothing. A frame, a click, a key or a Waymark event is turned
+ * into a Message and sent; what it means is `apply`'s business. Every change
+ * is `apply` handing back a State, and every live thing exists because
+ * `liveWatchers` said it should.
  */
 
 const NO_UI: UiElements = { dialog: null, beacon: null };
@@ -41,6 +37,24 @@ const inViewport = (rect: Rect): boolean =>
   rect.left < globalThis.innerWidth;
 
 // ---- the live watchers, each a function that opens and returns how to close --
+
+/** A live watcher as the driver holds it: what it was opened for, and how to close it. */
+type Watcher<K> = Readonly<{ key: K; close: () => void }> | undefined;
+
+/**
+ * Preserve the current watcher when its key matches. Otherwise close it
+ * and open a watcher for the requested key, or leave none if undefined.
+ */
+const syncWatcher = <K>(
+  watcher: Watcher<K>,
+  key: K | undefined,
+  open: (key: K) => () => void,
+  same: (a: K, b: K) => boolean = Object.is,
+): Watcher<K> => {
+  if (watcher !== undefined && key !== undefined && same(watcher.key, key)) return watcher;
+  watcher?.close();
+  return key === undefined ? undefined : { key, close: open(key) };
+};
 
 /** Input: the window's clicks and keys. */
 const openInput = (
@@ -55,8 +69,9 @@ const openInput = (
 };
 
 /**
- * Attaches the Run to a Waymark: tells assistive technology it has a popover,
- * and listens for the Step's events while there is something to hear.
+ * Attaches the Run to a Waymark: tells assistive technology it has a popover
+ * and whether it is showing, and listens for the Step's events while there is
+ * something to hear.
  */
 const attach = (to: Attachment, onEvent: () => void) => {
   const { element } = to;
@@ -64,6 +79,7 @@ const attach = (to: Attachment, onEvent: () => void) => {
     (name) => [name, element.getAttribute(name)] as const,
   );
   element.setAttribute("aria-haspopup", "dialog");
+  element.setAttribute("aria-expanded", String(to.expanded));
   const control = new AbortController();
   if (to.listening) {
     for (const name of eventsOf(to.step)) {
@@ -173,7 +189,7 @@ export function createRun<TStep extends Step>(
   // ---- one look --------------------------------------------------------------
 
   /** The only DOM reads of a look, packaged as data. */
-  const readStep = (step: TStep, satisfied: boolean): StepRead => {
+  const readStep = (step: TStep): StepRead => {
     const selector = hasWaymark(step) ? selectorOf(step) : undefined;
 
     const cached = state.element;
@@ -196,23 +212,19 @@ export function createRun<TStep extends Step>(
       inView: rect !== null && inViewport(rect),
       // The look that starts a Run does not consult the check (see `observe`),
       // so it is not run: it is the author's code, and its answer would be dropped.
-      condition: satisfied
-        ? "satisfied"
-        : state.started && checkOf(step)?.(element)
-          ? "holds"
-          : "unmet",
+      holds: state.started && checkOf(step)?.(element) === true,
       now: performance.now(),
     };
   };
 
   /** Look at the current Step now, and queue what was seen. Nothing to see once the Run is over. */
-  const sendRead = (satisfied: boolean) => {
+  const sendRead = () => {
     const snapshot = state.snapshot;
     if (snapshot.phase !== "running") return;
     send({
-      kind: "read",
+      kind: "stepRead",
       stepGeneration: state.stepGeneration,
-      read: readStep(snapshot.step, satisfied),
+      stepRead: readStep(snapshot.step),
     });
   };
 
@@ -230,20 +242,13 @@ export function createRun<TStep extends Step>(
     ui: options.ui?.() ?? NO_UI,
   });
 
-  /** On the Waymark: perhaps the condition. Away from it: put the Run away. */
-  const onClick = (event: MouseEvent) => {
-    const hit = whereClicked(event, getInputContext());
-    if (hit === "waymark") {
-      if (
-        state.snapshot.phase === "running" &&
-        conditionOf(state.snapshot.step) === "click"
-      ) {
-        sendRead(true);
-      }
-    } else if (hit === "away") {
-      send({ kind: "act", action: "collapse" });
-    }
-  };
+  const onClick = (event: MouseEvent) =>
+    send({
+      kind: "click",
+      stepGeneration: state.stepGeneration,
+      hit: whereClicked(event, getInputContext()),
+      now: performance.now(),
+    });
 
   const onKeyDown = (event: KeyboardEvent) => {
     const action = keyAction(event, getInputContext());
@@ -252,51 +257,29 @@ export function createRun<TStep extends Step>(
 
   // ---- the live watchers, reconciled with the State after every Message ------
 
-  let closeInput: (() => void) | undefined;
-  let frame: number | undefined;
-  let attached: { to: Attachment; detach: () => void } | undefined;
+  let input: Watcher<true>;
+  let frame: Watcher<true>;
+  let attached: Watcher<Attachment>;
 
-  /** One frame, one look. `reconcile` requests the next if the Step still wants one. */
-  const tick = () => {
-    frame = undefined;
-    sendRead(false);
+  const openFrame = () => {
+    const id = requestAnimationFrame(() => {
+      // A fired frame has closed itself; `reconcile` opens the next if still wanted.
+      frame = undefined;
+      sendRead();
+    });
+    return () => cancelAnimationFrame(id);
   };
+
+  const openAttachment = (to: Attachment) =>
+    attach(to, () =>
+      send({ kind: "event", stepGeneration: to.stepGeneration, now: performance.now() }),
+    );
 
   function reconcile() {
     const live = liveWatchers(state);
-
-    if (live.input && closeInput === undefined) {
-      closeInput = openInput(onClick, onKeyDown);
-    } else if (!live.input && closeInput !== undefined) {
-      closeInput();
-      closeInput = undefined;
-    }
-
-    if (live.frame && frame === undefined) {
-      frame = requestAnimationFrame(tick);
-    } else if (!live.frame && frame !== undefined) {
-      cancelAnimationFrame(frame);
-      frame = undefined;
-    }
-
-    const want = live.waymark;
-    const have = attached?.to;
-    if (
-      want?.element !== have?.element ||
-      want?.stepGeneration !== have?.stepGeneration ||
-      want?.listening !== have?.listening
-    ) {
-      attached?.detach();
-      attached = want
-        ? { to: want, detach: attach(want, () => sendRead(true)) }
-        : undefined;
-    }
-    if (want) {
-      const expanded = String(want.expanded);
-      if (want.element.getAttribute("aria-expanded") !== expanded) {
-        want.element.setAttribute("aria-expanded", expanded);
-      }
-    }
+    input = syncWatcher(input, live.input || undefined, () => openInput(onClick, onKeyDown));
+    frame = syncWatcher(frame, live.frame || undefined, openFrame);
+    attached = syncWatcher(attached, live.waymark, openAttachment, sameAttachment);
   }
 
   return {
@@ -308,7 +291,7 @@ export function createRun<TStep extends Step>(
       if (first) {
         try {
           send({ kind: "mounted" });
-          sendRead(false);
+          sendRead();
         } catch (error) {
           listeners.delete(listener);
           if (listeners.size === 0) send({ kind: "unmounted" });

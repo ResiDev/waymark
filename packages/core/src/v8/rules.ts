@@ -1,47 +1,71 @@
+import type { ClickHit } from "./input";
 import { end, enter, ABSENT, LOST, NO_EVENTS, noChange, SEARCHING, show } from "./state";
 import type { Outcome, State } from "./state";
-import { checkOf, delayOf, eventsOf, hasWaymark, isAuto } from "./walkthrough";
+import { checkOf, conditionOf, delayOf, eventsOf, hasWaymark, isAuto } from "./walkthrough";
 import type { Action, Location, Rect, Step, Walkthrough } from "./types";
 
 /**
- * Every rule in Waymark, as three pure functions over a State:
+ * Pure state transitions for a walkthrough run.
  *
- *   act(state, action)      what an Action does, and whether it is allowed
- *   observe(state, read)    what one look at the current Step means
- *   mount(state, mounted)   what subscribers arriving or leaving means
+ * `apply` dispatches queued messages to `act`, `observe`, `satisfy`, or
+ * `mount`. Each returns an Outcome with the next state, events to announce,
+ * and any scroll request. The driver performs those effects.
  *
- * Each takes a State and hands back an Outcome, and none touches the DOM.
- * `apply` is the one door: it routes a Message to its rule. The page arrives
- * as a StepRead; elements in it are identity tokens for the driver to use,
- * never things to read from here. `liveWatchers`, at the end, is the one
- * pure question the driver asks about the outside: what should be live now?
+ * DOM measurements and check results arrive in StepRead. These rules compare
+ * element references but never read or modify the elements themselves.
+ * `liveWatchers` describes the listeners, frame, and attachment the driver
+ * should maintain for the resulting state.
  */
 
 // ---- Messages --------------------------------------------------------------
 
 /**
- * What waits in the driver's queue: plain data naming something that
- * happened. Because it is data, a Run is a fold over its Messages.
+ * Inputs queued by the driver. Reads, clicks, and waymark events carry a
+ * step generation so stale inputs cannot affect a later step, even if it
+ * uses the same element. Clicking away is an exception: it collapses the
+ * current run regardless of which step received the click.
  */
 export type Message =
   | Readonly<{ kind: "act"; action: Action }>
-  | Readonly<{ kind: "read"; stepGeneration: number; read: StepRead }>
+  | Readonly<{ kind: "stepRead"; stepGeneration: number; stepRead: StepRead }>
+  | Readonly<{ kind: "click"; stepGeneration: number; hit: ClickHit; now: number }>
+  | Readonly<{ kind: "event"; stepGeneration: number; now: number }>
   | Readonly<{ kind: "mounted" }>
   | Readonly<{ kind: "unmounted" }>;
 
-/** The one door. Routes a Message to its rule; a StepRead from an older Step is dropped. */
+/** Dispatch a message, checking its step generation and advance condition where needed. */
 export function apply<TStep extends Step>(
   state: State<TStep>,
   message: Message,
   walkthrough: Walkthrough<TStep>,
 ): Outcome<TStep> {
+  const snapshot = state.snapshot;
+  // A step index can repeat after reset or previous; its generation cannot.
+  const stepOf = (stepGeneration: number): TStep | undefined =>
+    snapshot.phase === "running" && stepGeneration === state.stepGeneration
+      ? snapshot.step
+      : undefined;
   switch (message.kind) {
     case "act":
       return act(state, message.action, walkthrough);
-    case "read":
-      return message.stepGeneration === state.stepGeneration
-        ? observe(state, message.read, walkthrough)
+    case "stepRead":
+      return stepOf(message.stepGeneration)
+        ? observe(state, message.stepRead, walkthrough)
         : noChange(state);
+    case "click": {
+      // Collapse applies to the run, so it does not require a matching generation.
+      if (message.hit === "away") return act(state, "collapse", walkthrough);
+      const step = stepOf(message.stepGeneration);
+      return message.hit === "waymark" && step && conditionOf(step) === "click"
+        ? satisfy(state, message.now, walkthrough)
+        : noChange(state);
+    }
+    case "event": {
+      const step = stepOf(message.stepGeneration);
+      return step && eventsOf(step).length > 0
+        ? satisfy(state, message.now, walkthrough)
+        : noChange(state);
+    }
     case "mounted":
       return mount(state, true);
     case "unmounted":
@@ -51,8 +75,8 @@ export function apply<TStep extends Step>(
 
 // ---- Actions ---------------------------------------------------------------
 
-/** Leave the current Step: on to the next one, or to a completed Run. */
-function leave<TStep extends Step>(
+/** Advance to the next step, or complete the run and emit advance before finish. */
+function advanceStep<TStep extends Step>(
   state: State<TStep>,
   walkthrough: Walkthrough<TStep>,
 ): Outcome<TStep> {
@@ -62,20 +86,20 @@ function leave<TStep extends Step>(
     : { state: end(state, "completed"), events: ["advance", "finish"] };
 }
 
-/** What an Action does. The one answer to "may the user do this?". */
+/** Apply an action if the current state permits it; otherwise preserve the state. */
 export function act<TStep extends Step>(
   state: State<TStep>,
   action: Action,
   walkthrough: Walkthrough<TStep>,
 ): Outcome<TStep> {
   const snapshot = state.snapshot;
-  // Reset is the one Action a finished Run accepts, so it comes before the guard.
+  // Reset also applies to completed and exited runs.
   if (action === "reset") return { state: enter(walkthrough, 0, state), events: ["reset"] };
   if (snapshot.phase !== "running") return noChange(state);
 
   switch (action) {
     case "advance":
-      return snapshot.canAdvance ? leave(state, walkthrough) : noChange(state);
+      return snapshot.canAdvance ? advanceStep(state, walkthrough) : noChange(state);
     case "previous":
       return snapshot.stepIndex === 0
         ? noChange(state)
@@ -95,25 +119,16 @@ export function act<TStep extends Step>(
 
 // ---- Observation -----------------------------------------------------------
 
-/**
- * One look at the current Step, taken by the driver: once a frame, or on the
- * spot when the Waymark is clicked or fires one of the Step's events.
- */
+/** Measurements and check results from the driver, on subscription or an animation frame. */
 export type StepRead = Readonly<{
   element: Element | null;
-  /** May be the browser's own DOMRect; it is copied only if it turns out to be news. */
+  /** May be a browser DOMRect. `locate` copies it when storing a new location. */
   rect: Rect | null;
-  /** The rect overlaps the viewport. */
+  /** True when the rect overlaps the viewport, even partially. */
   inView: boolean;
-  /**
-   * How the Step's Advance condition stands, this look.
-   *
-   * - `"unmet"` — nothing to report.
-   * - `"holds"` — the Step's `state` check returned true. It may stop.
-   * - `"satisfied"` — the user clicked the Waymark, or it fired one of the
-   *   Step's events. This is for good: the condition never needs meeting again.
-   */
-  condition: "unmet" | "holds" | "satisfied";
+  /** Whether the step's `state` check returned true for this read. */
+  holds: boolean;
+  /** Monotonic time in milliseconds, on the same clock as click and event messages. */
   now: number;
 }>;
 
@@ -128,7 +143,11 @@ const copyRect = (rect: Rect): Rect => ({
   height: rect.height,
 });
 
-/** Searching → found → lost. A Waymark once seen is never searching again. */
+/**
+ * Track the waymark's location for this step. A missing waymark is searching
+ * until first found, then lost if it disappears. It can be found again.
+ * Reuse the previous location when its geometry is unchanged.
+ */
 function locate(previous: Location, read: StepRead, step: Step): Location {
   if (!hasWaymark(step)) return ABSENT;
   const rect = read.rect;
@@ -145,7 +164,7 @@ function locate(previous: Location, read: StepRead, step: Step): Location {
   return { status: "found", rect: copyRect(rect) };
 }
 
-/** Scroll an off-screen Waymark into view: once by default, never while collapsed. */
+/** Request scrolling for an off-screen waymark according to `step.scroll`, unless collapsed. */
 function scrollTarget(
   state: State,
   read: StepRead,
@@ -158,18 +177,41 @@ function scrollTarget(
 }
 
 /**
- * What one look at the current Step means: where the Waymark is, whether to
- * scroll to it, and whether the Advance condition has come due.
+ * Once the advance condition's delay has elapsed, advance automatically or
+ * set canAdvance for `then: "unlock"`. Preserve the outcome while waiting
+ * or if advancement is already unlocked.
+ */
+function whenDue<TStep extends Step>(
+  outcome: Outcome<TStep>,
+  now: number,
+  walkthrough: Walkthrough<TStep>,
+): Outcome<TStep> {
+  const { state } = outcome;
+  const snapshot = state.snapshot;
+  if (
+    snapshot.phase !== "running" ||
+    snapshot.canAdvance ||
+    state.heldSince === undefined ||
+    now - state.heldSince < delayOf(snapshot.step)
+  ) {
+    return outcome;
+  }
+  return isAuto(snapshot.step)
+    ? advanceStep(state, walkthrough)
+    : { ...outcome, state: show(state, snapshot, { canAdvance: true }) };
+}
+
+/**
+ * Update the waymark's location, request scrolling if needed, and check
+ * whether the advance condition's delay has elapsed.
  *
- * The look that starts a Run only locates. Its condition is not consulted,
- * so `start` is always announced before anything can move the Run on.
+ * The run's first read emits `start` and ignores the state check. This lets
+ * subscribers receive the initial location before a condition can advance
+ * the run. Scrolling can still be requested on this read.
  *
- * The condition has one clock, whatever kind it is. It holds while the Step's
- * check says so, or once it has been satisfied; `heldSince` is armed when
- * holding starts and dropped the moment it stops. A satisfied condition never
- * stops holding, which is why a click still counts once its delay runs out; a
- * check that flickers starts its delay again. With no delay, holding *is*
- * being due.
+ * `heldSince` records when the condition began holding. A false state check
+ * clears it, so the next true result starts the full delay again. A click or
+ * event recorded by `satisfy` stays satisfied for the rest of the step.
  */
 export function observe<TStep extends Step>(
   state: State<TStep>,
@@ -180,13 +222,11 @@ export function observe<TStep extends Step>(
   if (snapshot.phase !== "running") return noChange(state);
   const step = snapshot.step;
   const starting = !state.started;
-  const condition = starting ? "unmet" : read.condition;
 
   const waymark = locate(snapshot.waymark, read, step);
   const scrollTo = scrollTarget(state, read, step);
   const scrolled = state.scrolled || scrollTo !== undefined;
-  const satisfied = state.satisfied || condition === "satisfied";
-  const holds = satisfied || condition === "holds";
+  const holds = state.satisfied || (!starting && read.holds);
   const heldSince = holds ? (state.heldSince ?? read.now) : undefined;
 
   const changed =
@@ -194,34 +234,42 @@ export function observe<TStep extends Step>(
     waymark !== snapshot.waymark ||
     read.element !== state.element ||
     scrolled !== state.scrolled ||
-    satisfied !== state.satisfied ||
     heldSince !== state.heldSince;
   const shown = waymark === snapshot.waymark ? snapshot : { ...snapshot, waymark };
   const looked: State<TStep> = !changed
     ? state
-    : { ...state, snapshot: shown, started: true, element: read.element, satisfied, scrolled, heldSince };
+    : { ...state, snapshot: shown, started: true, element: read.element, scrolled, heldSince };
   const events = starting ? ["start" as const] : NO_EVENTS;
 
-  const due =
-    !snapshot.canAdvance &&
-    heldSince !== undefined &&
-    read.now - heldSince >= delayOf(step);
-  if (!due) return { state: looked, events, scrollTo };
+  return whenDue({ state: looked, events, scrollTo }, read.now, walkthrough);
+}
 
-  // The condition is met: move on, or just open the gate and stay.
-  return isAuto(step)
-    ? leave(looked, walkthrough)
-    : { state: show(looked, shown, { canAdvance: true }), events, scrollTo };
+/**
+ * Record a matching click or event for the current step. Repeated inputs
+ * preserve the original delay start time. With no delay, advance or unlock
+ * immediately; otherwise `observe` checks the delay on subsequent frames.
+ * Ignore inputs before the first read has emitted `start`.
+ */
+export function satisfy<TStep extends Step>(
+  state: State<TStep>,
+  now: number,
+  walkthrough: Walkthrough<TStep>,
+): Outcome<TStep> {
+  if (state.snapshot.phase !== "running" || !state.started) return noChange(state);
+  const held = state.satisfied
+    ? state
+    : { ...state, satisfied: true, heldSince: state.heldSince ?? now };
+  return whenDue(noChange(held), now, walkthrough);
 }
 
 // ---- Mounting --------------------------------------------------------------
 
 /**
- * The first subscriber arrived, or the last one left.
+ * Update whether the run has subscribers.
  *
- * Leaving drops a `state` check's clock: no look can prove the check kept
- * holding while nobody was looking, so its delay starts over on return. A
- * satisfied click or event keeps holding, and keeps its clock.
+ * When the last subscriber leaves, clear a state check's delay start time.
+ * Checks stop without subscribers, so continuous truth cannot be verified.
+ * A satisfied click or event keeps its start time across unmounting.
  */
 export function mount<TStep extends Step>(
   state: State<TStep>,
@@ -240,25 +288,33 @@ export function mount<TStep extends Step>(
   };
 }
 
-// ---- Projection: what should be live, given a State -----------------------
+// ---- Driver subscriptions --------------------------------------------------
 
-/** The Run's hold on its Waymark: an ARIA claim, and the Step's event listeners while the gate is shut. */
+/** ARIA attributes and advance-condition listeners to maintain on the waymark. */
 export type Attachment = Readonly<{
   element: Element;
   step: Step;
-  /** The Step this is for, so a Step re-entered on the same element is attached afresh. */
+  /** Forces reattachment when re-entering a step, even on the same element. */
   stepGeneration: number;
-  /** Listen for the Step's events. Nothing to hear once the gate is open. */
+  /** Listen for advance-condition events until canAdvance becomes true. */
   listening: boolean;
-  /** `aria-expanded`: the popover is showing, not collapsed. */
+  /** Value for `aria-expanded`, true while the run is not collapsed. */
   expanded: boolean;
 }>;
 
-/** Which live watchers should exist. The driver opens and closes only the difference. */
+/** Compare attachment fields so an equivalent new object does not cause reattachment. */
+export const sameAttachment = (a: Attachment, b: Attachment): boolean =>
+  a.element === b.element &&
+  a.step === b.step &&
+  a.stepGeneration === b.stepGeneration &&
+  a.listening === b.listening &&
+  a.expanded === b.expanded;
+
+/** Resources the driver should keep active, reconciled after each message. */
 export type LiveWatchers = Readonly<{
-  /** The window's clicks and keys. */
+  /** Listen for window click and keydown events. */
   input: boolean;
-  /** One animation frame, to take the next StepRead. */
+  /** Schedule an animation frame for the next StepRead. */
   frame: boolean;
   waymark: Attachment | undefined;
 }>;
@@ -266,9 +322,10 @@ export type LiveWatchers = Readonly<{
 const NOTHING_LIVE: LiveWatchers = { input: false, frame: false, waymark: undefined };
 
 /**
- * Only a Mounted, running Run has anything live. It wants a frame while there
- * is something the next look could change: a Waymark to follow, or a shut
- * gate whose `state` check must be asked or whose clock must be watched.
+ * Keep resources active only while the run is running and has subscribers.
+ * Request frames to track a waymark, evaluate a state check, or wait for a
+ * condition's delay. Once advancement is unlocked, only waymark tracking
+ * needs further frames.
  */
 export function liveWatchers(state: State): LiveWatchers {
   const snapshot = state.snapshot;
