@@ -8,7 +8,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['src/v5/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['./vitest.setup.ts'],
   },
 });

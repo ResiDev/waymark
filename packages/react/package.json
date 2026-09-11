@@ -1,7 +1,7 @@
 {
   "name": "react-waymark",
   "version": "0.0.0",
-  "description": "Waymark your app: an onboarding checklist where every item is an interactive guided tutorial for React.",
+  "description": "Waymark your app: an onboarding checklist where every item is an interactive guided walkthrough for React.",
   "license": "MIT",
   "author": "Alex Boitier",
   "type": "module",

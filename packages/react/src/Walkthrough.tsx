@@ -1,9 +1,9 @@
 import type { Rect } from "waymark";
 import { Beacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
-  TutorialProps,
-  TutorialRenderProps,
-  TutorialStep,
+  WalkthroughProps,
+  WalkthroughRenderProps,
+  WalkthroughStep,
 } from "./types";
 import { useRun } from "./useRun";
 
@@ -23,23 +23,23 @@ const centeredRect = (): Rect => {
 };
 
 /**
- * Runs and renders a Tutorial. The React interface owns one core Run and draws
+ * Runs and renders a Walkthrough. The React interface owns one core Run and draws
  * its snapshot; frame loops, browser events and transition policy remain in
  * core.
  */
-export function Tutorial<TStep extends TutorialStep>(
-  props: TutorialProps<TStep>,
+export function Walkthrough<TStep extends WalkthroughStep>(
+  props: WalkthroughProps<TStep>,
 ) {
   if (props.active === false || typeof document === "undefined") return null;
-  return <ActiveTutorial {...props} />;
+  return <ActiveWalkthrough {...props} />;
 }
 
-function ActiveTutorial<TStep extends TutorialStep>({
-  tutorial,
+function ActiveWalkthrough<TStep extends WalkthroughStep>({
+  walkthrough,
   waymarkPadding = 20,
   onEvent,
   renderPopover,
-}: TutorialProps<TStep>) {
+}: WalkthroughProps<TStep>) {
   const {
     snapshot,
     dialogRef,
@@ -50,7 +50,7 @@ function ActiveTutorial<TStep extends TutorialStep>({
     resume,
     reset,
     exit,
-  } = useRun({ tutorial, waymarkPadding, onEvent });
+  } = useRun({ walkthrough, waymarkPadding, onEvent });
 
   if (snapshot.phase !== "running") return null;
   if (snapshot.waymark.status === "searching" || snapshot.waymark.status === "lost") {
@@ -64,8 +64,8 @@ function ActiveTutorial<TStep extends TutorialStep>({
   }
 
   const anchor = rect ?? centeredRect();
-  const render = (placement: TutorialRenderProps<TStep>["placement"]) => {
-    const renderProps: TutorialRenderProps<TStep> = {
+  const render = (placement: WalkthroughRenderProps<TStep>["placement"]) => {
+    const renderProps: WalkthroughRenderProps<TStep> = {
       snapshot,
       currentStep: snapshot.step,
       placement,
@@ -88,7 +88,7 @@ function ActiveTutorial<TStep extends TutorialStep>({
         padding={rect ? waymarkPadding : 0}
         preferred={snapshot.step.preferredPlacement}
         dialogRef={dialogRef}
-        ariaLabel={`Tutorial step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}
+        ariaLabel={`Step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}
       >
         {render}
       </Dialog>

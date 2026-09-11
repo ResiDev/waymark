@@ -8,8 +8,8 @@ import type { Rect } from "waymark";
 import { placePopover } from "./placement";
 import type {
   Placement,
-  TutorialRenderProps,
-  TutorialStep,
+  WalkthroughRenderProps,
+  WalkthroughStep,
 } from "./types";
 
 export function WaymarkShade({
@@ -67,7 +67,7 @@ export function Beacon({
     <button
       ref={beaconRef}
       type="button"
-      aria-label="Resume tutorial"
+      aria-label="Resume walkthrough"
       onClick={onResume}
       style={{
         position: "fixed",
@@ -142,13 +142,13 @@ export function Dialog({
   );
 }
 
-export function DefaultPopover<TStep extends TutorialStep>({
+export function DefaultPopover<TStep extends WalkthroughStep>({
   currentStep,
   snapshot,
   previous,
   advance,
   exit,
-}: TutorialRenderProps<TStep>) {
+}: WalkthroughRenderProps<TStep>) {
   const secondaryButton = {
     border: 0,
     padding: "6px 4px",

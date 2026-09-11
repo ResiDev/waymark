@@ -5,15 +5,15 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createRun } from "waymark";
-import type { RunEvent, Tutorial } from "waymark";
-import type { TutorialStep } from "./types";
+import type { RunEvent, Walkthrough } from "waymark";
+import type { WalkthroughStep } from "./types";
 
-export function useRun<TStep extends TutorialStep>({
-  tutorial,
+export function useRun<TStep extends WalkthroughStep>({
+  walkthrough,
   waymarkPadding,
   onEvent,
 }: {
-  tutorial: Tutorial<TStep>;
+  walkthrough: Walkthrough<TStep>;
   waymarkPadding: number;
   onEvent?: (event: RunEvent<TStep>) => void;
 }) {
@@ -24,7 +24,7 @@ export function useRun<TStep extends TutorialStep>({
 
   const run = useMemo(
     () =>
-      createRun(tutorial, {
+      createRun(walkthrough, {
         root: document,
         waymarkPadding,
         onEvent: (event) => eventRef.current?.(event),
@@ -33,7 +33,7 @@ export function useRun<TStep extends TutorialStep>({
           beacon: beaconRef.current,
         }),
       }),
-    [waymarkPadding, tutorial],
+    [waymarkPadding, walkthrough],
   );
 
   const snapshot = useSyncExternalStore(

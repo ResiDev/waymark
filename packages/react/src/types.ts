@@ -1,35 +1,41 @@
-import type { ReactNode, CSSProperties } from 'react';
-import type { Placement, StepCallbacks, WaymarkStep } from 'waymark';
+import type { CSSProperties, ReactNode } from "react";
+import type {
+  RunEvent,
+  Running,
+  Step,
+  Walkthrough,
+} from "waymark";
 
-/**
- * A core step plus everything React needs to render it. The core resolves the
- * target and decides when to advance; this adds the render payload it has no
- * opinion about.
- */
-export type TutorialStep = WaymarkStep & {
-  content: ReactNode;
-  stepPopover?: (props: TutorialRenderProps) => ReactNode;
-  popoverStyle?: CSSProperties;
-  preferredPopoverPosition?: Placement;
-  callbacks?: StepCallbacks<TutorialStep>;
-};
+export type Placement = "above" | "below" | "left" | "right";
 
-export type TutorialRenderProps = {
-  currentStep: TutorialStep;
+export type WalkthroughStep = Step &
+  Readonly<{
+    content: ReactNode;
+    preferredPlacement?: Placement;
+    popoverStyle?: CSSProperties;
+  }>;
+
+export type WalkthroughRenderProps<
+  TStep extends WalkthroughStep = WalkthroughStep,
+> = Readonly<{
+  snapshot: Running<TStep>;
+  currentStep: TStep;
   placement: Placement;
-  step: number;
-  totalSteps: number;
-  ready: boolean;
-  hasTarget: boolean;
-  callbacks?: TourCallbacks;
-  next: () => void;
-  prev: () => void;
+  hasWaymark: boolean;
+  advance: () => void;
+  previous: () => void;
+  collapse: () => void;
   reset: () => void;
   exit: () => void;
-};
+}>;
 
-// Core's callback types are generic over the step so React consumers keep the
-// full TutorialStep (content and all) in their callback context.
-export type TourCallbacks = import('waymark').TourCallbacks<TutorialStep>;
-export type TourCallbackContext = import('waymark').TourCallbackContext<TutorialStep>;
-export type { Placement, StepCallbacks, TutorialStore, WaymarkStep, FrameState, AutoAdvances } from 'waymark';
+export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
+  Readonly<{
+    walkthrough: Walkthrough<TStep>;
+    active?: boolean;
+    waymarkPadding?: number;
+    onEvent?: (event: RunEvent<TStep>) => void;
+    renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
+  }>;
+
+export type { RunEvent, Snapshot, Running, Walkthrough } from "waymark";

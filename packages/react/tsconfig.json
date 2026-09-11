@@ -21,8 +21,7 @@
     }
   },
   "include": [
-    "src/index.ts",
-    "src/v5",
+    "src",
     "tsup.config.ts",
     "vitest.config.ts",
     "vitest.setup.ts"

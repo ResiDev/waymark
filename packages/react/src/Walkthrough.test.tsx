@@ -1,7 +1,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineTutorial, Tutorial } from "./index";
+import { defineWalkthrough, Walkthrough } from "./index";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -55,11 +55,11 @@ const addTarget = (waymark: string, label: string): HTMLButtonElement => {
   return target;
 };
 
-describe("Tutorial", () => {
+describe("Walkthrough", () => {
   it("does no work while inactive", async () => {
-    const tutorial = defineTutorial([{ content: "Hidden" }]);
+    const walkthrough = defineWalkthrough([{ content: "Hidden" }]);
     await act(async () => {
-      root.render(<Tutorial active={false} tutorial={tutorial} />);
+      root.render(<Walkthrough active={false} walkthrough={walkthrough} />);
     });
 
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -68,13 +68,13 @@ describe("Tutorial", () => {
 
   it("renders the default view and advances after a Waymark click", async () => {
     const target = addTarget("save", "Save");
-    const tutorial = defineTutorial([
+    const walkthrough = defineWalkthrough([
       { waymark: "save", advance: "click", content: "Save the document" },
       { content: "The document is saved" },
     ]);
 
     await act(async () => {
-      root.render(<Tutorial tutorial={tutorial} />);
+      root.render(<Walkthrough walkthrough={walkthrough} />);
     });
 
     expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
@@ -95,7 +95,7 @@ describe("Tutorial", () => {
 
   it("renders a closed Advance gate until its condition is met", async () => {
     const target = addTarget("name", "Name");
-    const tutorial = defineTutorial([
+    const walkthrough = defineWalkthrough([
       {
         waymark: "name",
         content: "Enter a name",
@@ -107,7 +107,7 @@ describe("Tutorial", () => {
       { content: "Named" },
     ]);
 
-    await act(async () => root.render(<Tutorial tutorial={tutorial} />));
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
     const next = document.querySelector("button[disabled]");
     expect(next).toHaveTextContent("Next");
 
@@ -121,10 +121,10 @@ describe("Tutorial", () => {
 
   it("turns an outside click into a resumable Collapsed run", async () => {
     addTarget("panel", "Panel");
-    const tutorial = defineTutorial([
+    const walkthrough = defineWalkthrough([
       { waymark: "panel", content: "Use this panel" },
     ]);
-    await act(async () => root.render(<Tutorial tutorial={tutorial} />));
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
 
     await act(async () => {
       document.body.dispatchEvent(
@@ -134,7 +134,7 @@ describe("Tutorial", () => {
     });
 
     const beacon = document.querySelector(
-      'button[aria-label="Resume tutorial"]',
+      'button[aria-label="Resume walkthrough"]',
     ) as HTMLButtonElement;
     expect(beacon).toBeInTheDocument();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -146,11 +146,11 @@ describe("Tutorial", () => {
   });
 
   it("supports one custom popover seam", async () => {
-    const tutorial = defineTutorial([{ content: "Payload" }]);
+    const walkthrough = defineWalkthrough([{ content: "Payload" }]);
     await act(async () => {
       root.render(
-        <Tutorial
-          tutorial={tutorial}
+        <Walkthrough
+          walkthrough={walkthrough}
           renderPopover={({ currentStep, snapshot }) => (
             <button type="button">
               Custom {snapshot.stepIndex}: {currentStep.content}
@@ -168,13 +168,13 @@ describe("Tutorial", () => {
   it("emits completion after the committed terminal state and cleans up", async () => {
     const target = addTarget("finish", "Finish target");
     const phases: string[] = [];
-    const tutorial = defineTutorial([
+    const walkthrough = defineWalkthrough([
       { waymark: "finish", content: "Last step" },
     ]);
     await act(async () => {
       root.render(
-        <Tutorial
-          tutorial={tutorial}
+        <Walkthrough
+          walkthrough={walkthrough}
           onEvent={(event) => {
             if (event.type === "advance" || event.type === "finish") {
               phases.push(`${event.type}:${event.snapshot.phase}`);
