@@ -1,8 +1,8 @@
-# Waymark core v8 — glossary
+# Waymark core — glossary
 
 Two halves. The **public** terms are what an application author or a renderer
 speaks (all declared in `types.ts`, and shared with the project's
-[CONTEXT.md](../../../../CONTEXT.md)). The **machinery** terms are what the
+[CONTEXT.md](../../../CONTEXT.md)). The **machinery** terms are what the
 code inside core speaks; there are eleven of them, and no others.
 
 ## Public terms
@@ -198,7 +198,7 @@ a check can stop holding, a flickering check starts its delay over.
   own, and what it means is decided in `apply`, not in the click handler.
   Only the frame and the first subscribe take StepReads.
 
-## What v8 took out of v7
+## Design choices, and what they replaced
 
 - The `decide` switchboard and the `Input` envelope: two named Rules instead
   of three input kinds, one of which bypassed the switchboard anyway. (The

@@ -16,11 +16,7 @@
     "noEmit": true
   },
   "include": [
-    "src/index.ts",
-    "src/v5",
-    "src/v6",
-    "src/v7",
-    "src/v8",
+    "src",
     "tsup.config.ts",
     "vitest.config.ts",
     "vitest.setup.ts"
