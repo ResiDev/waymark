@@ -67,14 +67,16 @@ collection.update({ hasDeck: true, hasPhoto: false });
 
 collection.checklists.decks.start("create-deck");
 // collection.checklists.decks.start("add-photo"); // Type error: not in decks.
-collection.reset("create-deck"); // Clears this task across all views.
+collection.checklists.home.skip("add-photo"); // Skipped on home only.
+collection.stop(); // Ends any active guidance.
 ```
 
 ## Tasks and selections
 
 ```ts
 // One objective. TContext types application data; TStep types walkthrough instructions.
-// Map keys supply ids, so task objects can be declared in separate files and reused.
+// Map keys supply ids. Tasks written inline are typed from the initial context;
+// tasks in other files go through defineTask (below).
 type Task<TContext, TStep extends Step = Step> = Readonly<{
   walkthrough?: Walkthrough<TStep>;
   // Pure synchronous check; update(context) evaluates it and records completion.
@@ -82,6 +84,16 @@ type Task<TContext, TStep extends Step = Step> = Readonly<{
   // The application may also call markDone, including for tasks without guidance.
   isComplete?: (context: TContext) => boolean;
 }>;
+
+// For tasks declared outside createChecklists. An arrow parameter is typed by
+// the expression it is written in, so a task in its own file has no context
+// type unless something supplies it. Curried, as in Zustand's create<T>()():
+// TypeScript cannot infer TStep while TContext is given by hand in one call.
+//   export type AppContext = typeof initialContext;   // once, in setup
+//   "create-deck": defineTask<AppContext>()({ walkthrough, isComplete: (c) => c.hasDeck })
+declare function defineTask<TContext>(): <const TTask extends Task<TContext, any>>(
+  task: TTask,
+) => TTask;
 
 // The inferred keys are the only valid task ids.
 type TaskMap<TContext> = Readonly<Record<string, Task<TContext, any>>>;
@@ -112,18 +124,20 @@ type SelectedTask<TTasks, TIds extends readonly TaskId<TTasks>[]> =
 // Remaining, accomplished, or deliberately skipped. Active guidance is separate.
 type TaskStatus = "todo" | "done" | "skipped";
 
-// One persisted record per createChecklists call, shared by all its views.
-// Skip retains the existing shared-record shape for now; its scope remains open.
-// Active Run, step, and walkthrough history are not stored.
+// One persisted record per createChecklists call. Done is shared by every
+// view; skipped is per checklist, keyed by checklist name.
+// Active Run, step, and walkthrough history are not stored. No version field:
+// storage adapters wrap the record in their own envelope.
 type Stored = Readonly<{
   done: readonly string[]; // task ids, treated as a set
-  skipped: readonly string[];
+  skipped: Readonly<Record<string, readonly string[]>>; // checklist name -> task ids
 }>;
 
 // Current display data for one checklist, not a separate completion record.
+// Done is the same in every view; skipped is this checklist's own.
 type ChecklistSnapshot<TTask extends { readonly id: string }> = Readonly<{
   tasks: readonly Readonly<{ task: TTask; status: TaskStatus }>[];
-  finishedCount: number; // done plus skipped
+  finishedCount: number; // done plus skipped here
   taskCount: number; // selected task count
   complete: boolean; // finishedCount === taskCount
   // The shared active Run only when its task belongs to this checklist.
@@ -132,12 +146,11 @@ type ChecklistSnapshot<TTask extends { readonly id: string }> = Readonly<{
 }>;
 
 // Commands scoped to the selected tasks; they delegate to the shared owner.
-// Reset on a view requires an id, avoiding an ambiguous "reset everything".
+// Skip belongs to the view because it is recorded per checklist.
 type TaskCommands<TId extends string> = Readonly<{
   start: (id: TId) => void; // starts/replays guidance; exits any previous shared Run
   markDone: (id: TId) => void; // records done everywhere; guidance can continue
-  skip: (id: TId) => void; // todo -> skipped; exits this task's active Run
-  reset: (id: TId) => void; // clears this task's record everywhere; keeps its Run
+  skip: (id: TId) => void; // todo -> skipped in this checklist; exits this task's active Run
 }>;
 
 // Framework-neutral live view. Does not own storage or application context.
@@ -152,12 +165,25 @@ type Checklist<TTask extends { readonly id: string }> =
 
 ```ts
 // Task events occur once per shared transition, not once per checklist view.
-// Checklist completion identifies the named view that became complete.
-// Delivery order and snapshot payloads for shared events remain open.
+// Skip and checklist completion name the view they happened in.
+// Order within one change: task events first, then checklistComplete for each
+// view that went from incomplete to complete, in declaration order.
 type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
   | Readonly<{
-      type: "taskStarted" | "taskStopped" | "taskComplete" | "taskSkipped" | "taskReset";
+      type: "taskStarted" | "taskComplete";
       task: NamedTask<TTasks>;
+    }>
+  | Readonly<{
+      type: "taskStopped";
+      task: NamedTask<TTasks>;
+      // finished: reached the last step. skipped: a view skipped it.
+      // stopped: exit from the popover, stop(), or start() of another task.
+      reason: "finished" | "skipped" | "stopped";
+    }>
+  | Readonly<{
+      type: "taskSkipped";
+      task: NamedTask<TTasks>;
+      checklist: keyof TSelections & string;
     }>
   | Readonly<{
       type: "checklistComplete";
@@ -169,8 +195,9 @@ type ChecklistsOptions<TTasks, TSelections extends ChecklistSelections<TTasks>> 
   stored?: Stored; // starts empty if omitted
   onChange?: (stored: Stored) => void; // whole shared record after local changes
   onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
-  // Shared Run options; handle internal completion before the supplied listener.
-  run?: RunOptions<StepOf<TTasks[keyof TTasks]>>;
+  // Shared Run options. Core supplies startAt and ui itself, and wraps onEvent:
+  // it handles finish and exit first, then calls the supplied listener.
+  run?: Omit<RunOptions<StepOf<TTasks[keyof TTasks]>>, "startAt" | "ui">;
 }>;
 
 // Turn each named selection into a live view of only those tasks.
@@ -192,23 +219,32 @@ type Checklists<
   checklists: ChecklistViews<TTasks, TSelections>;
 
   start: (id: TaskId<TTasks>) => void; // starts/replays guidance; exits previous Run
+  stop: () => void; // exits the active Run; no-op when nothing is active
   markDone: (id: TaskId<TTasks>) => void; // records done across all views
-  skip: (id: TaskId<TTasks>) => void; // records skipped; exits this task's Run
-  // With an id, clear that task. Without one, clear the entire shared record.
-  reset: (id?: TaskId<TTasks>) => void;
+  // Skip is a view command: it is recorded per checklist, so the owner has none.
+
+  // For the single app-level walkthrough renderer. Core reads the active Run's
+  // UI elements through the bound getter; one binding at a time, newest wins.
+  // Names are provisional.
+  bindUi: (ui: () => UiElements) => () => void; // returns release
+  getActive: () => Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
+  subscribe: (listener: () => void) => () => void; // fires when active changes
 
   // Check each non-done task once, even if it appears in several views.
-  // True overrides skipped. Done stays recorded until reset/load. No polling.
+  // True overrides skipped in every checklist. Done stays recorded until load/clear. No polling.
   // Requires the full inferred shape; missing fields are TypeScript errors.
   update: (context: TContext) => void;
   // Authoritative replacement; no onChange or transition events.
   // Stale data can roll back local changes; the application owns conflict policy.
   load: (stored: Stored) => void;
+  // Empty all progress, including unknown ids/names, and call onChange once.
+  // Keep the active Run; no transition events. No-op if already empty.
+  clear: () => void;
 }>;
 
 // Infer context from its initial values only; checks must accept that shape.
 // Context is not const-inferred: false/true should widen to boolean.
-// Callers supply neither generics nor a separate definition call.
+// No generics at the creation site; only tasks in other files need defineTask.
 declare function createChecklists<
   TContext,
   const TTasks extends TaskMap<NoInfer<TContext>>,
@@ -226,37 +262,46 @@ Task map insertion order controls condition checks; selection order controls row
 
 ## Transition contract
 
-Creation normalises the stored record, then checks initial context. Matching
-conditions can complete tasks immediately, using the same transition rules as
-`update`. Initial values are real data; later updates supply the full context
-shape. Types check callers at compile time, not untyped runtime input.
+Creation normalises the stored record, then checks initial context exactly as
+`update` would: matching conditions complete tasks, `onChange` and events fire.
+Handlers must not touch the returned object synchronously during creation, as
+it is not assigned yet. Initial values are real data; later updates supply the
+full context shape. Types check callers at compile time, not untyped runtime input.
 
 | Input | Shared state change |
 |---|---|
-| `start(id)` | Exit the previous Run, commit the new active task, subscribe until the Run ends. No-op without guidance or if already active. |
+| `start(id)` | Exit the previous Run, commit the new active task, create its Run with core's own `onEvent`. Finish and exit are observed there; core never subscribes to the Run, since subscribing switches on page watching. No-op without guidance or if already active. |
+| `stop()` | Exit the active Run and clear active. No-op when nothing is active. |
 | Run finishes without `isComplete` | Mark its task done and clear active, updating every affected view. |
 | Run finishes with `isComplete` | Clear active; finishing instructions does not assert application completion. |
 | Run exits | Clear active; retain completion. |
 | `markDone(id)` | Record done, remove skipped. No-op if already done. |
-| `skip(id)` | Record skipped and exit its active Run. No-op if done or skipped. |
-| `reset(id?)` | Clear selected task or entire record; keep active Run. No-op if nothing to clear. |
+| `skip(id)` on a view | Record skipped for that checklist and exit the task's active Run. No-op if done or already skipped there. |
 | `update(context)` | Evaluate eligible conditions once in task order; commit all resulting completions together. |
+| `clear()` | Replace progress with `{ done: [], skipped: {} }`, including unknown task ids and checklist names. Notify changed views and call `onChange` once; emit no transition events. Keep the active Run and context; do not re-check conditions. No-op if already empty. |
 
 - Shared task ids couple completion; sharing only a Walkthrough object does not.
 - Commit affected snapshots before callbacks. Notify each changed view once and call `onChange` once per record change.
 - Unaffected views retain snapshot identity. Shared active tasks appear active in every view containing them.
-- Normalise stored arrays: deduplicate, done wins overlaps, known ids in task map order.
-- Preserve unknown stored ids in input order across local changes; only `reset()` clears them locally.
-- `load` replaces the record, including unknown ids. It notifies changed views without persistence callbacks or events.
-- Completion counts include skipped tasks. A skipped -> done transition does not repeat a view's completion event.
+- Normalise stored arrays: deduplicate, done removes the task from every checklist's skipped list, known ids in task map order.
+- Preserve unknown task ids and unknown checklist names in input order across local changes, except `clear` removes them; `load` replaces them.
+- `load` replaces the record, including unknown ids. It notifies changed views without persistence callbacks or events. Use `clear()` to clear progress and persist that change through `onChange`.
+- Completion counts include tasks skipped in that checklist. A skipped -> done transition does not repeat a view's completion event.
 - Starting policy stays with the app; a view's next task is a find over its snapshot.
+- Conditions run only in `update`. A Run finishing does not re-check its task's `isComplete`; frameworks push context through their own sync, plain apps call `update`.
+- Commands complete before returning, except when called inside a view listener or `onEvent` handler. Those calls enqueue and run after the current notifications and events finish, as the Run's `act` does.
 
 ## Persistence
 
 ```ts
-// Browser adapter shared across frameworks; core defaults to in-memory storage.
+// Optional browser adapter shared across frameworks; core keeps progress in memory
+// and never accesses local storage itself.
+// Non-empty records write { version: 1, record }.
+// Empty records remove the key with removeItem(key), rather than storing "null".
+// Empty means no done ids and no skipped ids, including unknown ids/names.
+// Missing, invalid, or unknown-version -> empty record.
 declare function createLocalStorageRecord(key: string): Readonly<{
-  load: () => Stored; // missing or invalid JSON -> empty record
+  load: () => Stored;
   save: (stored: Stored) => void;
 }>;
 
@@ -264,13 +309,24 @@ declare function createLocalStorageRecord(key: string): Readonly<{
 const record = createLocalStorageRecord("study-setup");
 const collection = createChecklists({
   context: { hasDeck: false, hasPhoto: false }, // initial values also infer the type
-  tasks: { ...accountTasks, ...deckTasks }, // definitions may live in separate files
+  tasks: { ...accountTasks, ...deckTasks }, // built with defineTask<AppContext>() in their own files
   checklists: { home: ["add-photo", "create-deck"], decks: ["create-deck"] },
   stored: record.load(),
   onChange: record.save,
 });
 // Server storage uses stored/onChange too; later records enter via collection.load.
+
+collection.clear();
+// Clears live progress and calls onChange with { done: [], skipped: {} }.
+// With record.save wired above, this removes the local-storage key.
+// A subsequent localStorage.getItem("study-setup") returns null.
 ```
+
+Omit `stored` and `onChange` for memory-only progress. Custom persistence supplies
+initial data through `stored` and saves changes through `onChange`; it decides
+how to store or delete an empty record. `load(record)` accepts incoming progress
+without saving it back. `clear()` changes progress locally and calls `onChange`
+when the record changes. Later updates or Run completion can record progress again.
 
 ## React adapter
 
@@ -281,19 +337,20 @@ type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
   title: ReactNode;
 }>;
 
-// Opaque props passed through to <Walkthrough {...walkthroughProps} />.
-// Contains the shared active Run and renderer bindings; concrete binding remains open.
-declare const walkthroughBinding: unique symbol;
-type ActiveWalkthroughProps<TStep extends Step> = Readonly<{
-  [walkthroughBinding]: Run<TStep>;
-}>;
+// One per app, near the root, like a toast layer. Renders the popover and
+// beacon for whichever task is active, binds its elements through bindUi on
+// mount, and releases on unmount. Checklist views never render guidance, so
+// two views showing the same task on one page still give one popover, and
+// guidance survives route changes until the app calls stop().
+declare function ActiveWalkthrough<TTasks>(
+  props: Readonly<{ checklists: Checklists<any, TTasks, any> }>,
+): ReactElement | null;
 
 // Core Checklist is imported as CoreChecklist in the React module.
-// Custom rendering receives existing commands, display data, and guidance props.
+// Custom rendering receives existing commands and display data.
 type UseChecklistResult<TTask extends ReactTask<any> & { readonly id: string }> =
   TaskCommands<TTask["id"]> & Readonly<{
     snapshot: ChecklistSnapshot<TTask>;
-    walkthroughProps: ActiveWalkthroughProps<StepOf<TTask>> | null;
   }>;
 
 declare function useChecklist<TTask extends ReactTask<any> & { readonly id: string }>(
@@ -317,35 +374,57 @@ const snapshot = useSyncExternalStore(
   getServerSnapshot,
 );
 
+// Once, at the app root.
+<ActiveWalkthrough checklists={collection} />
+
 // Route chooses the view. React tasks include title and walkthrough display content.
 <Checklist checklist={collection.checklists.home} />
 
 // Headless alternative.
-const { snapshot, start, walkthroughProps } = useChecklist(collection.checklists.decks);
+const { snapshot, start } = useChecklist(collection.checklists.decks);
 <ChecklistPanel snapshot={snapshot} onStart={start} />
-{walkthroughProps && <Walkthrough {...walkthroughProps} />}
 ```
 
 | Responsibility | Owner |
 |---|---|
 | Context updates | Application calls `collection.update(context)` once for shared tasks. React views do not independently supply conflicting context. |
 | Completion, active Run, storage callbacks | Shared Checklists object, outside React. |
+| Guidance rendering | One `ActiveWalkthrough` per app. Views never render it. |
 | UI subscription | `useSyncExternalStore`; views have stable identities. |
 | Default UI | Titles, statuses, active task, finished count, guidance/replay, skip, and manual completion for todo tasks without guidance or a condition. |
-| Unmount | Hook disconnects its subscription and renderer bindings; the application retains ownership. |
+| Unmount | Hooks disconnect their subscriptions; `ActiveWalkthrough` releases its UI binding. The application retains ownership. |
+
+## Settled
+
+- Core builds on the queued Run runtime, which is now the only implementation in the repo.
+- The name Run stays.
+- Skip is per checklist. Done is shared and wins over skipped everywhere.
+- `clear()` empties all progress and persists through `onChange`; `load()` receives progress without saving it back. Un-doing a single task has no use case yet.
+- Local storage is opt-in. Its adapter removes the key when saving an empty record; custom persistence decides how to handle that record.
+- `stop()` on the owner ends active guidance.
+- Creation behaves exactly like `update`, including callbacks.
+- Core observes the Run through `onEvent`, never `subscribe`.
+- One app-level walkthrough renderer; views only render lists and commands.
+- Guidance continues across route changes; the app calls `stop()` if it should not.
+- Versioning lives in the storage adapter's envelope, not in `Stored`.
+- `taskStopped` carries `reason: "finished" | "skipped" | "stopped"`.
+- Event order per change: task events, then `checklistComplete` for each newly complete view in declaration order.
+- Conditions run only in `update`; finishing a walkthrough does not re-check them.
+- Tasks in separate files use the curried `defineTask<AppContext>()` helper; inline tasks need nothing.
+- Commands are re-entrant on the same terms as the Run's `act`.
+- Ships from the existing `waymark` and `react-waymark` entry points; both are `sideEffects: false`.
 
 ## Open decisions
 
-- Shared versus checklist-local skip. Current signatures retain shared skip until settled.
-- Which views announce `checklistComplete` after a shared change; event order and snapshot payloads.
-- Bind UI refs to the external Run and choose one walkthrough renderer when several views show the active task.
-- Context syncing helper for framework-owned state: pass the full inferred context when React values change. Its name/signature remain open; direct `update` is available.
+- Snapshot payloads on events, if any.
 - SSR snapshots/hydration and owner cleanup. Live instances belong to one application/user scope.
-- Route changes may switch views; application policy decides whether guidance continues.
 - Task events for replay completion and a Run finishing after its task was already marked done.
+- Names of `bindUi`, `getActive`, and the owner-level `subscribe`.
 
 ## Deferred
 
+- Context syncing helper for framework-owned state. Each framework brings its own effect-style sync that calls `update`.
+- Un-doing a task or clearing part of the record through the API.
 - Dependencies/locked tasks, polling, automatic starts, and stored walkthrough history.
 - Cross-device merging; application-owned conflict policy first.
 - Svelte-style subscriptions that pass snapshots to listeners.
