@@ -1,6 +1,7 @@
 # Checklist design
 
-Show completed and remaining tasks, with optional walkthroughs for guidance.
+Show completed and remaining tasks, with optional descriptions, application actions,
+and walkthroughs for guidance.
 Terms: [CONTEXT.md](CONTEXT.md). Signatures describe the proposed interface.
 
 ## Domain overview
@@ -10,7 +11,7 @@ show that task; completing it updates every checklist that includes it.
 
 | Term | Meaning |
 |---|---|
-| Task | An objective with optional instructions and a completion condition. Its map key is its stable id. |
+| Task | An objective with an optional description, application action, walkthrough, and completion condition. Its map key is its stable id. |
 | Checklist | A named, ordered view of tasks and their shared completion. |
 | Checklists | The object returned by `createChecklists`: owns the tasks, checklist views, completion record, and at most one active Run. |
 | Context | Application information supplied to completion checks, such as `hasDeck`. |
@@ -37,6 +38,43 @@ flowchart TD
 
 Separate `createChecklists` calls have independent records. Reusing a task
 object across those calls shares its definition, not its completion.
+
+## Descriptions, actions, and walkthroughs
+
+A description explains a task directly in its checklist row. A short explanation
+may be enough without defining or opening a walkthrough. A one-step walkthrough
+remains useful when the instruction should point to an element in the page.
+Descriptions are optional and should stay short so the checklist remains easy to scan.
+
+An application action runs only when the user selects its button. It can navigate,
+open a dialog, or invoke another application operation. A task may offer an action,
+a walkthrough, both, or neither. The default checklist shows one primary button:
+
+| Task configuration | Primary button behaviour |
+|---|---|
+| Action only | Show `action.label` and invoke `action.onSelect`. |
+| Walkthrough only | Start the walkthrough through `start(id)`; offer replay after completion. |
+| Action and walkthrough | Show the action button. The application decides whether and when to call `start(id)`. Do not automatically run both or add a second button. |
+| Neither | Show the title and optional description without a primary action button. |
+
+Custom rendering may expose both choices. An action can, for example, open the
+relevant page and call `start(id)` when that page is ready for guidance.
+`start(id)` always starts the walkthrough, even when the task also has an action.
+
+Descriptions and labelled actions belong to the rendering adapter, alongside the
+title. Core preserves these extra task fields in snapshots but does not invoke
+actions. An action creates no Run, changes no active task, and emits no checklist
+event by itself. It also does not stop existing guidance unless the application
+calls `stop()` or starts another walkthrough. The application owns asynchronous
+work, errors, and any prevention of repeated invocation.
+
+Displaying a description or invoking an action does not mark a task done.
+Completion still comes from `isComplete(context)`, an explicit `markDone(id)`,
+or finishing a walkthrough that has no completion condition. A task without a
+walkthrough or condition offers manual completion, including when it has an action.
+For an information-only task, that control acknowledges the information. If text
+does not need acknowledgement, use it as another task's description rather than
+creating an extra task to tick off.
 
 ## Caller interface
 
@@ -165,6 +203,7 @@ type Checklist<TTask extends { readonly id: string }> =
 
 ```ts
 // Task events occur once per shared transition, not once per checklist view.
+// taskStarted/taskStopped describe walkthrough Runs, not application actions.
 // Skip and checklist completion name the view they happened in.
 // Order within one change: task events first, then checklistComplete for each
 // view that went from incomplete to complete, in declaration order.
@@ -335,6 +374,11 @@ when the record changes. Later updates or Run completion can record progress aga
 // Core createChecklists preserves these extra fields in checklist snapshots.
 type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
   title: ReactNode;
+  description?: ReactNode; // shown inline beneath the title; no Run needed
+  action?: Readonly<{
+    label: ReactNode;
+    onSelect: () => void; // invoked directly by the UI on selection
+  }>;
 }>;
 
 // One per app, near the root, like a toast layer. Renders the popover and
@@ -367,6 +411,42 @@ declare function Checklist<TTask extends ReactTask<any> & { readonly id: string 
 ```
 
 ```tsx
+// Task content is preserved by createChecklists, just like walkthrough content.
+const collection = createChecklists({
+  context: { hasDeck: false, hasPhoto: false },
+  tasks: {
+    "create-deck": {
+      title: "Create your first deck",
+      description: "Decks group the cards you want to study.",
+      walkthrough: createDeckWalkthrough,
+      isComplete: (context) => context.hasDeck,
+    },
+    "add-photo": {
+      title: "Add a profile photo",
+      description: "Choose a photo so your teammates can recognise you.",
+      action: { label: "Choose photo", onSelect: () => openPhotoPicker() },
+      isComplete: (context) => context.hasPhoto,
+    },
+    "understand-sharing": {
+      title: "Understand sharing",
+      description: "Your decks stay private until you share them.",
+      // No walkthrough or action. Manual completion acknowledges the information.
+    },
+  },
+  checklists: { home: ["create-deck", "add-photo", "understand-sharing"] },
+});
+
+// When an action and walkthrough coexist, the application controls sequencing:
+// action: {
+//   label: "Create a deck",
+//   onSelect: () => {
+//     openCreateDeckDialog();
+//     // Call collection.start("create-deck") when the dialog is ready.
+//   },
+// },
+```
+
+```tsx
 // Internal subscription; SSR snapshot contract is still open.
 const snapshot = useSyncExternalStore(
   checklist.subscribe,
@@ -391,13 +471,16 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 | Completion, active Run, storage callbacks | Shared Checklists object, outside React. |
 | Guidance rendering | One `ActiveWalkthrough` per app. Views never render it. |
 | UI subscription | `useSyncExternalStore`; views have stable identities. |
-| Default UI | Titles, statuses, active task, finished count, guidance/replay, skip, and manual completion for todo tasks without guidance or a condition. |
+| Default UI | Titles, inline descriptions, statuses, active task, finished count, action buttons or guidance/replay according to the precedence above, skip, and manual completion for todo tasks without a walkthrough or a condition. |
+| Application actions | The UI invokes `action.onSelect` on selection. The application owns navigation, dialogs, asynchronous work, and any calls to start or stop guidance. |
 | Unmount | Hooks disconnect their subscriptions; `ActiveWalkthrough` releases its UI binding. The application retains ownership. |
 
 ## Settled
 
 - Core builds on the queued Run runtime, which is now the only implementation in the repo.
 - The name Run stays.
+- Descriptions and labelled application actions are optional adapter content. Actions take precedence over walkthrough buttons in the default UI; `start(id)` remains walkthrough-only.
+- Descriptions and actions do not imply completion or create an active task. Actions and walkthroughs may coexist, with sequencing owned by the application.
 - Skip is per checklist. Done is shared and wins over skipped everywhere.
 - `clear()` empties all progress and persists through `onChange`; `load()` receives progress without saving it back. Un-doing a single task has no use case yet.
 - Local storage is opt-in. Its adapter removes the key when saving an empty record; custom persistence decides how to handle that record.

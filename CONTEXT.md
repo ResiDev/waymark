@@ -45,7 +45,7 @@ A group of named checklists sharing one user's task completion and at most one a
 _Avoid_: Onboarding, checklist definition, registry
 
 **Task**:
-One thing the user should accomplish. A task has a stable id, may offer a walkthrough and a completion condition, and may appear in several checklists that share its completion.
+One thing the user should accomplish. A task has a stable id, may offer a description, application action, walkthrough, and completion condition, and may appear in several checklists that share its completion.
 _Avoid_: Item, milestone, goal, step
 
 **Checklist**:
