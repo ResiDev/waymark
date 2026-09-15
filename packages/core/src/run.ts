@@ -164,6 +164,8 @@ export function createRun<TStep extends Step>(
 
         const after = state.snapshot;
         if (after !== before.snapshot) {
+          // Copied on purpose: a listener may subscribe or unsubscribe others mid-notify.
+          // oxlint-disable-next-line unicorn/no-useless-spread
           for (const listener of [...listeners]) {
             if (listeners.has(listener)) invoke(listener);
           }
@@ -253,7 +255,9 @@ export function createRun<TStep extends Step>(
     try {
       send(...read, ...after);
     } catch (error) {
-      if (failure) throw new AggregateError([failure.error, error], "Run callbacks failed.");
+      if (failure) {
+        throw new AggregateError([failure.error, error], "Run callbacks failed.", { cause: error });
+      }
       throw error;
     }
     if (failure) throw failure.error;

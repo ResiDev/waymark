@@ -93,6 +93,37 @@ describe("Walkthrough", () => {
     expect(target).not.toHaveAttribute("aria-haspopup");
   });
 
+  it("uses a replacement event callback without restarting the run", async () => {
+    const target = addTarget("save", "Save");
+    const walkthrough = defineWalkthrough([
+      { waymark: "save", advance: "click", content: "First step" },
+      { content: "Second step" },
+      { content: "Third step" },
+    ]);
+    const original = vi.fn();
+    const replacement = vi.fn();
+
+    await act(async () => {
+      root.render(<Walkthrough walkthrough={walkthrough} onEvent={original} />);
+    });
+    await act(async () => target.click());
+    expect(original).toHaveBeenCalled();
+    original.mockClear();
+
+    await act(async () => {
+      root.render(<Walkthrough walkthrough={walkthrough} onEvent={replacement} />);
+    });
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Second step");
+
+    const next = Array.from(document.querySelectorAll("button")).find(
+      (button) => button.textContent === "Next (2 of 3)",
+    )!;
+    await act(async () => next.click());
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Third step");
+    expect(replacement).toHaveBeenCalled();
+    expect(original).not.toHaveBeenCalled();
+  });
+
   it("renders a closed Advance gate until its condition is met", async () => {
     const target = addTarget("name", "Name");
     const walkthrough = defineWalkthrough([

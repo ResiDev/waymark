@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useLayoutEffect,
   useMemo,
   useRef,
   useSyncExternalStore,
@@ -20,10 +21,14 @@ export function useRun<TStep extends WalkthroughStep>({
   const dialogRef = useRef<HTMLDivElement>(null);
   const beaconRef = useRef<HTMLButtonElement>(null);
   const eventRef = useRef(onEvent);
-  eventRef.current = onEvent;
+  useLayoutEffect(() => {
+    eventRef.current = onEvent;
+  }, [onEvent]);
 
   const run = useMemo(
     () =>
+      // The closures read the refs when the Run fires, not during render.
+      // oxlint-disable-next-line react/refs
       createRun(walkthrough, {
         root: document,
         waymarkPadding,

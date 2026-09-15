@@ -104,6 +104,8 @@ export function Dialog({
   children: (placement: Placement) => ReactNode;
 }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
+  // Measured after every render on purpose; the equality check below stops the chain.
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
     const element = dialogRef.current;
     if (!element) return;
