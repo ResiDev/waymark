@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Waymark fixture</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; }
+      main { padding: 40px; }
+      button, input { display: block; margin: 8px 0; padding: 8px 12px; }
+      .spacer { height: 3000px; }
+
+      /* Control panel: the walkthrough's own UI, so clicks here are never "away". */
+      #panel {
+        position: fixed; top: 12px; right: 12px; width: 300px; z-index: 2;
+        padding: 12px; background: #fff; border: 1px solid #ccc; border-radius: 6px;
+        font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+      }
+      #panel select, #panel button { display: inline-block; margin: 0 4px 4px 0; padding: 4px 8px; }
+      #panel pre { margin: 8px 0 0; max-height: 40vh; overflow: auto; white-space: pre-wrap; }
+
+      /* Halo drawn over the found waymark. Pointer events pass through to the page. */
+      #halo {
+        position: fixed; pointer-events: none; z-index: 1; display: none;
+        border: 2px solid #e6007a; border-radius: 4px; box-shadow: 0 0 0 4px rgb(230 0 122 / 0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <button data-waymark="save">Save</button>
+      <input data-waymark="name" placeholder="Name" />
+      <div class="spacer"></div>
+      <button data-waymark="footer">Footer</button>
+    </main>
+
+    <aside id="panel" data-waymark-ui>
+      <select id="scenario"></select>
+      <button id="start">Start</button>
+      <div id="actions"></div>
+      <pre id="snapshot">No scenario started.</pre>
+    </aside>
+    <div id="halo"></div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

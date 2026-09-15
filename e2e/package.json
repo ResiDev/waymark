@@ -1,0 +1,18 @@
+{
+  "name": "waymark-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --open",
+    "shot": "node --experimental-strip-types scripts/shot.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "playwright": "^1.63.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "waymark": "workspace:*"
+  },
+  "description": "Vanilla fixture page for core: a dev playground for people and agents, and a screenshot script."
+}

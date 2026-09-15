@@ -1,0 +1,18 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "waymark": [
+        "../packages/core/src/index.ts"
+      ]
+    },
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "fixtures",
+    "scripts",
+    "vite.config.ts"
+  ]
+}
