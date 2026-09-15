@@ -12,7 +12,9 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "oxlint",
     "test": "pnpm -r --parallel --filter waymark --filter react-waymark test",
-    "test:watch": "pnpm --filter react-waymark test:watch"
+    "test:watch": "pnpm --filter react-waymark test:watch",
+    "test:e2e": "pnpm --filter waymark test:e2e",
+    "check:all": "pnpm check && pnpm test:e2e"
   },
   "devDependencies": {
     "oxlint": "^1.82.0",
