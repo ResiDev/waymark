@@ -1,24 +1,4 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
-    "verbatimModuleSyntax": true,
-    "isolatedModules": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "noEmit": true
-  },
-  "include": [
-    "src",
-    "tsup.config.ts",
-    "vitest.config.ts",
-    "vitest.setup.ts"
-  ]
+  "extends": "../../tsconfig.base.json",
+  "include": ["src", "tsup.config.ts", "vitest.config.ts", "vitest.setup.ts"]
 }

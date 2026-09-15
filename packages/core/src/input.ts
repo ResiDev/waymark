@@ -78,7 +78,7 @@ function cycleFocus(event: KeyboardEvent, ctx: InputContext): void {
   const current = focusable.indexOf(document.activeElement as HTMLElement);
   const step = event.shiftKey ? -1 : 1;
   const next = (current + step + focusable.length) % focusable.length;
-  focusable[current === -1 && event.shiftKey ? focusable.length - 1 : next].focus();
+  focusable[current === -1 && event.shiftKey ? focusable.length - 1 : next]?.focus();
 }
 
 export function keyAction(

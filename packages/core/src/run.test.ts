@@ -134,7 +134,7 @@ describe("createRun", () => {
       { waymark: "save", advance: { when: { event: "change" }, then: "unlock" } },
     ]));
     const view = watch(run);
-    const signal = (listen.mock.calls[0][2] as AddEventListenerOptions).signal!;
+    const signal = (listen.mock.calls[0]![2] as AddEventListenerOptions).signal!;
 
     run.act("collapse");
     expect(target).toHaveAttribute("aria-expanded", "false");
@@ -164,7 +164,7 @@ describe("createRun", () => {
       { waymark: "save", advance: { event: "change" } }, {},
     ]));
     const view = watch(run);
-    const signal = (listen.mock.calls[0][2] as AddEventListenerOptions).signal!;
+    const signal = (listen.mock.calls[0]![2] as AddEventListenerOptions).signal!;
     let once = true;
     const stop = run.subscribe(() => {
       if (!once) return;

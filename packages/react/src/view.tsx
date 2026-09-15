@@ -97,7 +97,7 @@ export function Dialog({
   children,
 }: {
   rect: Rect;
-  preferred?: Placement;
+  preferred?: Placement | undefined;
   padding: number;
   dialogRef: RefObject<HTMLDivElement>;
   ariaLabel: string;

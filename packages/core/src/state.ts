@@ -57,7 +57,7 @@ export type Outcome<TStep extends Step = Step> = Readonly<{
   /** What to announce, in order. Each is stamped with the Step it happened on. */
   events: readonly RunEventType[];
   /** Bring this element into view. Fire and forget. */
-  scrollTo?: Element;
+  scrollTo?: Element | undefined;
 }>;
 
 /** Shared by every Outcome with nothing to say, so quiet frames allocate less. */
@@ -86,6 +86,7 @@ export function enter<TStep extends Step>(
   previous?: State<TStep>,
 ): State<TStep> {
   const step = walkthrough.steps[index];
+  if (step === undefined) throw new RangeError(`No step at index ${index}.`);
   return {
     snapshot: {
       phase: "running",

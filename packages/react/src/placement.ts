@@ -38,7 +38,7 @@ export function placePopover({
   anchor: Rect;
   popover: Size;
   viewport: Viewport;
-  preferred?: Placement;
+  preferred?: Placement | undefined;
   gap: number;
   margin?: number;
 }): PopoverPlacement {

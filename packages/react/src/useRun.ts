@@ -15,7 +15,7 @@ export function useRun<TStep extends WalkthroughStep>({
 }: {
   walkthrough: Walkthrough<TStep>;
   waymarkPadding: number;
-  onEvent?: (event: RunEvent<TStep>) => void;
+  onEvent?: ((event: RunEvent<TStep>) => void) | undefined;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const beaconRef = useRef<HTMLButtonElement>(null);

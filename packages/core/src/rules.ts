@@ -146,8 +146,8 @@ export type AdvanceRead = Readonly<{
  * check is run on the element this same look measured.
  */
 export type StepRead = Readonly<{
-  waymark?: WaymarkRead;
-  advance?: AdvanceRead;
+  waymark?: WaymarkRead | undefined;
+  advance?: AdvanceRead | undefined;
 }>;
 
 const copyRect = (rect: Rect): Rect => ({

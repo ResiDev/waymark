@@ -149,7 +149,7 @@ export function createRun<TStep extends Step>(
 
     try {
       for (let cursor = 0; cursor < queue.length; cursor++) {
-        const outcome = apply(state, queue[cursor], walkthrough);
+        const outcome = apply(state, queue[cursor]!, walkthrough);
         // `scrollIntoView` is optional only because jsdom does not implement it.
         outcome.scrollTo?.scrollIntoView?.({
           behavior: "smooth",
@@ -172,7 +172,7 @@ export function createRun<TStep extends Step>(
           invoke(() =>
             options.onEvent?.({
               type,
-              step: walkthrough.steps[before.snapshot.stepIndex],
+              step: walkthrough.steps[before.snapshot.stepIndex]!,
               stepIndex: before.snapshot.stepIndex,
               snapshot: after,
             }),
