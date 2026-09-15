@@ -16,7 +16,9 @@
     "dev": "pnpm --filter waymark-e2e dev",
     "shot": "pnpm --filter waymark-e2e shot",
     "test:e2e": "pnpm --filter waymark test:e2e",
-    "check:all": "pnpm check && pnpm test:e2e"
+    "check:all": "pnpm check && pnpm test:e2e",
+    "test:perf": "pnpm --filter waymark test:perf",
+    "setup:browser": "pnpm --filter waymark exec playwright install chromium"
   },
   "devDependencies": {
     "oxlint": "^1.82.0",

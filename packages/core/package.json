@@ -26,7 +26,8 @@
     "test:watch": "vitest --project unit",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run build",
-    "test:e2e": "vitest run --project browser"
+    "test:e2e": "vitest run --project browser",
+    "test:perf": "vitest run --project perf --reporter=verbose"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
