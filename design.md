@@ -142,8 +142,15 @@ type ChecklistSelections<TTasks> = Readonly<
   Record<string, readonly TaskId<TTasks>[]>
 >;
 
-// Recover the instructions carried by tasks; retain framework-added display fields.
-type StepOf<TTask> = TTask extends Task<any, infer TStep> ? TStep : never;
+// Recover the instructions carried by tasks; tasks without guidance contribute
+// no step type. Distribute over task unions and retain custom step fields.
+type StepOf<TTask> = TTask extends unknown
+  ? "walkthrough" extends keyof TTask
+    ? NonNullable<TTask["walkthrough"]> extends Walkthrough<infer TStep>
+      ? TStep
+      : never
+    : never
+  : never;
 
 // Snapshot rows expose a task's map key alongside its original fields.
 // The mapped union preserves the relationship between each id and its definition.
@@ -207,6 +214,9 @@ type Checklist<TTask extends { readonly id: string }> =
 // Skip and checklist completion name the view they happened in.
 // Order within one change: task events first, then checklistComplete for each
 // view that went from incomplete to complete, in declaration order.
+// checklistComplete carries that view's committed snapshot, so a handler such
+// as a celebration reads counts from the event instead of the owner.
+// Creation emits no events (see Transition contract).
 type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
   | Readonly<{
       type: "taskStarted" | "taskComplete";
@@ -227,6 +237,7 @@ type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
   | Readonly<{
       type: "checklistComplete";
       checklist: keyof TSelections & string;
+      snapshot: ChecklistSnapshot<NamedTask<TTasks>>;
     }>;
 
 // Storage and listeners are configured once, outside framework hooks.
@@ -264,9 +275,12 @@ type Checklists<
 
   // For the single app-level walkthrough renderer. Core reads the active Run's
   // UI elements through the bound getter; one binding at a time, newest wins.
-  // Names are provisional.
   bindUi: (ui: () => UiElements) => () => void; // returns release
-  getActive: () => Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
+  // The owner is a store on the same terms as views and Runs: the snapshot
+  // changes identity only when the active task changes.
+  getSnapshot: () => Readonly<{
+    active: Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
+  }>;
   subscribe: (listener: () => void) => () => void; // fires when active changes
 
   // Check each non-done task once, even if it appears in several views.
@@ -301,11 +315,23 @@ Task map insertion order controls condition checks; selection order controls row
 
 ## Transition contract
 
-Creation normalises the stored record, then checks initial context exactly as
-`update` would: matching conditions complete tasks, `onChange` and events fire.
-Handlers must not touch the returned object synchronously during creation, as
-it is not assigned yet. Initial values are real data; later updates supply the
-full context shape. Types check callers at compile time, not untyped runtime input.
+Creation normalises the stored record, then checks initial context as `update`
+would: matching conditions are recorded done and `onChange` fires if the record
+changed. Creation emits no events: the returned object is not assigned yet, and
+a reload must not repeat `checklistComplete` for a view storage already had
+complete. A normalisation-only difference is not saved until the next real change.
+Initial values are real data; later updates supply the full context shape.
+Types check callers at compile time, not untyped runtime input.
+
+One owner holds one user's progress. Create it once during browser setup for
+that user. Checklist and guidance rendering are browser-only in this version.
+Server-rendered applications render an empty region or an application-owned
+placeholder, then create the owner and mount the checklist UI on the client.
+The placeholder must also be the client's initial hydration output; checking
+for `window` during render alone is not a client-only mounting strategy.
+Adapters do not provide server checklist snapshots or synchronise server and
+browser owners. A Run holds page listeners only while subscribed, and renderers
+unsubscribe on unmount.
 
 | Input | Shared state change |
 |---|---|
@@ -339,6 +365,8 @@ full context shape. Types check callers at compile time, not untyped runtime inp
 // Empty records remove the key with removeItem(key), rather than storing "null".
 // Empty means no done ids and no skipped ids, including unknown ids/names.
 // Missing, invalid, or unknown-version -> empty record.
+// Storage errors (private mode, quota) are swallowed here only: load returns
+// empty, save does nothing. A user-supplied onChange that throws propagates.
 declare function createLocalStorageRecord(key: string): Readonly<{
   load: () => Stored;
   save: (stored: Stored) => void;
@@ -353,7 +381,7 @@ const collection = createChecklists({
   stored: record.load(),
   onChange: record.save,
 });
-// Server storage uses stored/onChange too; later records enter via collection.load.
+// Remote persistence uses stored/onChange too; later records enter via collection.load.
 
 collection.clear();
 // Clears live progress and calls onChange with { done: [], skipped: {} }.
@@ -366,6 +394,20 @@ initial data through `stored` and saves changes through `onChange`; it decides
 how to store or delete an empty record. `load(record)` accepts incoming progress
 without saving it back. `clear()` changes progress locally and calls `onChange`
 when the record changes. Later updates or Run completion can record progress again.
+
+## Adapter contract
+
+Framework-neutral. Every adapter, React or otherwise, maps these core facts to
+its own lifecycle; nothing here is React-specific.
+
+| Core fact | What an adapter does |
+|---|---|
+| Views and the owner are stores (`getSnapshot`, `subscribe`). | Subscribe in its reactive primitive after client-only mounting. Server rendering shows an empty region or an application-owned placeholder. |
+| The owner's active Run must be drawn by exactly one renderer. | Ship one guidance component that reads `getSnapshot().active` and draws the Run's popover and beacon. |
+| The Run needs its UI elements to tell clicks on them from clicks away. | Call `bindUi` when the guidance component mounts, release on unmount. |
+| Removing the guidance renderer ends its active Run, retaining completed and skipped tasks. | Mount the renderer at the root for cross-page guidance, or inside a page to end guidance when that page unmounts. Temporary framework cleanup and reattachment must not stop the Run. |
+| Commands are plain functions on views and the owner. | Expose them unchanged; no wrapping needed. |
+| Context changes only through `update`. | The app calls it from the framework's effect or sync mechanism. |
 
 ## React adapter
 
@@ -381,13 +423,50 @@ type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
   }>;
 }>;
 
-// One per app, near the root, like a toast layer. Renders the popover and
-// beacon for whichever task is active, binds its elements through bindUi on
-// mount, and releases on unmount. Checklist views never render guidance, so
-// two views showing the same task on one page still give one popover, and
-// guidance survives route changes until the app calls stop().
-declare function ActiveWalkthrough<TTasks>(
-  props: Readonly<{ checklists: Checklists<any, TTasks, any> }>,
+// The existing Walkthrough component gains a second prop shape. With
+// `walkthrough` it creates and owns a Run, as today. With `checklists` it draws
+// whichever Run the owner started, binds its elements through bindUi on mount,
+// and releases on unmount. Removing the renderer also stops its active Run.
+// Both shapes share popover, beacon, shade, and placement code. Padding and
+// onEvent are owner options in the second shape.
+// Checklist views never render guidance, so two views showing the same task on
+// one page still give one popover. Mount at the root for guidance that survives
+// route changes, or inside a page to stop guidance when that page unmounts.
+type WalkthroughProps<TStep extends WalkthroughStep> = Readonly<{
+  walkthrough: Walkthrough<TStep>; // self-owned Run, unchanged
+  checklists?: never;
+  active?: boolean;
+  waymarkPadding?: number;
+  onEvent?: (event: RunEvent<TStep>) => void;
+  renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
+}>;
+
+// Infer tasks and their step union from the supplied owner. No caller-written
+// generics. Every walkthrough must contain React-compatible display content.
+type ReactGuidanceTasks = Readonly<Record<string, Task<any, WalkthroughStep>>>;
+type ChecklistWalkthroughProps<
+  TContext,
+  TTasks extends ReactGuidanceTasks,
+  TSelections extends ChecklistSelections<TTasks>,
+> = Readonly<{
+  checklists: Checklists<TContext, TTasks, TSelections>;
+  walkthrough?: never;
+  active?: never;
+  waymarkPadding?: never;
+  onEvent?: never;
+  renderPopover?: (props: WalkthroughRenderProps<
+    NoInfer<Extract<StepOf<TTasks[keyof TTasks]>, WalkthroughStep>>
+  >) => ReactNode;
+}>;
+declare function Walkthrough<TStep extends WalkthroughStep>(
+  props: WalkthroughProps<TStep>,
+): ReactElement | null;
+declare function Walkthrough<
+  TContext,
+  TTasks extends ReactGuidanceTasks,
+  TSelections extends ChecklistSelections<TTasks>,
+>(
+  props: ChecklistWalkthroughProps<TContext, TTasks, TSelections>,
 ): ReactElement | null;
 
 // Core Checklist is imported as CoreChecklist in the React module.
@@ -401,14 +480,31 @@ declare function useChecklist<TTask extends ReactTask<any> & { readonly id: stri
   checklist: CoreChecklist<TTask>,
 ): UseChecklistResult<TTask>;
 
-// Default UI subscribes to the same view as custom UI.
+// Default UI subscribes to the same view as custom UI. Styled with inline
+// defaults like the popover; style props override, renderRow replaces a row,
+// labels replace the English button text. Full custom rendering uses useChecklist.
+type ChecklistLabels = Readonly<{ start: ReactNode; replay: ReactNode; markDone: ReactNode; skip: ReactNode }>;
+type ChecklistRowProps<TTask extends ReactTask<any> & { readonly id: string }> =
+  TaskCommands<TTask["id"]> & Readonly<{ task: TTask; status: TaskStatus; active: boolean }>;
 type ChecklistProps<TTask extends ReactTask<any> & { readonly id: string }> = Readonly<{
   checklist: CoreChecklist<TTask>;
+  style?: CSSProperties;
+  rowStyle?: CSSProperties;
+  labels?: Partial<ChecklistLabels>;
+  renderRow?: (props: ChecklistRowProps<TTask>) => ReactNode;
 }>;
 declare function Checklist<TTask extends ReactTask<any> & { readonly id: string }>(
   props: ChecklistProps<TTask>,
 ): ReactElement | null;
 ```
+
+The React adapter releases subscriptions and UI bindings during effect cleanup.
+It defers stopping the active Run to a microtask and cancels that stop if the
+same renderer reattaches during Strict Mode's setup/cleanup/setup cycle. A
+pending stop belongs to the owner, Run, and renderer binding being released;
+it must not stop a replacement Run or guidance acquired by another renderer.
+If no reattachment cancels the pending stop, the adapter stops that Run and
+clears active guidance. Completed and skipped tasks remain unchanged.
 
 ```tsx
 // Task content is preserved by createChecklists, just like walkthrough content.
@@ -447,15 +543,23 @@ const collection = createChecklists({
 ```
 
 ```tsx
-// Internal subscription; SSR snapshot contract is still open.
+// Internal subscription, inside the client-only mounted checklist UI.
+// useChecklist consumers must use the same client-only mounting strategy.
 const snapshot = useSyncExternalStore(
   checklist.subscribe,
   checklist.getSnapshot,
-  getServerSnapshot,
 );
 
-// Once, at the app root.
-<ActiveWalkthrough checklists={collection} />
+// Once, at the app root: guidance follows the user across routes.
+<Walkthrough checklists={collection} />
+// Custom popovers infer currentStep from the owner's walkthroughs. If only
+// some steps have helpUrl, narrow before using it; no explicit generic needed.
+<Walkthrough
+  checklists={collection}
+  renderPopover={({ currentStep }) => <>{currentStep.content}</>}
+/>
+// Or inside a route: guidance ends when this page unmounts.
+<Walkthrough checklists={collection} />
 
 // Route chooses the view. React tasks include title and walkthrough display content.
 <Checklist checklist={collection.checklists.home} />
@@ -469,11 +573,11 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 |---|---|
 | Context updates | Application calls `collection.update(context)` once for shared tasks. React views do not independently supply conflicting context. |
 | Completion, active Run, storage callbacks | Shared Checklists object, outside React. |
-| Guidance rendering | One `ActiveWalkthrough` per app. Views never render it. |
+| Guidance rendering | One `Walkthrough checklists={...}` mounted at a time. Views never render it. |
 | UI subscription | `useSyncExternalStore`; views have stable identities. |
 | Default UI | Titles, inline descriptions, statuses, active task, finished count, action buttons or guidance/replay according to the precedence above, skip, and manual completion for todo tasks without a walkthrough or a condition. |
 | Application actions | The UI invokes `action.onSelect` on selection. The application owns navigation, dialogs, asynchronous work, and any calls to start or stop guidance. |
-| Unmount | Hooks disconnect their subscriptions; `ActiveWalkthrough` releases its UI binding. The application retains ownership. |
+| Unmount | Hooks disconnect their subscriptions. Removing the guidance component releases its UI binding and stops its active Run, retaining progress. Temporary cleanup and reattachment do not stop guidance. |
 
 ## Settled
 
@@ -485,10 +589,21 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - `clear()` empties all progress and persists through `onChange`; `load()` receives progress without saving it back. Un-doing a single task has no use case yet.
 - Local storage is opt-in. Its adapter removes the key when saving an empty record; custom persistence decides how to handle that record.
 - `stop()` on the owner ends active guidance.
-- Creation behaves exactly like `update`, including callbacks.
+- Creation checks context and persists like `update`, but emits no events.
+- `checklistComplete` carries the view's snapshot, typed over all tasks.
+- Replays fire `taskStarted`/`taskStopped` as normal; `taskComplete` never repeats.
+- The local storage adapter swallows storage errors; user callbacks are never wrapped.
+- `run` options are fixed at creation; `start(id)` takes no options. Per-task overrides can come later.
+- Delivery includes type-level tests for the inference claims and a checklist page in the e2e playground. Renderer tests cover custom step inference, mixed step types, tasks without guidance, rejection of non-React steps, and mutually exclusive prop shapes. Lifecycle tests cover Strict Mode mounting with a prestarted Run, actual unmount, retained progress, and pending cleanup after Run replacement or renderer handoff.
+- One owner per browser user scope. Adapters release subscriptions and UI bindings on unmount.
+- The owner is a store: `getSnapshot()` returns `{ active }`; `bindUi` keeps its name.
+- One React `Walkthrough` component with two prop shapes. Removing its renderer stops guidance; temporary React cleanup and reattachment do not.
+- Default `Checklist` is styled with inline defaults and style props, like the popover; `useChecklist` is the headless route.
+- Checklist and guidance rendering are browser-only. Server-rendered applications mount them after a matching empty region or placeholder; no server checklist snapshot is provided.
+- Custom popovers infer their step union from the supplied owner's tasks. Callers need no explicit generic; fields present on only some steps require narrowing.
 - Core observes the Run through `onEvent`, never `subscribe`.
-- One app-level walkthrough renderer; views only render lists and commands.
-- Guidance continues across route changes; the app calls `stop()` if it should not.
+- One guidance renderer per owner; views only render lists and commands.
+- A root-mounted renderer keeps guidance across route changes. A page-mounted renderer stops guidance when removed; the app can also call `stop()` explicitly.
 - Versioning lives in the storage adapter's envelope, not in `Stored`.
 - `taskStopped` carries `reason: "finished" | "skipped" | "stopped"`.
 - Event order per change: task events, then `checklistComplete` for each newly complete view in declaration order.
@@ -497,15 +612,9 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Commands are re-entrant on the same terms as the Run's `act`.
 - Ships from the existing `waymark` and `react-waymark` entry points; both are `sideEffects: false`.
 
-## Open decisions
-
-- Snapshot payloads on events, if any.
-- SSR snapshots/hydration and owner cleanup. Live instances belong to one application/user scope.
-- Task events for replay completion and a Run finishing after its task was already marked done.
-- Names of `bindUi`, `getActive`, and the owner-level `subscribe`.
-
 ## Deferred
 
+- Server-rendered checklist content and transfer of initial state for hydration.
 - Context syncing helper for framework-owned state. Each framework brings its own effect-style sync that calls `update`.
 - Un-doing a task or clearing part of the record through the API.
 - Dependencies/locked tasks, polling, automatic starts, and stored walkthrough history.
