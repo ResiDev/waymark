@@ -6,38 +6,66 @@
     <style>
       body { margin: 0; font-family: sans-serif; }
       main { padding: 40px; }
-      button, input { display: block; margin: 8px 0; padding: 8px 12px; }
+      main button, main input { display: block; margin: 8px 0; padding: 8px 12px; }
       .spacer { height: 3000px; }
 
-      /* Control panel: the walkthrough's own UI, so clicks here are never "away". */
-      #panel {
-        position: fixed; top: 12px; right: 12px; width: 300px; z-index: 2;
+      /* Situations: what the page can be like. Toggled by a class on <body>. */
+      #header { display: none; position: sticky; top: 0; height: 60px; background: #223; color: #fff; padding: 12px 40px; box-sizing: border-box; z-index: 1; }
+      .sticky #header { display: block; }
+      .panel #content { height: 320px; overflow: auto; margin: 40px; border: 1px solid #999; }
+      .panel main { padding: 20px; }
+      .transform main { transform: translate(60px, 20px) scale(1.15); transform-origin: top left; }
+      #shift { display: none; height: 200px; background: repeating-linear-gradient(45deg, #eee, #eee 10px, #fff 10px, #fff 20px); }
+      .shifted #shift { display: block; }
+
+      /* The walkthrough's own UI: clicks here are never "away". */
+      #ui {
+        position: fixed; top: 12px; right: 12px; width: 340px; z-index: 3;
         padding: 12px; background: #fff; border: 1px solid #ccc; border-radius: 6px;
         font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
       }
-      #panel select, #panel button { display: inline-block; margin: 0 4px 4px 0; padding: 4px 8px; }
-      #panel pre { margin: 8px 0 0; max-height: 40vh; overflow: auto; white-space: pre-wrap; }
+      #ui h2 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; color: #666; }
+      #ui button, #ui label { display: inline-block; margin: 0 6px 4px 0; }
+      #ui button { padding: 3px 8px; }
+      #ui input[type=number] { width: 48px; }
+      #ui textarea { width: 100%; box-sizing: border-box; height: 72px; font: 11px monospace; }
+      #status { font-weight: bold; margin: 6px 0; }
+      #ui pre { margin: 0; max-height: 22vh; overflow: auto; white-space: pre-wrap; font-size: 11px; }
+      #log { color: #333; }
 
       /* Halo drawn over the found waymark. Pointer events pass through to the page. */
       #halo {
-        position: fixed; pointer-events: none; z-index: 1; display: none;
+        position: fixed; pointer-events: none; z-index: 2; display: none;
         border: 2px solid #e6007a; border-radius: 4px; box-shadow: 0 0 0 4px rgb(230 0 122 / 0.2);
       }
     </style>
   </head>
   <body>
-    <main>
-      <button data-waymark="save">Save</button>
-      <input data-waymark="name" placeholder="Name" />
-      <div class="spacer"></div>
-      <button data-waymark="footer">Footer</button>
-    </main>
+    <header id="header">Sticky header</header>
+    <div id="shift"></div>
+    <div id="content">
+      <main>
+        <button data-waymark="save">Save</button>
+        <input data-waymark="name" placeholder="Name" />
+        <div class="spacer"></div>
+        <button data-waymark="footer">Footer</button>
+      </main>
+    </div>
 
-    <aside id="panel" data-waymark-ui>
-      <select id="scenario"></select>
-      <button id="start">Start</button>
+    <aside id="ui" data-waymark-ui>
+      <h2>Situations</h2>
+      <div id="situations"></div>
+      <h2>Page</h2>
+      <div id="page"></div>
+      <h2>Walkthrough</h2>
+      <textarea id="steps" spellcheck="false"></textarea>
+      <div><button id="start">Start</button> padding <input id="padding" type="number" size="3" value="0" /> startAt <input id="startAt" type="number" size="3" value="0" /></div>
+      <h2>Run</h2>
       <div id="actions"></div>
-      <pre id="snapshot">No scenario started.</pre>
+      <div id="status">No run.</div>
+      <pre id="snapshot"></pre>
+      <h2>Events</h2>
+      <pre id="log"></pre>
     </aside>
     <div id="halo"></div>
 
