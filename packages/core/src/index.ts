@@ -1,6 +1,7 @@
 export { defineWalkthrough } from "./walkthrough";
 export { createRun } from "./run";
 export { createChecklists, defineTask } from "./checklists";
+export { createLocalStorageRecord } from "./storage";
 export { actions } from "./types";
 export type {
   Action,
@@ -41,3 +42,4 @@ export type {
   TaskMap,
   TaskStatus,
 } from "./checklists";
+export type { StoredRecord } from "./storage";
