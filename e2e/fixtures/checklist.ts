@@ -18,16 +18,16 @@ const context = { hasDeck: false, hasPhoto: false };
 const hasDeck = $<HTMLInputElement>("#has-deck");
 const hasPhoto = $<HTMLInputElement>("#has-photo");
 
-/** Steps carry `text` for this page's popover; core keeps any field it does not know. */
+/** Steps carry this page's popover text in `meta`, which core keeps and ignores. */
 const createDeck = defineWalkthrough([
-  { waymark: "new-deck", advance: "click", text: "Press New deck. The app then has a deck." },
-  { text: "Decks group the cards you study. That is the whole idea." },
+  { waymark: "new-deck", advance: "click", meta: { text: "Press New deck. The app then has a deck." } },
+  { meta: { text: "Decks group the cards you study. That is the whole idea." } },
 ]);
 const addPhoto = defineWalkthrough([
-  { waymark: "avatar", advance: "click", text: "Choose a photo so your teammates can recognise you." },
+  { waymark: "avatar", advance: "click", meta: { text: "Choose a photo so your teammates can recognise you." } },
 ]);
 const readTips = defineWalkthrough([
-  { waymark: "tips", text: "The tips live down here. Finishing this marks the task done." },
+  { waymark: "tips", meta: { text: "The tips live down here. Finishing this marks the task done." } },
 ]);
 
 const record = createLocalStorageRecord("waymark-checklist");
@@ -36,10 +36,12 @@ const events: ChecklistsEvent<any, any>[] = [];
 const owner = createChecklists({
   context,
   tasks: {
-    "create-deck": { title: "Create your first deck", walkthrough: createDeck, isComplete: (c) => c.hasDeck },
-    "add-photo": { title: "Add a profile photo", walkthrough: addPhoto, isComplete: (c) => c.hasPhoto },
-    "read-tips": { title: "Read the tips", walkthrough: readTips },
-    "say-hello": { title: "Understand sharing", description: "Your decks stay private until you share them." },
+    "create-deck": { meta: { title: "Create your first deck" }, walkthrough: createDeck, isComplete: (c) => c.hasDeck },
+    "add-photo": { meta: { title: "Add a profile photo" }, walkthrough: addPhoto, isComplete: (c) => c.hasPhoto },
+    "read-tips": { meta: { title: "Read the tips" }, walkthrough: readTips },
+    "say-hello": {
+      meta: { title: "Understand sharing", description: "Your decks stay private until you share them." },
+    },
   },
   checklists: {
     home: ["create-deck", "add-photo", "read-tips", "say-hello"],
@@ -119,8 +121,9 @@ function renderView(name: string, view: AnyView) {
     item.dataset.active = String(active);
     const title = document.createElement("span");
     title.className = "title";
-    title.textContent = `${status === "done" ? "✓" : status === "skipped" ? "–" : "○"} ${String(task.title)}`;
-    title.title = typeof task.description === "string" ? task.description : "";
+    const meta = task.meta as { title: string; description?: string };
+    title.textContent = `${status === "done" ? "✓" : status === "skipped" ? "–" : "○"} ${meta.title}`;
+    title.title = meta.description ?? "";
     item.append(title);
     if (task.walkthrough) {
       item.append(button(status === "done" ? "replay" : "start", () => view.start(task.id), active));
@@ -199,7 +202,7 @@ function drawRun() {
   const showPopover = running !== undefined && running.waymark.status !== "searching" && running.waymark.status !== "lost";
   ui.popover.style.display = showPopover ? "block" : "none";
   if (running && showPopover) {
-    $("#popover .text").textContent = String(running.step.text ?? "");
+    $("#popover .text").textContent = (running.step.meta as { text: string }).text;
     ui.popover.style.left = `${rect ? rect.left : 40}px`;
     ui.popover.style.top = `${rect ? rect.bottom + 16 : 40}px`;
     $<HTMLButtonElement>("#previous").disabled = running.stepIndex === 0;

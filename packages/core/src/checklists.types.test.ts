@@ -13,7 +13,7 @@ import type { Run } from "./types";
 const initialContext = { hasDeck: false, hasPhoto: false };
 type AppContext = typeof initialContext;
 
-const deckSteps = defineWalkthrough([{ waymark: "new-deck", helpUrl: "/help/decks" }]);
+const deckSteps = defineWalkthrough([{ waymark: "new-deck", meta: { helpUrl: "/help/decks" } }]);
 const photoSteps = defineWalkthrough([{ waymark: "avatar" }]);
 
 const external = defineTask<AppContext>()({
@@ -54,7 +54,7 @@ describe("createChecklists types", () => {
     type HomeRow = ReturnType<typeof owner.checklists.home.getSnapshot>["tasks"][number];
     expectTypeOf<HomeRow["task"]["id"]>().toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
     type DeckActive = NonNullable<ReturnType<typeof owner.checklists.decks.getSnapshot>["active"]>;
-    expectTypeOf<DeckActive["run"]>().toEqualTypeOf<Run<{ readonly waymark: "new-deck"; readonly helpUrl: "/help/decks" }>>();
+    expectTypeOf<DeckActive["run"]>().toEqualTypeOf<Run<{ readonly waymark: "new-deck"; readonly meta: { readonly helpUrl: "/help/decks" } }>>();
 
     const home = owner.checklists.home.getSnapshot();
     for (const row of home.tasks) {
@@ -83,14 +83,14 @@ describe("createChecklists types", () => {
     const tasks = {
       deck: { walkthrough: deckSteps },
       photo: external,
-      // A step with only adapter fields is still a step.
-      note: { walkthrough: defineWalkthrough([{ content: "Read this" }]) },
+      // A step with only application data is still a step.
+      note: { walkthrough: defineWalkthrough([{ meta: { text: "Read this" } }]) },
       hello: {},
     } as const;
     expectTypeOf<StepOf<(typeof tasks)[keyof typeof tasks]>>().toEqualTypeOf<
-      | { readonly waymark: "new-deck"; readonly helpUrl: "/help/decks" }
+      | { readonly waymark: "new-deck"; readonly meta: { readonly helpUrl: "/help/decks" } }
       | { readonly waymark: "avatar" }
-      | { readonly content: "Read this" }
+      | { readonly meta: { readonly text: "Read this" } }
     >();
     expectTypeOf<StepOf<(typeof tasks)["hello"]>>().toEqualTypeOf<never>();
   });
@@ -121,7 +121,7 @@ describe("createChecklists types", () => {
       },
       run: {
         onEvent: (event) => {
-          expectTypeOf(event.step).toEqualTypeOf<{ readonly waymark: "new-deck"; readonly helpUrl: "/help/decks" }>();
+          expectTypeOf(event.step).toEqualTypeOf<{ readonly waymark: "new-deck"; readonly meta: { readonly helpUrl: "/help/decks" } }>();
         },
         // @ts-expect-error core owns startAt
         startAt: 0,
@@ -129,20 +129,44 @@ describe("createChecklists types", () => {
     });
   });
 
-  it("types defineTask conditions from the supplied context and keeps extra fields", () => {
+  it("types defineTask conditions from the supplied context and keeps meta", () => {
     const task = defineTask<AppContext>()({
-      title: "Add a photo",
+      meta: { title: "Add a photo" },
       isComplete: (c) => {
         expectTypeOf(c).toEqualTypeOf<AppContext>();
         return c.hasPhoto;
       },
     });
-    expectTypeOf(task.title).toEqualTypeOf<"Add a photo">();
+    expectTypeOf(task.meta.title).toEqualTypeOf<"Add a photo">();
 
     defineTask<AppContext>()({
       // @ts-expect-error the condition must accept the app context
       isComplete: (c: { other: string }) => c.other === "",
     });
+  });
+
+  it("rejects a field that neither core nor meta names", () => {
+    // @ts-expect-error misspelled advance
+    defineWalkthrough([{ waymark: "new-deck", advnace: "click" }]);
+    // @ts-expect-error application data belongs in meta
+    defineWalkthrough([{ waymark: "new-deck", helpUrl: "/help/decks" }]);
+
+    defineTask<AppContext>()({
+      // @ts-expect-error misspelled isComplete
+      iscomplete: (c: AppContext) => c.hasDeck,
+    });
+
+    const create = () =>
+      createChecklists({
+        context: initialContext,
+        tasks: {
+          // @ts-expect-error application data belongs in meta
+          deck: { walkthrough: deckSteps, title: "Create a deck" },
+          hello: { meta: { title: "Say hello" } },
+        },
+        checklists: { home: ["deck", "hello"] },
+      });
+    expectTypeOf(create).toBeFunction();
   });
 
   it("accepts a stored record and an event handler typed over the owner", () => {

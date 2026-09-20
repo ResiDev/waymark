@@ -62,7 +62,7 @@ relevant page and call `start(id)` when that page is ready for guidance.
 `start(id)` always starts the walkthrough, even when the task also has an action.
 
 Descriptions and labelled actions belong to the rendering adapter, alongside the
-title. Core preserves these extra task fields in snapshots but does not invoke
+title. Core keeps the whole task object in snapshots but does not invoke
 actions. An action creates no Run, changes no active task, and emits no checklist
 event by itself. It also does not stop existing guidance unless the application
 calls `stop()` or starts another walkthrough. The application owns asynchronous
@@ -121,9 +121,20 @@ type Task<TContext, TStep extends Step = Step> = Readonly<{
   // Without this condition, finishing the active walkthrough records done.
   // The application may also call markDone, including for tasks without guidance.
   isComplete?: (context: TContext) => boolean;
-  // Adapter content such as a title. Core keeps it in snapshots and ignores it.
-  [extra: string]: unknown;
+  // The application's own data. Core keeps it in snapshots and ignores it.
+  meta?: unknown;
 }>;
+
+// Who writes which fields on a Step or Task:
+//   core          flat, named by Step and Task
+//   the adapter   flat, named by the adapter's own types (ReactTask, WalkthroughStep)
+//   the app       inside `meta`, typed by inference from what is written
+// Any other flat key is a compile error, so a misspelled field never passes
+// silently. Inferred literals skip TypeScript's excess property check, so the
+// definition functions apply Exactly to reject them.
+type Exactly<T, TShape> = T extends unknown
+  ? T & { readonly [K in Exclude<keyof T, keyof TShape>]: never }
+  : never;
 
 // For tasks declared outside createChecklists. An arrow parameter is typed by
 // the expression it is written in, so a task in its own file has no context
@@ -132,7 +143,7 @@ type Task<TContext, TStep extends Step = Step> = Readonly<{
 //   export type AppContext = typeof initialContext;   // once, in setup
 //   "create-deck": defineTask<AppContext>()({ walkthrough, isComplete: (c) => c.hasDeck })
 declare function defineTask<TContext>(): <const TTask extends Task<TContext, any>>(
-  task: TTask,
+  task: TTask & Exactly<TTask, Task<TContext, any>>,
 ) => TTask;
 
 // The inferred keys are the only valid task ids.
@@ -307,7 +318,9 @@ declare function createChecklists<
   const TSelections extends ChecklistSelections<TTasks>,
 >(config: Readonly<{
   context: TContext; // required initial application data, not just a type declaration
-  tasks: TTasks;
+  // ExactTasks applies Exactly to every task. An adapter passes its own task
+  // type as the shape, which is how React admits `title`.
+  tasks: TTasks & ExactTasks<TTasks, Task<TContext, any>>;
   checklists: TSelections;
 }> & ChecklistsOptions<TTasks, TSelections>): Checklists<TContext, TTasks, TSelections>;
 ```
@@ -415,8 +428,10 @@ its own lifecycle; nothing here is React-specific.
 ## React adapter
 
 ```ts
-// React extends task content, not state ownership. No React-specific creation phase.
-// Core createChecklists preserves these extra fields in checklist snapshots.
+// React extends task content, not state ownership. Its createChecklists,
+// defineTask and defineWalkthrough are core's at runtime; they differ only in
+// type, holding tasks to ReactTask and steps to WalkthroughStep so React's
+// fields are known. React applications import all three from react-waymark.
 type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
   title: ReactNode;
   description?: ReactNode; // shown inline beneath the title; no Run needed
@@ -510,7 +525,8 @@ If no reattachment cancels the pending stop, the adapter stops that Run and
 clears active guidance. Completed and skipped tasks remain unchanged.
 
 ```tsx
-// Task content is preserved by createChecklists, just like walkthrough content.
+// createChecklists from react-waymark: a title is required, and the display
+// fields sit beside core's. The application's own data would go in `meta`.
 const collection = createChecklists({
   context: { hasDeck: false, hasPhoto: false },
   tasks: {
@@ -555,8 +571,9 @@ const snapshot = useSyncExternalStore(
 
 // Once, at the app root: guidance follows the user across routes.
 <Walkthrough checklists={collection} />
-// Custom popovers infer currentStep from the owner's walkthroughs. If only
-// some steps have helpUrl, narrow before using it; no explicit generic needed.
+// Custom popovers infer currentStep from the owner's walkthroughs, including
+// each step's `meta`. If only some steps carry meta, narrow before using it; no
+// explicit generic needed.
 <Walkthrough
   checklists={collection}
   renderPopover={({ currentStep }) => <>{currentStep.content}</>}
@@ -614,7 +631,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Tasks in separate files use the curried `defineTask<AppContext>()` helper; inline tasks need nothing.
 - Commands are re-entrant on the same terms as the Run's `act`.
 - Ships from the existing `waymark` and `react-waymark` entry points; both are `sideEffects: false`.
-- Core's `Step` and `Task` types admit adapter fields through an index signature, so a step or task made only of adapter content (such as `content` or `title`) still satisfies them and `StepOf` recovers it.
+- Core's `Step` and `Task` name every field they accept, plus one `meta` slot for application data. Adapter fields such as `content` or `title` are named by the adapter's own types and admitted through its typed definition functions. A step or task made only of `meta` still satisfies the core types and `StepOf` recovers it.
 - The owner exposes `waymarkPadding` so the guidance renderer draws the same halo the Run uses for clicks.
 
 ## Deferred

@@ -1,4 +1,4 @@
-import type { AdvanceCondition, Step, Walkthrough } from "./types";
+import type { AdvanceCondition, Exactly, Step, Walkthrough } from "./types";
 
 /**
  * Builds a Walkthrough, and is the only place that knows how a Step is written.
@@ -10,7 +10,7 @@ import type { AdvanceCondition, Step, Walkthrough } from "./types";
  * precomputed or cached.
  */
 export function defineWalkthrough<const TStep extends Step>(
-  steps: readonly TStep[],
+  steps: readonly TStep[] & readonly Exactly<TStep, Step>[],
 ): Walkthrough<NoInfer<TStep>> {
   if (steps.length === 0) {
     throw new Error("A walkthrough needs at least one step.");

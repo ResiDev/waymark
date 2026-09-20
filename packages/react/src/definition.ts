@@ -1,11 +1,28 @@
-import { defineWalkthrough as defineCoreWalkthrough } from "waymark";
-import type { Walkthrough } from "waymark";
+import {
+  createChecklists as createCoreChecklists,
+  defineWalkthrough as defineCoreWalkthrough,
+} from "waymark";
+import type {
+  ChecklistSelections,
+  Checklists,
+  ChecklistsConfig,
+  Exactly,
+  Step,
+  Walkthrough,
+} from "waymark";
 import type { ReactTask, WalkthroughStep } from "./types";
 
+/**
+ * The definition functions, typed for React. They run core's unchanged; what
+ * they add is the set of fields a Step or Task may carry here, so `content`
+ * and `title` are known and a misspelled field does not compile.
+ */
+
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
-  steps: readonly TStep[],
+  steps: readonly TStep[] & readonly Exactly<TStep, WalkthroughStep>[],
 ): Walkthrough<NoInfer<TStep>> {
-  return defineCoreWalkthrough(steps);
+  // Core checks against its own Step, which does not name React's fields.
+  return defineCoreWalkthrough<TStep>(steps as readonly TStep[] & readonly Exactly<TStep, Step>[]);
 }
 
 /**
@@ -17,7 +34,19 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
  *   "add-photo": defineTask<AppContext>()({ title: "Add a photo", isComplete: (c) => c.hasPhoto })
  */
 export function defineTask<TContext>(): <const TTask extends ReactTask<TContext>>(
-  task: TTask,
+  task: TTask & Exactly<TTask, ReactTask<TContext>>,
 ) => TTask {
   return (task) => task;
 }
+
+/**
+ * Core's `createChecklists` with every Task held to `ReactTask`: a title is
+ * required, and the display fields sit beside core's rather than in `meta`.
+ */
+export const createChecklists = createCoreChecklists as <
+  TContext,
+  const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>>,
+  const TSelections extends ChecklistSelections<TTasks>,
+>(
+  config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>>,
+) => Checklists<TContext, TTasks, TSelections>;

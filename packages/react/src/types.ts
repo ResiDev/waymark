@@ -47,8 +47,14 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
   }>;
 
-/** Tasks whose walkthroughs, if any, carry React display content. */
-export type ReactGuidanceTasks = Readonly<Record<string, Task<any, WalkthroughStep>>>;
+/**
+ * Tasks whose walkthroughs, if any, carry React display content. This reads
+ * Tasks an owner already holds, so it admits any other field: a Task with a
+ * title and nothing else still belongs.
+ */
+export type ReactGuidanceTasks = Readonly<
+  Record<string, Readonly<{ walkthrough?: Walkthrough<WalkthroughStep>; [field: string]: unknown }>>
+>;
 
 /**
  * The owner-driven shape: draws whichever Run the Checklists owner started,

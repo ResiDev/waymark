@@ -1,7 +1,7 @@
-export { defineTask, defineWalkthrough } from "./definition";
+export { createChecklists, defineTask, defineWalkthrough } from "./definition";
 export { Walkthrough } from "./Walkthrough";
 export { Checklist, useChecklist } from "./Checklist";
-export { createChecklists, createLocalStorageRecord } from "waymark";
+export { createLocalStorageRecord } from "waymark";
 
 export type {
   ChecklistLabels,

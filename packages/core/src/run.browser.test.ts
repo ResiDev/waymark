@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { createRun } from "./run";
 import { defineWalkthrough } from "./walkthrough";
-import type { Run, Running, Step } from "./types";
+import type { Exactly, Run, Running, Step } from "./types";
 
 /**
  * Real-browser checks on the Run: real layout, real scrolling, real pointer
@@ -31,7 +31,7 @@ const domRect = (element: Element) => {
 /** Start a Run and keep it watching until the test ends. */
 const start = <const TStep extends Step>(steps: readonly TStep[], waymarkPadding?: number) => {
   const run = createRun(
-    defineWalkthrough(steps),
+    defineWalkthrough<TStep>(steps as readonly TStep[] & readonly Exactly<TStep, Step>[]),
     waymarkPadding === undefined ? {} : { waymarkPadding },
   );
   stop = run.subscribe(() => {});

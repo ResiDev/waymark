@@ -54,9 +54,8 @@ export type AdvanceSpec =
  * One instruction, as core understands it.
  *
  * Deliberately carries no content: what a Step *renders* belongs to whichever
- * adapter is driving the Run, which extends this type with its own payload.
- * The index signature admits that payload, so a Step made only of adapter
- * fields is still a Step.
+ * adapter is driving the Run, which extends this type with its own named
+ * fields. Any other key is an error, so a misspelled field does not compile.
  */
 export type Step = Readonly<{
   /** Matches `[data-waymark="<waymark>"]` in the page. */
@@ -66,8 +65,18 @@ export type Step = Readonly<{
   advance?: AdvanceSpec;
   /** Defaults to `"once"`: scroll the Waymark into view the first time it is off-screen. */
   scroll?: "once" | "always" | "never";
-  [extra: string]: unknown;
+  /** The application's own data for this Step. Core keeps it and ignores it. */
+  meta?: unknown;
 }>;
+
+/**
+ * T, with every key that TShape does not name turned into an error. Inferred
+ * literals skip TypeScript's own excess property check, so the definition
+ * functions apply this to reject a misspelled field.
+ */
+export type Exactly<T, TShape> = T extends unknown
+  ? T & { readonly [K in Exclude<keyof T, keyof TShape>]: never }
+  : never;
 
 /** An ordered definition, built by `defineWalkthrough`. Runnable more than once. */
 export type Walkthrough<TStep extends Step = Step> = Readonly<{

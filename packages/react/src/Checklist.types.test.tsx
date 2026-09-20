@@ -1,5 +1,8 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { defineWalkthrough as defineCoreWalkthrough } from "waymark";
+import {
+  createChecklists as createCoreChecklists,
+  defineWalkthrough as defineCoreWalkthrough,
+} from "waymark";
 import { Checklist, createChecklists, defineTask, defineWalkthrough, useChecklist, Walkthrough } from "./index";
 import type { WalkthroughStep } from "./types";
 
@@ -11,7 +14,7 @@ import type { WalkthroughStep } from "./types";
 const initialContext = { hasDeck: false, hasPhoto: false };
 type AppContext = typeof initialContext;
 
-const deckSteps = defineWalkthrough([{ content: "Open decks", helpUrl: "/help" }, { content: "Press new" }]);
+const deckSteps = defineWalkthrough([{ content: "Open decks", meta: { helpUrl: "/help" } }, { content: "Press new" }]);
 const photoSteps = defineWalkthrough([{ content: "Pick a photo", waymark: "avatar" }]);
 
 const owner = createChecklists({
@@ -47,10 +50,10 @@ describe("Walkthrough prop shapes", () => {
         checklists={owner}
         renderPopover={({ currentStep }) => {
           expectTypeOf(currentStep.content).toEqualTypeOf<"Open decks" | "Press new" | "Pick a photo">();
-          // Only some steps carry helpUrl or a waymark; narrow first.
-          expectTypeOf(currentStep).not.toHaveProperty("helpUrl");
+          // Only some steps carry meta or a waymark; narrow first.
+          expectTypeOf(currentStep).not.toHaveProperty("meta");
           expectTypeOf(currentStep).not.toHaveProperty("waymark");
-          if ("helpUrl" in currentStep) expectTypeOf(currentStep.helpUrl).toEqualTypeOf<"/help">();
+          if ("meta" in currentStep) expectTypeOf(currentStep.meta.helpUrl).toEqualTypeOf<"/help">();
           return currentStep.content;
         }}
       />
@@ -59,7 +62,7 @@ describe("Walkthrough prop shapes", () => {
   });
 
   it("rejects owners whose walkthroughs have no React content", () => {
-    const plain = createChecklists({
+    const plain = createCoreChecklists({
       context: {},
       tasks: { save: { walkthrough: defineCoreWalkthrough([{ waymark: "save" }]) } },
       checklists: { all: ["save"] },
@@ -70,9 +73,38 @@ describe("Walkthrough prop shapes", () => {
   });
 });
 
+describe("React definition functions", () => {
+  it("rejects a field that neither core, React nor meta names", () => {
+    // @ts-expect-error misspelled content
+    defineWalkthrough([{ contnet: "Open decks", content: "Open decks" }]);
+    // @ts-expect-error application data belongs in meta
+    defineWalkthrough([{ content: "Open decks", helpUrl: "/help" }]);
+
+    defineTask<AppContext>()({
+      title: "Add a photo",
+      // @ts-expect-error misspelled description
+      descripton: "Pick one you like",
+    });
+
+    const create = () =>
+      createChecklists({
+        context: initialContext,
+        tasks: {
+          // @ts-expect-error a React task needs a title
+          untitled: { walkthrough: deckSteps },
+          // @ts-expect-error application data belongs in meta
+          stray: { title: "Stray", icon: "deck" },
+          fine: { title: "Fine", meta: { icon: "deck" } },
+        },
+        checklists: { home: ["untitled", "stray", "fine"] },
+      });
+    expectTypeOf(create).toBeFunction();
+  });
+});
+
 describe("Checklist and useChecklist", () => {
   it("types views over their selected React tasks", () => {
-    const plain = createChecklists({ context: {}, tasks: { a: {} }, checklists: { all: ["a"] } });
+    const plain = createCoreChecklists({ context: {}, tasks: { a: {} }, checklists: { all: ["a"] } });
     const elements = {
       decks: <Checklist checklist={owner.checklists.decks} />,
       home: (

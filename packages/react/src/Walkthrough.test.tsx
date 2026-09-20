@@ -233,7 +233,7 @@ describe("Walkthrough with checklists", () => {
         "create-deck": {
           title: "Create a deck",
           walkthrough: defineWalkthrough([
-            { content: "Open the decks page", helpUrl: "/help" },
+            { content: "Open the decks page", meta: { helpUrl: "/help" } },
             { content: "Press new deck" },
           ]),
           isComplete: (c) => c.hasDeck,
@@ -294,7 +294,7 @@ describe("Walkthrough with checklists", () => {
           renderPopover={({ currentStep, exit }) => (
             <button type="button" onClick={exit}>
               {currentStep.content}
-              {"helpUrl" in currentStep ? ` (${currentStep.helpUrl})` : ""}
+              {currentStep.meta ? ` (${currentStep.meta.helpUrl})` : ""}
             </button>
           )}
         />,

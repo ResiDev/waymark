@@ -1,5 +1,6 @@
 import { createRun } from "./run";
 import type {
+  Exactly,
   Run,
   RunEvent,
   RunOptions,
@@ -38,8 +39,8 @@ export type Task<TContext, TStep extends Step = Step> = Readonly<{
    * may still call `markDone`.
    */
   isComplete?: (context: TContext) => boolean;
-  /** Whatever an adapter shows for the task, such as a title. Core keeps it in snapshots and ignores it. */
-  [extra: string]: unknown;
+  /** The application's own data for this Task. Core keeps it in snapshots and ignores it. */
+  meta?: unknown;
 }>;
 
 /**
@@ -50,7 +51,7 @@ export type Task<TContext, TStep extends Step = Step> = Readonly<{
  *   "create-deck": defineTask<AppContext>()({ walkthrough, isComplete: (c) => c.hasDeck })
  */
 export function defineTask<TContext>(): <const TTask extends Task<TContext, any>>(
-  task: TTask,
+  task: TTask & Exactly<TTask, Task<TContext, any>>,
 ) => TTask {
   return (task) => task;
 }
@@ -219,14 +220,24 @@ export type Checklists<
   clear: () => void;
 }>;
 
+/** Every Task in the map, with keys its shape does not name turned into errors. */
+export type ExactTasks<TTasks, TShape> = {
+  readonly [K in keyof TTasks]: Exactly<TTasks[K], TShape>;
+};
+
+/**
+ * TShape names the fields a Task may carry. Core's own is `Task`; an adapter
+ * that adds display fields passes its wider Task type.
+ */
 export type ChecklistsConfig<
   TContext,
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,
+  TShape = Task<TContext, any>,
 > = Readonly<{
   /** Initial application data. Its shape is the context type every condition receives. */
   context: TContext;
-  tasks: TTasks;
+  tasks: TTasks & ExactTasks<TTasks, TShape>;
   checklists: TSelections;
 }> &
   ChecklistsOptions<TTasks, TSelections>;
