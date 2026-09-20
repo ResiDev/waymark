@@ -4,54 +4,33 @@ import {
   useMemo,
   useRef,
   useSyncExternalStore,
+  type RefObject,
 } from "react";
 import { createRun } from "waymark";
-import type { RunEvent, Walkthrough } from "waymark";
+import type { Run, RunEvent, UiElements, Walkthrough } from "waymark";
 import type { WalkthroughStep } from "./types";
 
-export function useRun<TStep extends WalkthroughStep>({
-  walkthrough,
-  waymarkPadding,
-  onEvent,
-}: {
-  walkthrough: Walkthrough<TStep>;
-  waymarkPadding: number;
-  onEvent?: ((event: RunEvent<TStep>) => void) | undefined;
-}) {
+export type UiRefs = Readonly<{
+  dialogRef: RefObject<HTMLDivElement>;
+  beaconRef: RefObject<HTMLButtonElement>;
+}>;
+
+/** Refs for the popover and beacon, and a getter the Run reads them through when it needs them. */
+export function useUiRefs(): UiRefs & { ui: () => UiElements } {
   const dialogRef = useRef<HTMLDivElement>(null);
   const beaconRef = useRef<HTMLButtonElement>(null);
-  const eventRef = useRef(onEvent);
-  useLayoutEffect(() => {
-    eventRef.current = onEvent;
-  }, [onEvent]);
+  // Read when the Run fires, not during render.
+  // oxlint-disable-next-line react/refs
+  const ui = useCallback(() => ({ dialog: dialogRef.current, beacon: beaconRef.current }), []);
+  return { dialogRef, beaconRef, ui };
+}
 
-  const run = useMemo(
-    () =>
-      // The closures read the refs when the Run fires, not during render.
-      // oxlint-disable-next-line react/refs
-      createRun(walkthrough, {
-        root: document,
-        waymarkPadding,
-        onEvent: (event) => eventRef.current?.(event),
-        ui: () => ({
-          dialog: dialogRef.current,
-          beacon: beaconRef.current,
-        }),
-      }),
-    [waymarkPadding, walkthrough],
-  );
-
-  const snapshot = useSyncExternalStore(
-    run.subscribe,
-    run.getSnapshot,
-    run.getSnapshot,
-  );
+/** Subscribes to a Run someone else owns and exposes its snapshot and actions. */
+export function useRunView<TStep extends WalkthroughStep>(run: Run<TStep>) {
+  const snapshot = useSyncExternalStore(run.subscribe, run.getSnapshot, run.getSnapshot);
   const act = run.act;
-
   return {
     snapshot,
-    dialogRef,
-    beaconRef,
     advance: useCallback(() => act("advance"), [act]),
     previous: useCallback(() => act("previous"), [act]),
     collapse: useCallback(() => act("collapse"), [act]),
@@ -59,4 +38,35 @@ export function useRun<TStep extends WalkthroughStep>({
     reset: useCallback(() => act("reset"), [act]),
     exit: useCallback(() => act("exit"), [act]),
   };
+}
+
+/** Creates and owns one Run of the walkthrough, replacing it only when the walkthrough or padding changes. */
+export function useOwnedRun<TStep extends WalkthroughStep>({
+  walkthrough,
+  waymarkPadding,
+  onEvent,
+  ui,
+}: {
+  walkthrough: Walkthrough<TStep>;
+  waymarkPadding: number;
+  onEvent?: ((event: RunEvent<TStep>) => void) | undefined;
+  ui: () => UiElements;
+}): Run<TStep> {
+  const eventRef = useRef(onEvent);
+  useLayoutEffect(() => {
+    eventRef.current = onEvent;
+  }, [onEvent]);
+
+  return useMemo(
+    () =>
+      // The closure reads the ref when the Run fires, not during render.
+      // oxlint-disable-next-line react/refs
+      createRun(walkthrough, {
+        root: document,
+        waymarkPadding,
+        onEvent: (event) => eventRef.current?.(event),
+        ui,
+      }),
+    [waymarkPadding, walkthrough, ui],
+  );
 }

@@ -1,11 +1,14 @@
-import type { Rect } from "waymark";
+import { useEffect, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import type { ChecklistSelections, Checklists, Rect, Run } from "waymark";
 import { Beacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
+  ChecklistWalkthroughProps,
+  ReactGuidanceTasks,
   WalkthroughProps,
   WalkthroughRenderProps,
   WalkthroughStep,
 } from "./types";
-import { useRun } from "./useRun";
+import { useOwnedRun, useRunView, useUiRefs, type UiRefs } from "./useRun";
 
 const centeredRect = (): Rect => {
   const left = window.innerWidth / 2;
@@ -22,15 +25,31 @@ const centeredRect = (): Rect => {
   };
 };
 
+type AnyChecklists = Checklists<any, any, any>;
+type AnyProps = WalkthroughProps<any> | ChecklistWalkthroughProps<any, any, any>;
+type PopoverRenderer = (props: WalkthroughRenderProps<any>) => ReactNode;
+
 /**
- * Runs and renders a Walkthrough. The React interface owns one core Run and draws
- * its snapshot; frame loops, browser events and transition policy remain in
- * core.
+ * Renders a Run. With `walkthrough` the component creates and owns the Run;
+ * with `checklists` it draws whichever Run the owner started. Either way the
+ * frame loop, browser events, and transition policy stay in core.
  */
 export function Walkthrough<TStep extends WalkthroughStep>(
   props: WalkthroughProps<TStep>,
-) {
-  if (props.active === false || typeof document === "undefined") return null;
+): ReactElement | null;
+export function Walkthrough<
+  TContext,
+  TTasks extends ReactGuidanceTasks,
+  TSelections extends ChecklistSelections<TTasks>,
+>(props: ChecklistWalkthroughProps<TContext, TTasks, TSelections>): ReactElement | null;
+export function Walkthrough(props: AnyProps): ReactElement | null {
+  if (typeof document === "undefined") return null;
+  if (props.checklists !== undefined) {
+    // `any` tasks give the popover a `never` step; the runtime step is whatever the Run holds.
+    const renderPopover = props.renderPopover as PopoverRenderer | undefined;
+    return <ChecklistGuidance checklists={props.checklists} renderPopover={renderPopover} />;
+  }
+  if (props.active === false) return null;
   return <ActiveWalkthrough {...props} />;
 }
 
@@ -40,25 +59,91 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
   onEvent,
   renderPopover,
 }: WalkthroughProps<TStep>) {
-  const {
-    snapshot,
-    dialogRef,
-    beaconRef,
-    advance,
-    previous,
-    collapse,
-    resume,
-    reset,
-    exit,
-  } = useRun({ walkthrough, waymarkPadding, onEvent });
+  const { dialogRef, beaconRef, ui } = useUiRefs();
+  const run = useOwnedRun({ walkthrough, waymarkPadding, onEvent, ui });
+  return (
+    <RunView
+      run={run}
+      waymarkPadding={waymarkPadding}
+      renderPopover={renderPopover}
+      dialogRef={dialogRef}
+      beaconRef={beaconRef}
+    />
+  );
+}
+
+/** Which renderer currently holds each owner's UI binding, so a pending stop can tell a handoff from an unmount. */
+const holders = new WeakMap<AnyChecklists, symbol>();
+
+/**
+ * Draws the owner's active Run. Removing this renderer stops that Run, but
+ * only once a microtask has passed without it, or another renderer, taking
+ * the binding again: React may clean up and re-run the effect on the same
+ * mounted component, and that must not stop guidance. A Run the owner has
+ * since replaced is left alone too.
+ */
+function ChecklistGuidance({
+  checklists,
+  renderPopover,
+}: {
+  checklists: AnyChecklists;
+  renderPopover?: PopoverRenderer | undefined;
+}) {
+  const { dialogRef, beaconRef, ui } = useUiRefs();
+  const { active } = useSyncExternalStore(
+    checklists.subscribe,
+    checklists.getSnapshot,
+    checklists.getSnapshot,
+  );
+
+  useEffect(() => {
+    const token = Symbol("waymark renderer");
+    holders.set(checklists, token);
+    const release = checklists.bindUi(ui);
+    return () => {
+      release();
+      if (holders.get(checklists) === token) holders.delete(checklists);
+      const leaving = checklists.getSnapshot().active;
+      if (leaving === null) return;
+      queueMicrotask(() => {
+        if (holders.has(checklists)) return;
+        if (checklists.getSnapshot().active?.run !== leaving.run) return;
+        checklists.stop();
+      });
+    };
+  }, [checklists, ui]);
+
+  if (active === null) return null;
+  return (
+    <RunView
+      run={active.run}
+      waymarkPadding={checklists.waymarkPadding}
+      renderPopover={renderPopover}
+      dialogRef={dialogRef}
+      beaconRef={beaconRef}
+    />
+  );
+}
+
+function RunView<TStep extends WalkthroughStep>({
+  run,
+  waymarkPadding,
+  renderPopover,
+  dialogRef,
+  beaconRef,
+}: UiRefs & {
+  run: Run<TStep>;
+  waymarkPadding: number;
+  renderPopover?: ((props: WalkthroughRenderProps<TStep>) => ReactNode) | undefined;
+}) {
+  const { snapshot, advance, previous, collapse, resume, reset, exit } = useRunView(run);
 
   if (snapshot.phase !== "running") return null;
   if (snapshot.waymark.status === "searching" || snapshot.waymark.status === "lost") {
     return null;
   }
 
-  const rect =
-    snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
+  const rect = snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
   if (snapshot.collapsed) {
     return <Beacon rect={rect} beaconRef={beaconRef} onResume={resume} />;
   }

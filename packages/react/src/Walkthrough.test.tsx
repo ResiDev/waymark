@@ -1,7 +1,7 @@
-import { act } from "react";
+import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineWalkthrough, Walkthrough } from "./index";
+import { createChecklists, defineWalkthrough, Walkthrough } from "./index";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -222,5 +222,171 @@ describe("Walkthrough", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(target).not.toHaveAttribute("aria-haspopup");
     expect(frames.size).toBe(0);
+  });
+});
+
+describe("Walkthrough with checklists", () => {
+  const setup = (onEvent?: (event: { type: string }) => void) =>
+    createChecklists({
+      context: { hasDeck: false },
+      tasks: {
+        "create-deck": {
+          title: "Create a deck",
+          walkthrough: defineWalkthrough([
+            { content: "Open the decks page", helpUrl: "/help" },
+            { content: "Press new deck" },
+          ]),
+          isComplete: (c) => c.hasDeck,
+        },
+        "read-tips": {
+          title: "Read the tips",
+          walkthrough: defineWalkthrough([{ content: "Here are the tips" }]),
+        },
+        "say-hello": { title: "Say hello" },
+      },
+      checklists: { home: ["create-deck", "read-tips", "say-hello"], decks: ["create-deck"] },
+      ...(onEvent ? { onEvent } : {}),
+    });
+
+  const dialog = () => document.querySelector('[role="dialog"]');
+
+  it("draws the Run the owner started and finishes it into completion", async () => {
+    const owner = setup();
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    expect(dialog()).toBeNull();
+
+    await act(async () => owner.start("read-tips"));
+    expect(dialog()).toHaveTextContent("Here are the tips");
+
+    const finish = dialog()!.querySelector("button:last-child") as HTMLButtonElement;
+    await act(async () => finish.click());
+    expect(dialog()).toBeNull();
+    expect(owner.getSnapshot().active).toBeNull();
+    expect(owner.checklists.home.getSnapshot().tasks[1]!.status).toBe("done");
+    expect(frames.size).toBe(0);
+  });
+
+  it("binds its elements so a click on the popover is not a click away", async () => {
+    const owner = setup();
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    await act(async () => owner.start("read-tips"));
+
+    await act(async () => {
+      dialog()!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 1, clientY: 1 }));
+      await Promise.resolve();
+    });
+    expect(dialog()).toHaveTextContent("Here are the tips");
+
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 400, clientY: 400 }));
+      await Promise.resolve();
+    });
+    expect(dialog()).toBeNull();
+    expect(document.querySelector('button[aria-label="Resume walkthrough"]')).toBeInTheDocument();
+  });
+
+  it("renders a custom popover with the owner's step union", async () => {
+    const owner = setup();
+    await act(async () =>
+      root.render(
+        <Walkthrough
+          checklists={owner}
+          renderPopover={({ currentStep, exit }) => (
+            <button type="button" onClick={exit}>
+              {currentStep.content}
+              {"helpUrl" in currentStep ? ` (${currentStep.helpUrl})` : ""}
+            </button>
+          )}
+        />,
+      ),
+    );
+    await act(async () => owner.start("create-deck"));
+    expect(dialog()).toHaveTextContent("Open the decks page (/help)");
+
+    await act(async () => (dialog()!.querySelector("button") as HTMLButtonElement).click());
+    expect(owner.getSnapshot().active).toBeNull();
+    expect(dialog()).toBeNull();
+  });
+
+  it("follows the owner when guidance is stopped or replaced", async () => {
+    const owner = setup();
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    await act(async () => owner.start("create-deck"));
+    expect(dialog()).toHaveTextContent("Open the decks page");
+
+    await act(async () => owner.start("read-tips"));
+    expect(dialog()).toHaveTextContent("Here are the tips");
+
+    await act(async () => owner.stop());
+    expect(dialog()).toBeNull();
+    expect(frames.size).toBe(0);
+  });
+
+  it("keeps a prestarted Run through Strict Mode's mount cycle", async () => {
+    const events: string[] = [];
+    const owner = setup((event) => events.push(event.type));
+    owner.start("read-tips");
+    events.length = 0;
+
+    await act(async () => {
+      root.render(
+        <StrictMode>
+          <Walkthrough checklists={owner} />
+        </StrictMode>,
+      );
+    });
+
+    expect(dialog()).toHaveTextContent("Here are the tips");
+    expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
+    expect(events).toEqual([]);
+  });
+
+  it("stops its Run on actual unmount, retaining progress", async () => {
+    const events: string[] = [];
+    const owner = setup((event) => events.push(event.type));
+    owner.markDone("say-hello");
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    await act(async () => owner.start("read-tips"));
+    const { run } = owner.getSnapshot().active!;
+    events.length = 0;
+
+    await act(async () => root.render(<div />));
+
+    expect(owner.getSnapshot().active).toBeNull();
+    expect(run.getSnapshot().phase).toBe("exited");
+    expect(events).toEqual(["taskStopped"]);
+    expect(owner.checklists.home.getSnapshot().tasks[2]!.status).toBe("done");
+    expect(frames.size).toBe(0);
+  });
+
+  it("does not stop a Run that replaced the one it was drawing", async () => {
+    const owner = setup();
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    await act(async () => owner.start("read-tips"));
+
+    // The renderer is removed, and before its pending stop runs the app starts something else.
+    act(() => root.render(<div />));
+    owner.start("create-deck");
+    await act(async () => {});
+
+    expect(owner.getSnapshot().active?.task.id).toBe("create-deck");
+  });
+
+  it("hands guidance over to a renderer that mounts as it unmounts", async () => {
+    const owner = setup();
+    const other = createRoot(document.body.appendChild(document.createElement("div")));
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    await act(async () => owner.start("read-tips"));
+
+    await act(async () => {
+      root.render(<div />);
+      other.render(<Walkthrough checklists={owner} />);
+    });
+
+    expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
+    expect(dialog()).toHaveTextContent("Here are the tips");
+
+    await act(async () => other.unmount());
+    expect(owner.getSnapshot().active).toBeNull();
   });
 });
