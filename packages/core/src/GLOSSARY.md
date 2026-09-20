@@ -57,6 +57,28 @@ it out. A new object only when something in it changed, so identity means
 Action it took, and `finish`. Named after the Step it happened *on*, with the
 Snapshot as it stands *after*.
 
+**Checklists** — The owner `createChecklists` returns: it defines Tasks by
+id, hands out a named Checklist view per selection, keeps the one shared
+completion record, and holds at most one active Run. See checklists.ts.
+_Avoid_: onboarding, registry.
+
+**Task** — One thing the user should accomplish. May carry a Walkthrough and
+a completion condition `isComplete(context)`; anything else on it is adapter
+content that core keeps and ignores.
+_Avoid_: item, milestone, step.
+
+**Checklist** — A named, ordered view of Tasks with their shared completion:
+`getSnapshot`, `subscribe`, and the commands `start`, `markDone`, `skip`.
+Done is the same in every view; skipped is the view's own.
+_Avoid_: progress, session.
+
+**Context** — Application data given to `update`, checked once against each
+non-done Task's condition. Conditions run only then.
+_Avoid_: facts, state.
+
+**Stored** — The persisted record: done ids, and skipped ids per checklist
+name. No version field; a storage adapter wraps it.
+
 ## Machinery terms
 
 **State** — The whole of what a Run knows: the Snapshot, two facts about the

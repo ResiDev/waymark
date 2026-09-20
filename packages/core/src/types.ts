@@ -55,6 +55,8 @@ export type AdvanceSpec =
  *
  * Deliberately carries no content: what a Step *renders* belongs to whichever
  * adapter is driving the Run, which extends this type with its own payload.
+ * The index signature admits that payload, so a Step made only of adapter
+ * fields is still a Step.
  */
 export type Step = Readonly<{
   /** Matches `[data-waymark="<waymark>"]` in the page. */
@@ -64,6 +66,7 @@ export type Step = Readonly<{
   advance?: AdvanceSpec;
   /** Defaults to `"once"`: scroll the Waymark into view the first time it is off-screen. */
   scroll?: "once" | "always" | "never";
+  [extra: string]: unknown;
 }>;
 
 /** An ordered definition, built by `defineWalkthrough`. Runnable more than once. */

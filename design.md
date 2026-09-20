@@ -121,6 +121,8 @@ type Task<TContext, TStep extends Step = Step> = Readonly<{
   // Without this condition, finishing the active walkthrough records done.
   // The application may also call markDone, including for tasks without guidance.
   isComplete?: (context: TContext) => boolean;
+  // Adapter content such as a title. Core keeps it in snapshots and ignores it.
+  [extra: string]: unknown;
 }>;
 
 // For tasks declared outside createChecklists. An arrow parameter is typed by
@@ -218,10 +220,8 @@ type Checklist<TTask extends { readonly id: string }> =
 // as a celebration reads counts from the event instead of the owner.
 // Creation emits no events (see Transition contract).
 type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
-  | Readonly<{
-      type: "taskStarted" | "taskComplete";
-      task: NamedTask<TTasks>;
-    }>
+  | Readonly<{ type: "taskStarted"; task: NamedTask<TTasks> }>
+  | Readonly<{ type: "taskComplete"; task: NamedTask<TTasks> }>
   | Readonly<{
       type: "taskStopped";
       task: NamedTask<TTasks>;
@@ -276,6 +276,9 @@ type Checklists<
   // For the single app-level walkthrough renderer. Core reads the active Run's
   // UI elements through the bound getter; one binding at a time, newest wins.
   bindUi: (ui: () => UiElements) => () => void; // returns release
+  // The halo every Run draws, from the run options (core's default, 0), so the
+  // renderer and the Run's click halo agree.
+  waymarkPadding: number;
   // The owner is a store on the same terms as views and Runs: the snapshot
   // changes identity only when the active task changes.
   getSnapshot: () => Readonly<{
@@ -611,6 +614,8 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Tasks in separate files use the curried `defineTask<AppContext>()` helper; inline tasks need nothing.
 - Commands are re-entrant on the same terms as the Run's `act`.
 - Ships from the existing `waymark` and `react-waymark` entry points; both are `sideEffects: false`.
+- Core's `Step` and `Task` types admit adapter fields through an index signature, so a step or task made only of adapter content (such as `content` or `title`) still satisfies them and `StepOf` recovers it.
+- The owner exposes `waymarkPadding` so the guidance renderer draws the same halo the Run uses for clicks.
 
 ## Deferred
 

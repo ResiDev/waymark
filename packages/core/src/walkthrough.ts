@@ -11,7 +11,7 @@ import type { AdvanceCondition, Step, Walkthrough } from "./types";
  */
 export function defineWalkthrough<const TStep extends Step>(
   steps: readonly TStep[],
-): Walkthrough<TStep> {
+): Walkthrough<NoInfer<TStep>> {
   if (steps.length === 0) {
     throw new Error("A walkthrough needs at least one step.");
   }
