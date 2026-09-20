@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Waymark checklist fixture</title>
+    <style>
+      body { margin: 0; font-family: sans-serif; color: #1e293b; }
+      main { padding: 40px; max-width: 520px; }
+      main h1 { font-size: 20px; margin: 0 0 16px; }
+      main p { color: #475569; }
+      main button, main label { display: block; margin: 8px 0; padding: 8px 12px; }
+      main button { cursor: pointer; }
+      .spacer { height: 1200px; }
+
+      /* The panel: checklists, owner controls, and what the owner reports. */
+      #ui {
+        position: fixed; top: 12px; right: 12px; width: 360px; z-index: 3;
+        padding: 12px; background: #fff; border: 1px solid #ccc; border-radius: 6px;
+        font-size: 12px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+        max-height: calc(100vh - 24px); overflow: auto; box-sizing: border-box;
+      }
+      #ui h2 { margin: 8px 0 4px; font-size: 11px; text-transform: uppercase; color: #666; }
+      #ui h3 { margin: 6px 0 2px; font-size: 12px; }
+      #ui button { padding: 3px 8px; margin: 0 4px 4px 0; }
+      #ui ol { margin: 0; padding: 0; list-style: none; }
+      #ui li { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #eee; }
+      #ui li .title { flex: 1; }
+      #ui li[data-status="done"] .title { text-decoration: line-through; color: #64748b; }
+      #ui li[data-status="skipped"] .title { color: #94a3b8; }
+      #ui li[data-active="true"] { background: #eff6ff; }
+      #ui .count { color: #666; margin-left: 6px; font-weight: normal; }
+      #ui pre { margin: 0; max-height: 18vh; overflow: auto; white-space: pre-wrap; font-size: 11px; }
+      #status { font-weight: bold; margin: 6px 0; }
+
+      /* Guidance: a halo over the found waymark, and a popover for the step. */
+      #halo {
+        position: fixed; pointer-events: none; z-index: 2; display: none;
+        border: 2px solid #e6007a; border-radius: 4px; box-shadow: 0 0 0 4px rgb(230 0 122 / 0.2);
+      }
+      #popover {
+        position: fixed; z-index: 4; display: none; width: 240px; padding: 12px;
+        background: #1e293b; color: #e2e8f0; border-radius: 10px; font-size: 13px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+      }
+      #popover .text { margin-bottom: 10px; }
+      #popover button { padding: 4px 10px; margin-right: 6px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Study app</h1>
+      <p>The page a checklist guides the user around. The panel on the right is the checklist UI an application would draw.</p>
+      <button data-waymark="new-deck" id="new-deck">New deck</button>
+      <button data-waymark="avatar" id="avatar">Choose a photo</button>
+      <label><input type="checkbox" id="has-deck" /> the app has a deck (context)</label>
+      <label><input type="checkbox" id="has-photo" /> the app has a photo (context)</label>
+      <div class="spacer"></div>
+      <button data-waymark="tips">Tips, far down the page</button>
+    </main>
+
+    <aside id="ui" data-waymark-ui>
+      <h2>Checklists</h2>
+      <div id="checklists"></div>
+      <h2>Owner</h2>
+      <div id="owner"></div>
+      <div id="status">Nothing active.</div>
+      <h2>Stored</h2>
+      <pre id="stored"></pre>
+      <h2>Events</h2>
+      <pre id="log"></pre>
+    </aside>
+
+    <div id="halo"></div>
+    <div id="popover" data-waymark-ui>
+      <div class="text"></div>
+      <button id="previous">Previous</button>
+      <button id="advance">Next</button>
+      <button id="exit">Exit</button>
+    </div>
+
+    <script type="module" src="./checklist.ts"></script>
+  </body>
+</html>
