@@ -79,6 +79,16 @@ export type NamedTask<TTasks, TId extends TaskId<TTasks> = TaskId<TTasks>> = {
   [K in TId]: Readonly<TTasks[K] & { id: K }>;
 }[TId];
 
+/** The checklists whose selection includes the Task `TId`. */
+export type ChecklistsWith<TSelections, TId> = {
+  [Name in keyof TSelections]: TSelections[Name] extends readonly (infer TSelected)[]
+    ? TId extends TSelected
+      ? Name
+      : never
+    : never;
+}[keyof TSelections] &
+  string;
+
 /** Exactly the Task types one selection names. */
 export type SelectedTask<TTasks, TIds extends readonly TaskId<TTasks>[]> =
   NamedTask<TTasks, TIds[number]>;
@@ -106,6 +116,8 @@ export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
 export type ActiveTask<TTask extends { readonly id: string }> = Readonly<{
   task: TTask;
   run: Run<StepOf<TTask>>;
+  /** The checklists the Run counts for: where a skip from its guidance applies. */
+  checklists: readonly string[];
 }>;
 
 /** Current display data for one view. A new object only when something in it changed. */
@@ -180,8 +192,19 @@ export type ChecklistViews<TTasks, TSelections extends ChecklistSelections<TTask
   readonly [Name in keyof TSelections]: Checklist<SelectedTask<TTasks, TSelections[Name]>>;
 };
 
-export type ChecklistsSnapshot<TTasks> = Readonly<{
-  active: Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
+export type ChecklistsSnapshot<
+  TTasks,
+  TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
+> = Readonly<{
+  active: Readonly<{
+    task: NamedTask<TTasks>;
+    run: Run<any>;
+    /**
+     * The checklists the Run counts for, as `start` was given them. A
+     * renderer skips from guidance with `skip(task.id, checklists)`.
+     */
+    checklists: readonly (keyof TSelections & string)[];
+  }> | null;
 }>;
 
 export type Checklists<
@@ -191,12 +214,29 @@ export type Checklists<
 > = Readonly<{
   checklists: ChecklistViews<TTasks, TSelections>;
 
-  /** Starts or replays guidance; exits any previous Run. No-op without a walkthrough or if already active. */
-  start: (id: TaskId<TTasks>) => void;
+  /**
+   * Starts or replays guidance; exits any previous Run. `checklists` are the
+   * ones the guidance counts for, where a skip from it applies; a view's
+   * `start` names its own. Throws for a checklist that does not select the
+   * Task. No-op without a walkthrough or if already active.
+   */
+  start: <TId extends TaskId<TTasks>>(
+    id: TId,
+    checklists?: ChecklistsWith<TSelections, TId> | readonly ChecklistsWith<TSelections, TId>[],
+  ) => void;
   /** Exits the active Run. No-op when nothing is active. */
   stop: () => void;
-  /** Records done across every view. Skip is a view command, since it is recorded per checklist. */
+  /** Records done across every view. */
   markDone: (id: TaskId<TTasks>) => void;
+  /**
+   * Todo to skipped in each of `checklists`, as one change; exits the Task's
+   * active Run. Skipped is recorded per checklist, so they must be named.
+   * Throws for a checklist that does not select the Task.
+   */
+  skip: <TId extends TaskId<TTasks>>(
+    id: TId,
+    checklists: ChecklistsWith<TSelections, TId> | readonly ChecklistsWith<TSelections, TId>[],
+  ) => void;
 
   /**
    * For the one guidance renderer. Runs read their UI elements through the
@@ -207,7 +247,7 @@ export type Checklists<
   waymarkPadding: number;
 
   /** Changes identity only when the active Task changes. */
-  getSnapshot: () => ChecklistsSnapshot<TTasks>;
+  getSnapshot: () => ChecklistsSnapshot<TTasks, TSelections>;
   subscribe: (listener: () => void) => () => void;
 
   /**
@@ -326,7 +366,7 @@ function validate(tasks: TaskMap<any>, selections: Readonly<Record<string, reado
 
 type AnyTask = Task<any, any>;
 type Named = Readonly<AnyTask & { id: string }>;
-type Active = Readonly<{ task: Named; run: Run<any> }>;
+type Active = Readonly<{ task: Named; run: Run<any>; checklists: readonly string[] }>;
 type Event = ChecklistsEvent<Record<string, AnyTask>, ChecklistSelections<Record<string, AnyTask>>>;
 
 type View = {
@@ -510,7 +550,7 @@ export function createChecklists<
     });
   };
 
-  const start = (id: string) =>
+  const start = (id: string, checklists: readonly string[]) =>
     send((change) => {
       const task = named[id];
       if (task?.walkthrough === undefined || active?.task.id === id) return;
@@ -523,7 +563,7 @@ export function createChecklists<
           runOptions?.onEvent?.(event);
         },
       });
-      active = { task, run };
+      active = { task, run, checklists };
       change.events.push({ type: "taskStarted", task });
     });
 
@@ -534,20 +574,36 @@ export function createChecklists<
       if (Object.hasOwn(named, id)) recordDone(change, id);
     });
 
-  const skip = (name: string, id: string) =>
+  const skip = (id: string, checklists: readonly string[]) =>
     send((change) => {
       // A finished Run settles first, so its Task is done rather than skipped.
       if (active?.task.id === id && active.run.getSnapshot().phase === "completed") {
         release(change, "finished");
       }
-      if (!Object.hasOwn(named, id) || done.has(id) || isSkipped(name, id)) return;
-      setRecord({
-        done: record.done,
-        skipped: { ...record.skipped, [name]: [...(record.skipped[name] ?? []), id] },
-      });
-      change.events.push({ type: "taskSkipped", task: named[id]!, checklist: name });
+      if (!Object.hasOwn(named, id) || done.has(id)) return;
+      const fresh = checklists.filter((name) => !isSkipped(name, id));
+      if (fresh.length === 0) return;
+      // Null-prototype, so a checklist named `__proto__` is an ordinary key.
+      const skipped: Record<string, readonly string[]> = Object.assign(Object.create(null), record.skipped);
+      for (const name of fresh) skipped[name] = [...(record.skipped[name] ?? []), id];
+      setRecord({ done: record.done, skipped });
+      for (const name of fresh) {
+        change.events.push({ type: "taskSkipped", task: named[id]!, checklist: name });
+      }
       if (active?.task.id === id) release(change, "skipped");
     });
+
+  /** The checklists the application names, as a list, each checked to select the Task. */
+  const checklistsFor = (id: string, names: string | readonly string[] = []): readonly string[] => {
+    const list = unique(typeof names === "string" ? [names] : names);
+    for (const name of list) {
+      if (!Object.hasOwn(selections, name)) throw new Error(`Unknown checklist "${name}".`);
+      if (!selections[name]!.includes(id)) {
+        throw new Error(`Checklist "${name}" does not select task "${id}".`);
+      }
+    }
+    return list;
+  };
 
   /** Every eligible condition is checked before anything is recorded, so a throwing check changes nothing. */
   const check = (change: Change, context: TContext) => {
@@ -586,9 +642,9 @@ export function createChecklists<
   const checklists: Record<string, Checklist<Named>> = Object.create(null);
   for (const view of views) {
     checklists[view.name] = {
-      start,
+      start: (id) => start(id, [view.name]),
       markDone,
-      skip: (id) => skip(view.name, id),
+      skip: (id) => skip(id, [view.name]),
       getSnapshot: () => view.snapshot,
       subscribe: subscribeTo(view.listeners),
     };
@@ -596,9 +652,10 @@ export function createChecklists<
 
   const owner: Checklists<TContext, Record<string, AnyTask>, ChecklistSelections<Record<string, AnyTask>>> = {
     checklists,
-    start,
+    start: (id, names) => start(id, checklistsFor(id, names)),
     stop,
     markDone,
+    skip: (id, names) => skip(id, checklistsFor(id, names)),
     bindUi: (ui) => {
       boundUi = ui;
       return () => {

@@ -294,6 +294,100 @@ describe("guidance", () => {
     expect(onEvent).toHaveBeenCalledTimes(2);
   });
 
+  it("records the checklists a Run counts for, so a renderer can skip the task in them", () => {
+    const onEvent = vi.fn();
+    const onChange = vi.fn();
+    const owner = setup({ onEvent, onChange });
+    owner.checklists.decks.start("create-deck");
+
+    const active = owner.getSnapshot().active!;
+    expect(active.checklists).toEqual(["decks"]);
+    expect(owner.checklists.home.getSnapshot().active).toBe(active);
+
+    // A renderer's "skip task".
+    owner.skip(active.task.id, active.checklists);
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
+    expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
+    expect(active.run.getSnapshot().phase).toBe("exited");
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(types(onEvent)).toEqual([
+      "taskStarted:create-deck",
+      "taskSkipped:create-deck",
+      "taskStopped:create-deck",
+      "checklistComplete:decks",
+    ]);
+    expect(onEvent.mock.calls[2]![0]).toMatchObject({ reason: "skipped" });
+  });
+
+  it("takes the checklists a Run counts for from the application", () => {
+    const owner = setup();
+    owner.start("create-deck");
+    expect(owner.getSnapshot().active!.checklists).toEqual([]);
+    owner.start("add-photo", "home");
+    expect(owner.getSnapshot().active!.checklists).toEqual(["home"]);
+    owner.start("create-deck", ["home", "decks", "home"]);
+    expect(owner.getSnapshot().active!.checklists).toEqual(["home", "decks"]);
+  });
+
+  it("skips in several checklists as one change", () => {
+    const onEvent = vi.fn();
+    const onChange = vi.fn();
+    const owner = setup({ onEvent, onChange });
+    owner.start("create-deck", ["home", "decks"]);
+    const { run } = owner.getSnapshot().active!;
+    onEvent.mockClear();
+
+    owner.skip("create-deck", ["home", "decks"]);
+    expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
+    expect(run.getSnapshot().phase).toBe("exited");
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange.mock.calls[0]![0].skipped).toEqual({
+      home: ["create-deck"],
+      decks: ["create-deck"],
+    });
+    expect(types(onEvent)).toEqual([
+      "taskSkipped:create-deck",
+      "taskSkipped:create-deck",
+      "taskStopped:create-deck",
+      "checklistComplete:decks",
+    ]);
+    expect(onEvent.mock.calls.slice(0, 2).map(([e]) => e.checklist)).toEqual(["home", "decks"]);
+
+    // Already skipped in both: nothing more to record.
+    owner.skip("create-deck", "decks");
+    expect(onChange).toHaveBeenCalledOnce();
+  });
+
+  it("does nothing when skipping in no checklists", () => {
+    const onChange = vi.fn();
+    const owner = setup({ onChange });
+    owner.start("create-deck");
+    const active = owner.getSnapshot().active;
+    owner.skip("create-deck", []);
+    expect(owner.getSnapshot().active).toBe(active);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("rejects a checklist that does not exist or does not select the task", () => {
+    const owner = setup() as unknown as {
+      start: (id: string, checklists?: string | readonly string[]) => void;
+      skip: (id: string, checklists: string | readonly string[]) => void;
+    };
+    expect(() => owner.start("add-photo", "decks")).toThrow(/Checklist "decks" does not select task "add-photo"/);
+    expect(() => owner.start("add-photo", ["home", "nope"])).toThrow(/Unknown checklist "nope"/);
+    expect(() => owner.skip("add-photo", "decks")).toThrow(/Checklist "decks" does not select task "add-photo"/);
+  });
+
+  it("keeps the first checklists when the task already active is started again", () => {
+    const owner = setup();
+    owner.checklists.decks.start("create-deck");
+    const active = owner.getSnapshot().active;
+    owner.start("create-deck", "home");
+    expect(owner.getSnapshot().active).toBe(active);
+    expect(active!.checklists).toEqual(["decks"]);
+  });
+
   it("hides the Run from views that do not hold its task", () => {
     const owner = setup();
     owner.start("add-photo");

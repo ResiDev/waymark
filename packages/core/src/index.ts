@@ -34,6 +34,7 @@ export type {
   ChecklistsEvent,
   ChecklistsOptions,
   ChecklistsSnapshot,
+  ChecklistsWith,
   ExactTasks,
   NamedTask,
   SelectedTask,

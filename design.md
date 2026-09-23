@@ -199,14 +199,15 @@ type ChecklistSnapshot<TTask extends { readonly id: string }> = Readonly<{
   taskCount: number; // selected task count
   complete: boolean; // finishedCount === taskCount
   // The shared active Run only when its task belongs to this checklist.
-  // A done or skipped task may still have active guidance.
-  active: Readonly<{ task: TTask; run: Run<StepOf<TTask>> }> | null;
+  // A done or skipped task may still have active guidance. `checklists` are
+  // the ones the Run counts for, as `start` was given them.
+  active: Readonly<{ task: TTask; run: Run<StepOf<TTask>>; checklists: readonly string[] }> | null;
 }>;
 
 // Commands scoped to the selected tasks; they delegate to the shared owner.
-// Skip belongs to the view because it is recorded per checklist.
+// Skipped is recorded per checklist, so a view's skip records in its own.
 type TaskCommands<TId extends string> = Readonly<{
-  start: (id: TId) => void; // starts/replays guidance; exits any previous shared Run
+  start: (id: TId) => void; // starts/replays guidance counting for this checklist; exits any previous shared Run
   markDone: (id: TId) => void; // records done everywhere; guidance can continue
   skip: (id: TId) => void; // todo -> skipped in this checklist; exits this task's active Run
 }>;
@@ -279,10 +280,23 @@ type Checklists<
 > = Readonly<{
   checklists: ChecklistViews<TTasks, TSelections>;
 
-  start: (id: TaskId<TTasks>) => void; // starts/replays guidance; exits previous Run
+  // `ChecklistsWith<TSelections, TId>` is the checklists whose selection
+  // includes the task; naming any other does not compile, and throws.
+  // `checklists` are the ones the guidance counts for, where a skip from it
+  // applies; the application decides. A view's `start` names its own.
+  start: <TId extends TaskId<TTasks>>(
+    id: TId,
+    checklists?: ChecklistsWith<TSelections, TId> | readonly ChecklistsWith<TSelections, TId>[],
+  ) => void; // starts/replays guidance; exits previous Run
   stop: () => void; // exits the active Run; no-op when nothing is active
   markDone: (id: TaskId<TTasks>) => void; // records done across all views
-  // Skip is a view command: it is recorded per checklist, so the owner has none.
+  // Skipped is recorded per checklist, so a skip names them; one change for
+  // all. A view's `skip` names its own. A renderer skips from guidance with
+  // `skip(active.task.id, active.checklists)`; with none, it offers no skip.
+  skip: <TId extends TaskId<TTasks>>(
+    id: TId,
+    checklists: ChecklistsWith<TSelections, TId> | readonly ChecklistsWith<TSelections, TId>[],
+  ) => void;
 
   // For the single app-level walkthrough renderer. Core reads the active Run's
   // UI elements through the bound getter; one binding at a time, newest wins.
@@ -293,7 +307,11 @@ type Checklists<
   // The owner is a store on the same terms as views and Runs: the snapshot
   // changes identity only when the active task changes.
   getSnapshot: () => Readonly<{
-    active: Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
+    active: Readonly<{
+      task: NamedTask<TTasks>;
+      run: Run<any>;
+      checklists: readonly (keyof TSelections & string)[]; // as `start` was given them
+    }> | null;
   }>;
   subscribe: (listener: () => void) => () => void; // fires when active changes
 
@@ -351,13 +369,13 @@ unsubscribe on unmount.
 
 | Input | Shared state change |
 |---|---|
-| `start(id)` | Exit the previous Run, commit the new active task, create its Run with core's own `onEvent`. Finish and exit are observed there; core never subscribes to the Run, since subscribing switches on page watching. No-op without guidance or if already active. |
+| `start(id)` | Exit the previous Run, commit the new active task with the checklists it counts for (none unless named), create its Run with core's own `onEvent`. Finish and exit are observed there; core never subscribes to the Run, since subscribing switches on page watching. No-op without guidance or if already active. |
 | `stop()` | Exit the active Run and clear active. No-op when nothing is active. |
 | Run finishes without `isComplete` | Mark its task done and clear active, updating every affected view. |
 | Run finishes with `isComplete` | Clear active; finishing instructions does not assert application completion. |
 | Run exits | Clear active; retain completion. |
 | `markDone(id)` | Record done, remove skipped. No-op if already done. |
-| `skip(id)` on a view | Record skipped for that checklist and exit the task's active Run. No-op if done or already skipped there. |
+| `skip(id, checklists)`, or `skip(id)` on a view for its own | Record skipped in each named checklist as one change, with a `taskSkipped` per checklist, and exit the task's active Run. No-op if done or already skipped in all of them. |
 | `update(context)` | Evaluate eligible conditions once in task order; commit all resulting completions together. |
 | `clear()` | Replace progress with `{ done: [], skipped: {} }`, including unknown task ids and checklist names. Notify changed views and call `onChange` once; emit no transition events. Keep the active Run and context; do not re-check conditions. No-op if already empty. |
 

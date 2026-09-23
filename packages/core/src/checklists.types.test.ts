@@ -55,6 +55,28 @@ describe("createChecklists types", () => {
     expectTypeOf<HomeRow["task"]["id"]>().toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
     type DeckActive = NonNullable<ReturnType<typeof owner.checklists.decks.getSnapshot>["active"]>;
     expectTypeOf<DeckActive["run"]>().toEqualTypeOf<Run<{ readonly waymark: "new-deck"; readonly meta: { readonly helpUrl: "/help/decks" } }>>();
+    type OwnerActive = NonNullable<ReturnType<typeof owner.getSnapshot>["active"]>;
+    expectTypeOf<OwnerActive["checklists"]>().toEqualTypeOf<readonly ("home" | "decks")[]>();
+
+    // The checklists a Run counts for, and a skip applies to, must select the task.
+    owner.start("create-deck", "decks");
+    owner.start("create-deck", ["home", "decks"]);
+    owner.start("add-photo", "home");
+    owner.skip("create-deck", ["home", "decks"]);
+    // Checked, never called: each would throw.
+    const mistakes = () => {
+      // @ts-expect-error decks does not select add-photo
+      owner.start("add-photo", "decks");
+      // @ts-expect-error decks does not select add-photo
+      owner.start("add-photo", ["home", "decks"]);
+      // @ts-expect-error not a checklist
+      owner.start("create-deck", "nope");
+      // @ts-expect-error decks does not select add-photo
+      owner.skip("add-photo", "decks");
+      // @ts-expect-error skip is recorded per checklist, so it must name them
+      owner.skip("create-deck");
+    };
+    expectTypeOf(mistakes).toBeFunction();
 
     const home = owner.checklists.home.getSnapshot();
     for (const row of home.tasks) {
