@@ -1,4 +1,5 @@
 import { keyAction, whereClicked } from "./input";
+import { createQueue } from "./queue";
 import { apply, liveWatchers, needsAdvanceRead, sameWaymarkAria, sameWaymarkEvents } from "./rules";
 import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
 import { enter } from "./state";
@@ -92,12 +93,6 @@ const listenToWaymarkEvents = ({ element, events }: WaymarkEvents, onEvent: () =
   return () => control.abort();
 };
 
-/** Report callback errors after all pending work has had a chance to finish. */
-const reportErrors = (errors: readonly unknown[]) => {
-  if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, "Run callbacks failed.");
-};
-
 export function createRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep> = {},
@@ -110,8 +105,36 @@ export function createRun<TStep extends Step>(
 
   // ---- the one place the State changes --------------------------------------
 
-  const queue: Message[] = [];
-  let draining = false;
+  const queue = createQueue("Run callbacks failed.");
+
+  /** Obey one Message in full; see `send`. */
+  const obey = (message: Message) => {
+    const outcome = apply(state, message, walkthrough);
+    // `scrollIntoView` is optional only because jsdom does not implement it.
+    outcome.scrollTo?.scrollIntoView?.({
+      behavior: "smooth",
+      block: "center",
+    });
+
+    const before = state;
+    state = outcome.state;
+    // Always, not only on change: a frame that has just fired must be
+    // re-requested even when its look found nothing new.
+    reconcile();
+
+    const after = state.snapshot;
+    if (after !== before.snapshot) queue.notify(listeners);
+    for (const type of outcome.events) {
+      queue.invoke(() =>
+        options.onEvent?.({
+          type,
+          step: walkthrough.steps[before.snapshot.stepIndex]!,
+          stepIndex: before.snapshot.stepIndex,
+          snapshot: after,
+        }),
+      );
+    }
+  };
 
   /**
    * Applies Messages in order, one at a time. Each is obeyed in full:
@@ -127,67 +150,10 @@ export function createRun<TStep extends Step>(
    * event the Run is listening for. That Message joins the queue and runs
    * once this one has been notified and announced in full, so every event of
    * a change carries the Snapshot that change produced, never one a callback
-   * made afterwards. Between drains the queue is empty and `draining` is false.
-   *
-   * A callback that throws does not stop the others, nor the rest of the
-   * queue; its error is thrown once the drain is over.
+   * made afterwards. See queue.ts for how callback errors are reported.
    */
-  const send = (...messages: Message[]) => {
-    queue.push(...messages);
-    if (draining) return;
-    draining = true;
-
-    const errors: unknown[] = [];
-
-    const invoke = (callback: () => void) => {
-      try {
-        callback();
-      } catch (error) {
-        errors.push(error);
-      }
-    };
-
-    try {
-      for (let cursor = 0; cursor < queue.length; cursor++) {
-        const outcome = apply(state, queue[cursor]!, walkthrough);
-        // `scrollIntoView` is optional only because jsdom does not implement it.
-        outcome.scrollTo?.scrollIntoView?.({
-          behavior: "smooth",
-          block: "center",
-        });
-
-        const before = state;
-        state = outcome.state;
-        // Always, not only on change: a frame that has just fired must be
-        // re-requested even when its look found nothing new.
-        reconcile();
-
-        const after = state.snapshot;
-        if (after !== before.snapshot) {
-          // Copied on purpose: a listener may subscribe or unsubscribe others mid-notify.
-          // oxlint-disable-next-line unicorn/no-useless-spread
-          for (const listener of [...listeners]) {
-            if (listeners.has(listener)) invoke(listener);
-          }
-        }
-        for (const type of outcome.events) {
-          invoke(() =>
-            options.onEvent?.({
-              type,
-              step: walkthrough.steps[before.snapshot.stepIndex]!,
-              stepIndex: before.snapshot.stepIndex,
-              snapshot: after,
-            }),
-          );
-        }
-      }
-    } finally {
-      queue.length = 0;
-      draining = false;
-    }
-
-    reportErrors(errors);
-  };
+  const send = (...messages: Message[]) =>
+    queue.run(...messages.map((message) => () => obey(message)));
 
   // ---- one look --------------------------------------------------------------
 
@@ -236,13 +202,12 @@ export function createRun<TStep extends Step>(
     const waymark = hasWaymark(step) ? measureWaymark(step) : undefined;
 
     let advance: AdvanceRead | undefined;
-    let failure: { error: unknown } | undefined;
     if (needsAdvanceRead(state)) {
       let holds = false;
       try {
         holds = checkOf(step)?.(waymark?.element ?? null) === true;
       } catch (error) {
-        failure = { error };
+        queue.fail(error);
       }
       advance = { holds, now: performance.now() };
     }
@@ -252,15 +217,7 @@ export function createRun<TStep extends Step>(
       waymark || advance
         ? [{ kind: "stepRead", stepGeneration, stepRead }]
         : [];
-    try {
-      send(...read, ...after);
-    } catch (error) {
-      if (failure) {
-        throw new AggregateError([failure.error, error], "Run callbacks failed.", { cause: error });
-      }
-      throw error;
-    }
-    if (failure) throw failure.error;
+    send(...read, ...after);
   };
 
   // ---- what the user is doing ------------------------------------------------

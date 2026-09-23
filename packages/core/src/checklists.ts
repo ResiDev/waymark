@@ -1,3 +1,4 @@
+import { createQueue } from "./queue";
 import { createRun } from "./run";
 import type {
   Exactly,
@@ -346,12 +347,6 @@ type Change = {
   persist: boolean;
 };
 
-/** Report callback errors after all pending work has had a chance to finish. */
-const reportErrors = (errors: readonly unknown[]) => {
-  if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, "Checklist callbacks failed.");
-};
-
 /**
  * Infers the context type from its initial values only, so `false` widens to
  * `boolean`. Tasks written inline are typed from that context; tasks in other
@@ -425,89 +420,57 @@ export function createChecklists<
 
   // ---- the one place state changes -------------------------------------------
 
-  const queue: { run: (change: Change) => void; silent: boolean; persist: boolean }[] = [];
-  let draining = false;
+  const queue = createQueue("Checklist callbacks failed.");
+
+  /** Run one command and commit it in full; see `send`. */
+  const commit = (run: (change: Change) => void, flags: Partial<Change>) => {
+    const change: Change = {
+      events: [],
+      effects: [],
+      silent: flags.silent ?? false,
+      persist: flags.persist ?? true,
+    };
+    const recordBefore = record;
+    const activeBefore = active;
+    run(change);
+
+    // Commit every affected snapshot before any callback sees the change.
+    const changedViews: View[] = [];
+    const completedViews: View[] = [];
+    for (const view of views) {
+      const next = buildSnapshot(view);
+      if (sameSnapshot(view.snapshot, next)) continue;
+      if (!view.snapshot.complete && next.complete) completedViews.push(view);
+      view.snapshot = next;
+      changedViews.push(view);
+    }
+    const activeChanged = active !== activeBefore;
+    if (activeChanged) ownerSnapshot = { active };
+    const recordChanged = !sameRecord(recordBefore, record);
+
+    for (const view of changedViews) queue.notify(view.listeners);
+    if (activeChanged) queue.notify(ownerListeners);
+    if (recordChanged && change.persist) queue.invoke(() => onChange?.(record));
+    if (!change.silent) {
+      for (const event of change.events) queue.invoke(() => emit?.(event));
+      for (const view of completedViews) {
+        queue.invoke(() =>
+          emit?.({ type: "checklistComplete", checklist: view.name, snapshot: view.snapshot }),
+        );
+      }
+    }
+    for (const effect of change.effects) queue.invoke(effect);
+  };
 
   /**
    * Runs commands in order, one at a time, each committed in full before the
    * next: state, then view and owner snapshots, then listeners, `onChange`,
    * events, and finally the command's effects on Runs. A command sent from a
    * listener or event handler joins the queue and runs once this one is over.
-   * A callback that throws does not stop the others; errors are thrown once
-   * the drain is over.
+   * See queue.ts for how callback errors are reported.
    */
-  const send = (run: (change: Change) => void, flags: Partial<Change> = {}) => {
-    queue.push({ run, silent: flags.silent ?? false, persist: flags.persist ?? true });
-    if (draining) return;
-    draining = true;
-
-    const errors: unknown[] = [];
-    const invoke = (callback: () => void) => {
-      try {
-        callback();
-      } catch (error) {
-        errors.push(error);
-      }
-    };
-
-    try {
-      for (let cursor = 0; cursor < queue.length; cursor++) {
-        const command = queue[cursor]!;
-        const change: Change = {
-          events: [],
-          effects: [],
-          silent: command.silent,
-          persist: command.persist,
-        };
-        const recordBefore = record;
-        const activeBefore = active;
-        command.run(change);
-
-        // Commit every affected snapshot before any callback sees the change.
-        const changedViews: View[] = [];
-        const completedViews: View[] = [];
-        for (const view of views) {
-          const next = buildSnapshot(view);
-          if (sameSnapshot(view.snapshot, next)) continue;
-          if (!view.snapshot.complete && next.complete) completedViews.push(view);
-          view.snapshot = next;
-          changedViews.push(view);
-        }
-        const activeChanged = active !== activeBefore;
-        if (activeChanged) ownerSnapshot = { active };
-        const recordChanged = !sameRecord(recordBefore, record);
-
-        // Copied on purpose: a listener may subscribe or unsubscribe others mid-notify.
-        for (const view of changedViews) {
-          // oxlint-disable-next-line unicorn/no-useless-spread
-          for (const listener of [...view.listeners]) {
-            if (view.listeners.has(listener)) invoke(listener);
-          }
-        }
-        if (activeChanged) {
-          // oxlint-disable-next-line unicorn/no-useless-spread
-          for (const listener of [...ownerListeners]) {
-            if (ownerListeners.has(listener)) invoke(listener);
-          }
-        }
-        if (recordChanged && change.persist) invoke(() => onChange?.(record));
-        if (!change.silent) {
-          for (const event of change.events) invoke(() => emit?.(event));
-          for (const view of completedViews) {
-            invoke(() =>
-              emit?.({ type: "checklistComplete", checklist: view.name, snapshot: view.snapshot }),
-            );
-          }
-        }
-        for (const effect of change.effects) invoke(effect);
-      }
-    } finally {
-      queue.length = 0;
-      draining = false;
-    }
-
-    reportErrors(errors);
-  };
+  const send = (run: (change: Change) => void, flags: Partial<Change> = {}) =>
+    queue.run(() => commit(run, flags));
 
   // ---- transitions -----------------------------------------------------------
 
