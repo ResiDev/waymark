@@ -169,6 +169,29 @@ describe("createChecklists types", () => {
     expectTypeOf(create).toBeFunction();
   });
 
+  it("rejects a field that no form of advance names", () => {
+    const valid = defineWalkthrough([
+      { advance: "click" },
+      { advance: { event: "input" } },
+      { advance: { event: ["input", "change"] } },
+      { advance: { state: (waymark) => waymark !== null } },
+      { advance: { when: "click", then: "unlock", delayMs: 500 } },
+      { advance: { when: { event: "input" }, delayMs: 500 } },
+    ]);
+    expectTypeOf(valid).toHaveProperty("steps");
+
+    // @ts-expect-error misspelled delayMs
+    defineWalkthrough([{ advance: { when: "click", delay: 500 } }]);
+    // @ts-expect-error misspelled delayMs, alongside a valid then
+    defineWalkthrough([{ advance: { when: "click", then: "unlock", delayMS: 500 } }]);
+    // @ts-expect-error misspelled state, inside when
+    defineWalkthrough([{ advance: { when: { event: "input", stat: () => true } } }]);
+    // @ts-expect-error a condition is an event or a state, not both
+    defineWalkthrough([{ advance: { event: "input", state: () => true } }]);
+    // @ts-expect-error a typo in a later step
+    defineWalkthrough([{ advance: "click" }, { advance: { when: "click", delay: 500 } }]);
+  });
+
   it("accepts a stored record and an event handler typed over the owner", () => {
     const stored: Stored = { done: ["x"], skipped: { home: ["y"] } };
     const owner = createChecklists({

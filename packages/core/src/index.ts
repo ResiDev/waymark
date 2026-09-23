@@ -9,6 +9,7 @@ export type {
   AdvanceSpec,
   Ended,
   Exactly,
+  ExactStep,
   Location,
   Rect,
   Run,

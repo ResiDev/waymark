@@ -1,4 +1,4 @@
-import type { AdvanceCondition, Exactly, Step, Walkthrough } from "./types";
+import type { AdvanceCondition, ExactStep, Step, Walkthrough } from "./types";
 
 /**
  * Builds a Walkthrough, and is the only place that knows how a Step is written.
@@ -10,7 +10,7 @@ import type { AdvanceCondition, Exactly, Step, Walkthrough } from "./types";
  * precomputed or cached.
  */
 export function defineWalkthrough<const TStep extends Step>(
-  steps: readonly TStep[] & readonly Exactly<TStep, Step>[],
+  steps: readonly TStep[] & readonly ExactStep<TStep, Step>[],
 ): Walkthrough<NoInfer<TStep>> {
   if (steps.length === 0) {
     throw new Error("A walkthrough needs at least one step.");
@@ -20,6 +20,10 @@ export function defineWalkthrough<const TStep extends Step>(
       throw new Error(
         `Step ${index} sets both 'waymark' and 'selector'; a step has one waymark.`,
       );
+    }
+    const when = conditionOf(step);
+    if (typeof when === "object" && "event" in when && eventsOf(step).length === 0) {
+      throw new Error(`Step ${index} advances on an event but names no events; it could never advance.`);
     }
   });
   return { steps };

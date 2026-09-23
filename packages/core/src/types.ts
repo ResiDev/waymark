@@ -78,6 +78,50 @@ export type Exactly<T, TShape> = T extends unknown
   ? T & { readonly [K in Exclude<keyof T, keyof TShape>]: never }
   : never;
 
+/**
+ * T with each key TShape does not name retyped as `never`. Mapped, not
+ * intersected like `Exactly`, so a typo is reported on its own key rather
+ * than collapsing the whole object; and homomorphic, so keys TypeScript adds
+ * as optional when inferring sibling literals together may stay absent.
+ */
+type Only<T, TShape> = { readonly [K in keyof T]: K extends keyof TShape ? T[K] : never };
+
+/** A condition object held to its own form, so `event` and `state` cannot mix. */
+type ExactCondition<C> = C extends { event: unknown }
+  ? Only<C, { event: unknown }>
+  : C extends { state: unknown }
+    ? Only<C, { state: unknown }>
+    : C;
+
+/** An `advance` value held to its own form, down through `when`. */
+type ExactAdvance<A> = A extends { when: unknown }
+  ? {
+      readonly [K in keyof A]: K extends "when"
+        ? ExactCondition<A[K]>
+        : K extends keyof Extract<AdvanceSpec, { when: unknown }>
+          ? A[K]
+          : never;
+    }
+  : ExactCondition<A>;
+
+/**
+ * `Exactly`, carried into `advance`, one Step at a time. The object forms of
+ * `advance` have optional keys, so a misspelled `delayMs` still fits one and
+ * would otherwise compile. `NoInfer`: the Step is inferred from the plain
+ * `TStep[]` beside this, never back through the mapping.
+ */
+export type ExactStep<TStep extends Step, TShape> = NoInfer<
+  TStep extends unknown
+    ? {
+        readonly [K in keyof TStep]: K extends "advance"
+          ? ExactAdvance<TStep[K]>
+          : K extends keyof TShape
+            ? TStep[K]
+            : never;
+      }
+    : never
+>;
+
 /** An ordered definition, built by `defineWalkthrough`. Runnable more than once. */
 export type Walkthrough<TStep extends Step = Step> = Readonly<{
   steps: readonly TStep[];

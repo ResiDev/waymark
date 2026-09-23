@@ -7,6 +7,7 @@ import type {
   Checklists,
   ChecklistsConfig,
   Exactly,
+  ExactStep,
   Step,
   Walkthrough,
 } from "waymark";
@@ -19,10 +20,10 @@ import type { ReactTask, WalkthroughStep } from "./types";
  */
 
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
-  steps: readonly TStep[] & readonly Exactly<TStep, WalkthroughStep>[],
+  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
 ): Walkthrough<NoInfer<TStep>> {
   // Core checks against its own Step, which does not name React's fields.
-  return defineCoreWalkthrough<TStep>(steps as readonly TStep[] & readonly Exactly<TStep, Step>[]);
+  return defineCoreWalkthrough<TStep>(steps as readonly TStep[] & readonly ExactStep<TStep, Step>[]);
 }
 
 /**
