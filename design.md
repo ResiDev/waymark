@@ -281,7 +281,8 @@ type Checklists<
   checklists: ChecklistViews<TTasks, TSelections>;
 
   // `ChecklistsWith<TSelections, TId>` is the checklists whose selection
-  // includes the task; naming any other does not compile, and throws.
+  // includes the task, or every task of a union id; naming any other does not
+  // compile, and throws.
   // `checklists` are the ones the guidance counts for, where a skip from it
   // applies; the application decides. A view's `start` names its own.
   start: <TId extends TaskId<TTasks>>(
@@ -290,13 +291,12 @@ type Checklists<
   ) => void; // starts/replays guidance; exits previous Run
   stop: () => void; // exits the active Run; no-op when nothing is active
   markDone: (id: TaskId<TTasks>) => void; // records done across all views
-  // Skipped is recorded per checklist, so a skip names them; one change for
-  // all. A view's `skip` names its own. A renderer skips from guidance with
-  // `skip(active.task.id, active.checklists)`; with none, it offers no skip.
-  skip: <TId extends TaskId<TTasks>>(
-    id: TId,
-    checklists: ChecklistsWith<TSelections, TId> | readonly ChecklistsWith<TSelections, TId>[],
-  ) => void;
+  // For the guidance renderer: skips the active task in `active.checklists`
+  // as one change, so it never names them; with none, it offers no skip.
+  // `run` is the Run it drew; no-op unless that is still the active Run, so a
+  // second press cannot skip the guidance that replaced it. Skipping outside
+  // guidance is a view command, recorded in that view's checklist.
+  skipActive: (run: Run) => void;
 
   // For the single app-level walkthrough renderer. Core reads the active Run's
   // UI elements through the bound getter; one binding at a time, newest wins.
@@ -375,7 +375,7 @@ unsubscribe on unmount.
 | Run finishes with `isComplete` | Clear active; finishing instructions does not assert application completion. |
 | Run exits | Clear active; retain completion. |
 | `markDone(id)` | Record done, remove skipped. No-op if already done. |
-| `skip(id, checklists)`, or `skip(id)` on a view for its own | Record skipped in each named checklist as one change, with a `taskSkipped` per checklist, and exit the task's active Run. No-op if done or already skipped in all of them. |
+| `skip(id)` on a view for its own, or `skipActive(run)` for the active task's while `run` is still active | Record skipped in each of those checklists as one change, with a `taskSkipped` per checklist, and exit the task's active Run. No-op if done or already skipped in all of them. |
 | `update(context)` | Evaluate eligible conditions once in task order; commit all resulting completions together. |
 | `clear()` | Replace progress with `{ done: [], skipped: {} }`, including unknown task ids and checklist names. Notify changed views and call `onChange` once; emit no transition events. Keep the active Run and context; do not re-check conditions. No-op if already empty. |
 

@@ -58,11 +58,18 @@ describe("createChecklists types", () => {
     type OwnerActive = NonNullable<ReturnType<typeof owner.getSnapshot>["active"]>;
     expectTypeOf<OwnerActive["checklists"]>().toEqualTypeOf<readonly ("home" | "decks")[]>();
 
-    // The checklists a Run counts for, and a skip applies to, must select the task.
+    // The checklists a Run counts for, and a skip from it applies to, must select the task.
     owner.start("create-deck", "decks");
     owner.start("create-deck", ["home", "decks"]);
     owner.start("add-photo", "home");
-    owner.skip("create-deck", ["home", "decks"]);
+    // For an id that may be any task, only checklists selecting all of them.
+    const anyTask = "create-deck" as "create-deck" | "add-photo";
+    owner.start(anyTask, "home");
+    // Any Task's Run, from the owner's snapshot or a view's.
+    const ownerActive = owner.getSnapshot().active;
+    if (ownerActive) owner.skipActive(ownerActive.run);
+    const deckActive = owner.checklists.decks.getSnapshot().active;
+    if (deckActive) owner.skipActive(deckActive.run);
     // Checked, never called: each would throw.
     const mistakes = () => {
       // @ts-expect-error decks does not select add-photo
@@ -71,10 +78,10 @@ describe("createChecklists types", () => {
       owner.start("add-photo", ["home", "decks"]);
       // @ts-expect-error not a checklist
       owner.start("create-deck", "nope");
-      // @ts-expect-error decks does not select add-photo
-      owner.skip("add-photo", "decks");
-      // @ts-expect-error skip is recorded per checklist, so it must name them
-      owner.skip("create-deck");
+      // @ts-expect-error decks does not select every task the id may be
+      owner.start(anyTask, "decks");
+      // @ts-expect-error the renderer names the Run it drew
+      owner.skipActive();
     };
     expectTypeOf(mistakes).toBeFunction();
 

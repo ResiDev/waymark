@@ -305,7 +305,7 @@ describe("guidance", () => {
     expect(owner.checklists.home.getSnapshot().active).toBe(active);
 
     // A renderer's "skip task".
-    owner.skip(active.task.id, active.checklists);
+    owner.skipActive(active.run);
     expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
     expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
     expect(active.run.getSnapshot().phase).toBe("exited");
@@ -337,7 +337,7 @@ describe("guidance", () => {
     const { run } = owner.getSnapshot().active!;
     onEvent.mockClear();
 
-    owner.skip("create-deck", ["home", "decks"]);
+    owner.skipActive(run);
     expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
     expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
     expect(run.getSnapshot().phase).toBe("exited");
@@ -353,30 +353,64 @@ describe("guidance", () => {
       "checklistComplete:decks",
     ]);
     expect(onEvent.mock.calls.slice(0, 2).map(([e]) => e.checklist)).toEqual(["home", "decks"]);
-
-    // Already skipped in both: nothing more to record.
-    owner.skip("create-deck", "decks");
-    expect(onChange).toHaveBeenCalledOnce();
   });
 
-  it("does nothing when skipping in no checklists", () => {
+  it("skips the active task in nothing when its Run counts for no checklists", () => {
     const onChange = vi.fn();
     const owner = setup({ onChange });
     owner.start("create-deck");
     const active = owner.getSnapshot().active;
-    owner.skip("create-deck", []);
+    owner.skipActive(active!.run);
     expect(owner.getSnapshot().active).toBe(active);
+    expect(active!.run.getSnapshot().phase).not.toBe("exited");
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("skips nothing for a Run that is no longer active", () => {
+    const onChange = vi.fn();
+    const owner = setup({ onChange });
+    owner.checklists.decks.start("create-deck");
+    const first = owner.getSnapshot().active!.run;
+    owner.skipActive(first);
+    expect(onChange).toHaveBeenCalledOnce();
+
+    // A second press after guidance moved on, or a replay of the same task.
+    owner.checklists.home.start("add-photo");
+    owner.skipActive(first);
+    owner.stop();
+    owner.checklists.decks.start("create-deck");
+    const replay = owner.getSnapshot().active;
+    owner.skipActive(first);
+    expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
+    expect(owner.getSnapshot().active).toBe(replay);
+    expect(onChange).toHaveBeenCalledOnce();
+
+    owner.stop();
+    owner.skipActive(first);
+    expect(onChange).toHaveBeenCalledOnce();
+  });
+
+  it("checks the Run is still active when the command runs, not when it was sent", () => {
+    const owner = setup();
+    owner.checklists.decks.start("create-deck");
+    const { run } = owner.getSnapshot().active!;
+    // Sent while create-deck is active, queued behind a start of add-photo.
+    const unsubscribe = owner.checklists.home.subscribe(() => {
+      unsubscribe();
+      owner.checklists.home.start("add-photo");
+      owner.skipActive(run);
+    });
+    owner.markDone("say-hello");
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("todo");
+    expect(owner.getSnapshot().active!.task.id).toBe("add-photo");
   });
 
   it("rejects a checklist that does not exist or does not select the task", () => {
     const owner = setup() as unknown as {
       start: (id: string, checklists?: string | readonly string[]) => void;
-      skip: (id: string, checklists: string | readonly string[]) => void;
     };
     expect(() => owner.start("add-photo", "decks")).toThrow(/Checklist "decks" does not select task "add-photo"/);
     expect(() => owner.start("add-photo", ["home", "nope"])).toThrow(/Unknown checklist "nope"/);
-    expect(() => owner.skip("add-photo", "decks")).toThrow(/Checklist "decks" does not select task "add-photo"/);
   });
 
   it("keeps the first checklists when the task already active is started again", () => {
