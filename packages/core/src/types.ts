@@ -28,35 +28,33 @@ export type Rect = Readonly<{
  */
 export type WaymarkEventName = keyof HTMLElementEventMap | (string & {});
 
+/** What meeting an Advance condition does, and how long it must hold first. */
+type AdvanceOptions = Readonly<{
+  /**
+   * `"advance"` (the default) moves the Run on by itself; `"unlock"` only
+   * opens the Advance gate, leaving the move to the user.
+   */
+  then?: "advance" | "unlock";
+  /** The condition must hold this long, unbroken, before it counts as met. */
+  delayMs?: number;
+}>;
+
 /**
- * What has to happen before a Run may leave a Step.
+ * What has to happen before a Run may leave a Step. Either way it is met, the
+ * Advance gate is shut until then: a Step that states a condition cannot be
+ * skipped past.
  *
- * - `"click"` — the user clicks the Waymark (or the halo drawn around it).
+ * - `"click"` or `{ click: true }` — the user clicks the Waymark (or the halo
+ *   drawn around it). The object form is for adding options.
  * - `{ event }` — the Waymark fires one of these DOM events.
  * - `{ state }` — the predicate holds, checked once a frame. It receives the
  *   Waymark element, or `null` on a Step that has none.
  */
 export type AdvanceCondition =
   | "click"
-  | Readonly<{ event: WaymarkEventName | readonly WaymarkEventName[] }>
-  | Readonly<{ state: (waymark: Element | null) => boolean }>;
-
-/**
- * An Advance condition, plus what meeting it does.
- *
- * `then: "advance"` (the default) moves the Run on by itself;
- * `then: "unlock"` only opens the Advance gate, leaving the move to the user.
- * Either way the gate is shut until the condition is met — a Step that states
- * a condition cannot be skipped past.
- */
-export type AdvanceSpec =
-  | AdvanceCondition
-  | Readonly<{
-      when: AdvanceCondition;
-      then?: "advance" | "unlock";
-      /** The condition must hold this long, unbroken, before it counts as met. */
-      delayMs?: number;
-    }>;
+  | (Readonly<{ click: true }> & AdvanceOptions)
+  | (Readonly<{ event: WaymarkEventName | readonly WaymarkEventName[] }> & AdvanceOptions)
+  | (Readonly<{ state: (waymark: Element | null) => boolean }> & AdvanceOptions);
 
 /**
  * One instruction, as core understands it.
@@ -70,7 +68,7 @@ export type Step = Readonly<{
   waymark?: string;
   /** A CSS selector, for elements you cannot annotate. Use instead of `waymark`. */
   selector?: string;
-  advance?: AdvanceSpec;
+  advance?: AdvanceCondition;
   /** Defaults to `"once"`: scroll the Waymark into view the first time it is off-screen. */
   scroll?: "once" | "always" | "never";
   /** The application's own data for this Step. Core keeps it and ignores it. */
@@ -94,23 +92,17 @@ export type Exactly<T, TShape> = T extends unknown
  */
 type Only<T, TShape> = { readonly [K in keyof T]: K extends keyof TShape ? T[K] : never };
 
-/** A condition object held to its own form, so `event` and `state` cannot mix. */
-type ExactCondition<C> = C extends { event: unknown }
-  ? Only<C, { event: unknown }>
-  : C extends { state: unknown }
-    ? Only<C, { state: unknown }>
-    : C;
-
-/** An `advance` value held to its own form, down through `when`. */
-type ExactAdvance<A> = A extends { when: unknown }
-  ? {
-      readonly [K in keyof A]: K extends "when"
-        ? ExactCondition<A[K]>
-        : K extends keyof Extract<AdvanceSpec, { when: unknown }>
-          ? A[K]
-          : never;
-    }
-  : ExactCondition<A>;
+/**
+ * An `advance` object held to its own form: one of `click`, `event` or
+ * `state`, which cannot mix, and the options.
+ */
+type ExactAdvance<A> = A extends { click: unknown }
+  ? Only<A, { click: unknown } & AdvanceOptions>
+  : A extends { event: unknown }
+    ? Only<A, { event: unknown } & AdvanceOptions>
+    : A extends { state: unknown }
+      ? Only<A, { state: unknown } & AdvanceOptions>
+      : A;
 
 /**
  * `Exactly`, carried into `advance`, one Step at a time. The object forms of

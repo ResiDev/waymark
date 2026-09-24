@@ -1,4 +1,4 @@
-import type { AdvanceCondition, ExactStep, Step, Walkthrough } from "./types";
+import type { ExactStep, Step, Walkthrough } from "./types";
 
 /**
  * Builds a Walkthrough, and is the only place that knows how a Step is written.
@@ -6,7 +6,7 @@ import type { AdvanceCondition, ExactStep, Step, Walkthrough } from "./types";
  * `defineWalkthrough` checks the Steps once, up front. The readers below are how
  * everything else looks at a Step: they take the sugar off `advance` on the
  * spot, so no other module has to know that `advance: "click"` and
- * `advance: { when: "click" }` mean the same thing, and nothing needs to be
+ * `advance: { click: true }` mean the same thing, and nothing needs to be
  * precomputed or cached.
  */
 export function defineWalkthrough<const TStep extends Step>(
@@ -32,8 +32,18 @@ export function checkedWalkthrough<TStep extends Step>(
         `${where}Step ${index} sets both 'waymark' and 'selector'; a step has one waymark.`,
       );
     }
-    const when = conditionOf(step);
-    if (typeof when === "object" && "event" in when && eventsOf(step).length === 0) {
+    const kinds = conditionKinds(step);
+    if (kinds.length > 1) {
+      throw new Error(
+        `${where}Step ${index} advances on ${kinds.join(" and ")}; a step has one advance condition.`,
+      );
+    }
+    if (typeof step.advance === "object" && kinds.length === 0) {
+      throw new Error(
+        `${where}Step ${index} has advance options but no click, event or state; it could never advance.`,
+      );
+    }
+    if (kinds[0] === "event" && eventsOf(step).length === 0) {
       throw new Error(`${where}Step ${index} advances on an event but names no events; it could never advance.`);
     }
   });
@@ -51,34 +61,41 @@ export const selectorOf = (step: Step): string =>
     ? step.selector!
     : `[data-waymark="${step.waymark}"]`;
 
-/** The Advance condition, with the `{ when }` wrapper taken off. */
-export const conditionOf = (step: Step): AdvanceCondition | undefined => {
-  const spec = step.advance;
-  return typeof spec === "object" && "when" in spec ? spec.when : spec;
+/** Which of `click`, `event` and `state` the Step's `advance` object names. */
+const conditionKinds = (step: Step): readonly string[] => {
+  const advance = step.advance;
+  if (typeof advance !== "object") return [];
+  return (["click", "event", "state"] as const).filter((kind) => kind in advance);
+};
+
+/** The condition is a click on the Waymark, written either way. */
+export const isClick = (step: Step): boolean => {
+  const advance = step.advance;
+  return advance === "click" || (typeof advance === "object" && "click" in advance);
 };
 
 /** The `state` predicate of a check-based condition, if the Step has one. */
 export const checkOf = (
   step: Step,
 ): ((waymark: Element | null) => boolean) | undefined => {
-  const when = conditionOf(step);
-  return typeof when === "object" && "state" in when ? when.state : undefined;
+  const advance = step.advance;
+  return typeof advance === "object" && "state" in advance ? advance.state : undefined;
 };
 
 /** The DOM events of an event-based condition. Empty for any other kind. */
 export const eventsOf = (step: Step): readonly string[] => {
-  const when = conditionOf(step);
-  if (typeof when !== "object" || !("event" in when)) return [];
-  return typeof when.event === "string" ? [when.event] : when.event;
+  const advance = step.advance;
+  if (typeof advance !== "object" || !("event" in advance)) return [];
+  return typeof advance.event === "string" ? [advance.event] : advance.event;
 };
 
 /** Meeting the condition moves the Run on, rather than only opening the gate. */
 export const isAuto = (step: Step): boolean => {
-  const spec = step.advance;
-  return !(typeof spec === "object" && "when" in spec && spec.then === "unlock");
+  const advance = step.advance;
+  return !(typeof advance === "object" && advance.then === "unlock");
 };
 
 export const delayOf = (step: Step): number => {
-  const spec = step.advance;
-  return typeof spec === "object" && "when" in spec ? (spec.delayMs ?? 0) : 0;
+  const advance = step.advance;
+  return typeof advance === "object" ? (advance.delayMs ?? 0) : 0;
 };

@@ -6,7 +6,6 @@ export { actions } from "./types";
 export type {
   Action,
   AdvanceCondition,
-  AdvanceSpec,
   Ended,
   Exactly,
   ExactStep,

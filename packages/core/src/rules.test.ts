@@ -39,7 +39,7 @@ const start = (steps: readonly Step[]) => {
 describe("rules", () => {
   it("updates waymark geometry without resetting an advance condition's delay", () => {
     const { state, walkthrough } = start([
-      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+      { waymark: "a", advance: { state: () => true, delayMs: 50 } },
     ]);
     const holding = observeAdvance(state, checked({ holds: true }), walkthrough).state;
     const found = observeWaymark(holding, seen()).state;
@@ -50,7 +50,7 @@ describe("rules", () => {
 
   it("unlocks from an advance read without changing the waymark or requesting a scroll", () => {
     const { state, walkthrough } = start([
-      { waymark: "a", advance: { when: { state: () => true }, then: "unlock" } },
+      { waymark: "a", advance: { state: () => true, then: "unlock" } },
     ]);
     const found = observeWaymark(state, seen()).state;
     const unlocked = observeAdvance(found, checked({ holds: true }), walkthrough);
@@ -74,7 +74,7 @@ describe("rules", () => {
 
   it("applies the measurement first, then the check on one look", () => {
     const { state, walkthrough } = start([
-      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+      { waymark: "a", advance: { state: () => true, delayMs: 50 } },
       { waymark: "b" },
     ]);
     const offScreen = seen({ inView: false });
@@ -105,7 +105,7 @@ describe("rules", () => {
 
   it("keeps the snapshot when only scratch changed", () => {
     const { walkthrough, state } = start([
-      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+      { waymark: "a", advance: { state: () => true, delayMs: 50 } },
       {},
     ]);
     const looked = observeWaymark(state, seen()).state;
@@ -119,7 +119,7 @@ describe("rules", () => {
 
   it("refuses to advance past a gate that is still shut", () => {
     const { walkthrough, state } = start([
-      { waymark: "a", advance: { when: { state: () => false } } },
+      { waymark: "a", advance: { state: () => false } },
       {},
     ]);
 
@@ -131,7 +131,7 @@ describe("rules", () => {
 
   it("advances once the check has held for the whole delay", () => {
     const { walkthrough, state } = start([
-      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+      { waymark: "a", advance: { state: () => true, delayMs: 50 } },
       {},
     ]);
 
@@ -146,7 +146,7 @@ describe("rules", () => {
 
   it("disarms the clock if the check stops holding before it is due", () => {
     const { walkthrough, state } = start([
-      { waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } },
+      { waymark: "a", advance: { state: () => true, delayMs: 50 } },
       {},
     ]);
 
@@ -161,7 +161,7 @@ describe("rules", () => {
 
   it("stays satisfied even when the delay outlives the click", () => {
     const { walkthrough, state } = start([
-      { waymark: "a", advance: { when: "click", delayMs: 50 } },
+      { waymark: "a", advance: { click: true, delayMs: 50 } },
       {},
     ]);
 
@@ -184,7 +184,7 @@ describe("rules", () => {
 
   it("opens the gate without moving when the rule only unlocks", () => {
     const { walkthrough, state } = start([
-      { waymark: "a", advance: { when: "click", then: "unlock" } },
+      { waymark: "a", advance: { click: true, then: "unlock" } },
       {},
     ]);
 
@@ -366,7 +366,7 @@ describe("rules", () => {
   });
 
   it("drops a state check's clock on unmount, but keeps a satisfied click's", () => {
-    const check = start([{ waymark: "a", advance: { when: { state: () => true }, delayMs: 50 } }]);
+    const check = start([{ waymark: "a", advance: { state: () => true, delayMs: 50 } }]);
     const armed = observeAdvance(check.state, checked({ holds: true }), check.walkthrough).state;
     expect(armed.heldSince).toBe(1000);
 
@@ -374,7 +374,7 @@ describe("rules", () => {
     expect(gone).toMatchObject({ mounted: false, heldSince: undefined });
     expect(mount(gone, false).state).toBe(gone);
 
-    const clickStep = start([{ waymark: "a", advance: { when: "click", delayMs: 50 } }]);
+    const clickStep = start([{ waymark: "a", advance: { click: true, delayMs: 50 } }]);
     const clicked = click(clickStep.state, clickStep.walkthrough).state;
     expect(mount(clicked, false).state.heldSince).toBe(1000);
   });
@@ -393,7 +393,7 @@ describe("rules", () => {
     const waymark = start([{ waymark: "a" }]).state;
     expect(liveWatchers(waymark).frame).toBe(true);
 
-    const check = start([{ advance: { when: { state: () => false }, then: "unlock" } }]);
+    const check = start([{ advance: { state: () => false, then: "unlock" } }]);
     expect(liveWatchers(check.state).frame).toBe(true);
     const unlocked = observeAdvance(check.state, checked({ holds: true }), check.walkthrough).state;
     expect(unlocked.snapshot).toMatchObject({ canAdvance: true });
@@ -401,7 +401,7 @@ describe("rules", () => {
   });
 
   it("attaches to a found waymark, listening for events only while the gate is shut", () => {
-    const { walkthrough, state } = start([{ waymark: "a", advance: { when: { event: "change" }, then: "unlock" } }]);
+    const { walkthrough, state } = start([{ waymark: "a", advance: { event: "change", then: "unlock" } }]);
     expect(liveWatchers(state).waymarkAria).toBeUndefined();
     expect(liveWatchers(state).waymarkEvents).toBeUndefined();
 

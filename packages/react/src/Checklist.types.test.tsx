@@ -80,7 +80,7 @@ describe("React definition functions", () => {
     // @ts-expect-error application data belongs in meta
     defineWalkthrough([{ content: "Open decks", helpUrl: "/help" }]);
     // @ts-expect-error misspelled delayMs
-    defineWalkthrough([{ content: "Open decks", advance: { when: "click", delay: 500 } }]);
+    defineWalkthrough([{ content: "Open decks", advance: { click: true, delay: 500 } }]);
 
     defineTask<AppContext>()({
       title: "Add a photo",

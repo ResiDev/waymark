@@ -131,7 +131,7 @@ describe("createRun", () => {
     const target = addTarget("save");
     const listen = vi.spyOn(target, "addEventListener");
     const run = createRun(defineWalkthrough([
-      { waymark: "save", advance: { when: { event: "change" }, then: "unlock" } },
+      { waymark: "save", advance: { event: "change", then: "unlock" } },
     ]));
     const view = watch(run);
     const signal = (listen.mock.calls[0]![2] as AddEventListenerOptions).signal!;
@@ -273,7 +273,7 @@ describe("createRun", () => {
     const view = watch(
       createRun(
         defineWalkthrough([
-          { waymark: "name", advance: { when: { event: "change" }, then: "unlock" } },
+          { waymark: "name", advance: { event: "change", then: "unlock" } },
           {},
         ]),
       ),
@@ -305,7 +305,7 @@ describe("createRun", () => {
     const measure = vi.spyOn(target, "getBoundingClientRect");
     const check = vi.fn(() => true);
     const view = watch(createRun(defineWalkthrough([
-      { waymark: "ready", advance: { when: { state: check }, then: "unlock" } },
+      { waymark: "ready", advance: { state: check, then: "unlock" } },
     ])));
 
     flush();
@@ -357,7 +357,7 @@ describe("createRun", () => {
   it("checks a satisfied event's delay without needing a state predicate", () => {
     const target = addTarget("ready");
     const view = watch(createRun(defineWalkthrough([
-      { waymark: "ready", advance: { when: { event: "change" }, delayMs: 50 } }, {},
+      { waymark: "ready", advance: { event: "change", delayMs: 50 } }, {},
     ])));
     target.dispatchEvent(new Event("change"));
     target.remove();
@@ -376,7 +376,7 @@ describe("createRun", () => {
         defineWalkthrough([
           {
             waymark: "ready",
-            advance: { when: { state: () => ready }, delayMs: 50 },
+            advance: { state: () => ready, delayMs: 50 },
           },
           {},
         ]),
@@ -654,7 +654,7 @@ describe("createRun", () => {
     const events: string[] = [];
     const check = vi.fn(() => true);
     const run = createRun(
-      defineWalkthrough([{ advance: { when: { state: check } } }]),
+      defineWalkthrough([{ advance: { state: check } }]),
       { onEvent: (event) => events.push(`${event.type}:${event.snapshot.phase}`) },
     );
     watch(run);
@@ -704,7 +704,7 @@ describe("createRun", () => {
     const failure = new Error("state check failed");
     const check = vi.fn(() => true);
     const run = createRun(defineWalkthrough([
-      { advance: { when: { state: check }, delayMs: 50 } }, {},
+      { advance: { state: check, delayMs: 50 } }, {},
     ]));
     const view = watch(run);
 

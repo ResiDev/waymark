@@ -55,27 +55,19 @@ const predicates: Record<string, (el: Element | null) => boolean> = {
   never: () => false,
 };
 
-/** Replace `{ state: "<name>" }` with the named predicate, anywhere in `advance`. */
+/** Replace `advance: { state: "<name>" }` with the named predicate. */
 const hydrate = (step: Step): Step => {
-  const spec = step.advance as unknown;
-  const fix = (when: unknown): unknown => {
-    if (typeof when === "object" && when !== null && "state" in when && typeof when.state === "string") {
-      const predicate = predicates[when.state];
-      if (!predicate) throw new Error(`Unknown predicate "${when.state}". Known: ${Object.keys(predicates).join(", ")}`);
-      return { state: predicate };
-    }
-    return when;
-  };
-  const advance =
-    typeof spec === "object" && spec !== null && "when" in spec
-      ? { ...spec, when: fix(spec.when) }
-      : fix(spec);
-  return { ...step, advance } as Step;
+  const advance = step.advance as unknown;
+  if (typeof advance !== "object" || advance === null || !("state" in advance)) return step;
+  if (typeof advance.state !== "string") return step;
+  const predicate = predicates[advance.state];
+  if (!predicate) throw new Error(`Unknown predicate "${advance.state}". Known: ${Object.keys(predicates).join(", ")}`);
+  return { ...step, advance: { ...advance, state: predicate } } as Step;
 };
 
 const DEFAULT_STEPS: readonly Step[] = [
   { waymark: "save", advance: "click" },
-  { waymark: "name", advance: { when: { state: "nameFilled" as never }, then: "unlock" } },
+  { waymark: "name", advance: { state: "nameFilled" as never, then: "unlock" } },
   { waymark: "footer" },
   {},
 ];

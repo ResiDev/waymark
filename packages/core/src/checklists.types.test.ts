@@ -171,7 +171,7 @@ describe("createChecklists types", () => {
         context: initialContext,
         tasks: {
           // @ts-expect-error misspelled delayMs
-          deck: { walkthrough: [{ advance: { when: "click", delay: 500 } }] },
+          deck: { walkthrough: [{ advance: { click: true, delay: 500 } }] },
         },
         checklists: { home: ["deck"] },
       });
@@ -340,28 +340,36 @@ describe("createChecklists types", () => {
       { advance: { event: "input" } },
       { advance: { event: ["input", "change"] } },
       { advance: { state: (waymark) => waymark !== null } },
-      { advance: { when: "click", then: "unlock", delayMs: 500 } },
-      { advance: { when: { event: "input" }, delayMs: 500 } },
+      { advance: { click: true } },
+      { advance: { click: true, then: "unlock", delayMs: 500 } },
+      { advance: { event: "input", delayMs: 500 } },
     ]);
     expectTypeOf(valid).toHaveProperty("steps");
 
-    // @ts-expect-error misspelled delayMs
-    defineWalkthrough([{ advance: { when: "click", delay: 500 } }]);
-    defineWalkthrough([
-      // @ts-expect-error misspelled delayMs, alongside a valid then
-      { advance: { when: "click", then: "unlock", delayMS: 500 } },
-    ]);
-    defineWalkthrough([
-      // @ts-expect-error misspelled state, inside when
-      { advance: { when: { event: "input", stat: () => true } } },
-    ]);
-    // @ts-expect-error a condition is an event or a state, not both
-    defineWalkthrough([{ advance: { event: "input", state: () => true } }]);
-    defineWalkthrough([
-      { advance: "click" },
-      // @ts-expect-error a typo in a later step
-      { advance: { when: "click", delay: 500 } },
-    ]);
+    const mistakes = () => {
+      // @ts-expect-error misspelled delayMs
+      defineWalkthrough([{ advance: { click: true, delay: 500 } }]);
+      defineWalkthrough([
+        // @ts-expect-error misspelled delayMs, alongside a valid then
+        { advance: { click: true, then: "unlock", delayMS: 500 } },
+      ]);
+      defineWalkthrough([
+        // @ts-expect-error misspelled state, beside an event
+        { advance: { event: "input", stat: () => true } },
+      ]);
+      // @ts-expect-error a condition is an event or a state, not both
+      defineWalkthrough([{ advance: { event: "input", state: () => true } }]);
+      // @ts-expect-error a condition is a click or an event, not both
+      defineWalkthrough([{ advance: { click: true, event: "input" } }]);
+      // @ts-expect-error options with no condition
+      defineWalkthrough([{ advance: { then: "unlock" } }]);
+      defineWalkthrough([
+        { advance: "click" },
+        // @ts-expect-error a typo in a later step
+        { advance: { click: true, delay: 500 } },
+      ]);
+    };
+    expectTypeOf(mistakes).toBeFunction();
   });
 
   it("accepts a stored record and an event handler typed over the owner", () => {

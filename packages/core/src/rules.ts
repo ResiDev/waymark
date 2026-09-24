@@ -1,7 +1,7 @@
 import type { ClickHit } from "./input";
 import { end, enter, ABSENT, LOST, NO_EVENTS, noChange, SEARCHING, show } from "./state";
 import type { Outcome, State } from "./state";
-import { checkOf, conditionOf, delayOf, eventsOf, hasWaymark, isAuto } from "./walkthrough";
+import { checkOf, delayOf, eventsOf, hasWaymark, isAuto, isClick } from "./walkthrough";
 import type { Action, Location, Rect, Step, Walkthrough } from "./types";
 
 /**
@@ -59,7 +59,7 @@ export function apply<TStep extends Step>(
       // Collapse applies to the run, so it does not require a matching generation.
       if (message.hit === "away") return act(state, "collapse", walkthrough);
       const step = stepOf(message.stepGeneration);
-      return message.hit === "waymark" && step && conditionOf(step) === "click"
+      return message.hit === "waymark" && step && isClick(step)
         ? satisfy(state, message.now, walkthrough)
         : noChange(state);
     }

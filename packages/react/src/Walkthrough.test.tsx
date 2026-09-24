@@ -136,10 +136,7 @@ describe("Walkthrough", () => {
       {
         waymark: "name",
         content: "Enter a name",
-        advance: {
-          when: { event: "change" },
-          then: "unlock",
-        },
+        advance: { event: "change", then: "unlock" },
       },
       { content: "Named" },
     ]);

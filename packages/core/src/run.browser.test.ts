@@ -119,7 +119,7 @@ describe("time", () => {
       {
         waymark: "name",
         advance: {
-          when: { state: (e) => e instanceof HTMLInputElement && e.value.length >= 3 },
+          state: (e) => e instanceof HTMLInputElement && e.value.length >= 3,
           delayMs: 300,
         },
       },
