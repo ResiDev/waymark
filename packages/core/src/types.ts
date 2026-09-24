@@ -21,6 +21,14 @@ export type Rect = Readonly<{
 }>;
 
 /**
+ * A DOM event the Waymark may fire. The built-in names autocomplete; any other
+ * string is still accepted, for custom events dispatched on the Waymark.
+ * `string & {}` keeps the union from collapsing to `string`, which would lose
+ * the completions.
+ */
+export type WaymarkEventName = keyof HTMLElementEventMap | (string & {});
+
+/**
  * What has to happen before a Run may leave a Step.
  *
  * - `"click"` — the user clicks the Waymark (or the halo drawn around it).
@@ -30,7 +38,7 @@ export type Rect = Readonly<{
  */
 export type AdvanceCondition =
   | "click"
-  | Readonly<{ event: string | readonly string[] }>
+  | Readonly<{ event: WaymarkEventName | readonly WaymarkEventName[] }>
   | Readonly<{ state: (waymark: Element | null) => boolean }>;
 
 /**

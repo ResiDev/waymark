@@ -21,6 +21,7 @@ export type {
   Step,
   Walkthrough,
   UiElements,
+  WaymarkEventName,
 } from "./types";
 export type {
   ActiveTask,

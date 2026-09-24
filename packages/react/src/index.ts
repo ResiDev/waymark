@@ -39,4 +39,5 @@ export type {
   TaskCommands,
   TaskId,
   TaskStatus,
+  WaymarkEventName,
 } from "waymark";
