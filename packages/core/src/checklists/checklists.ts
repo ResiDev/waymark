@@ -1,23 +1,25 @@
 import { createQueue } from "../queue";
 import { createRun } from "../run/run";
 import { checkedWalkthrough } from "../walkthrough/walkthrough";
-import { EMPTY, isEmpty, normalise, sameRecord, unique } from "./record";
+import { createProgress } from "./progress";
+import { sameRecord, unique } from "./record";
 import type { Stored } from "./record";
+import { followActive, listen } from "./subscribe";
 import type {
   Checklist,
   ChecklistSelections,
   Checklists,
   ChecklistsConfig,
   ChecklistsEvent,
-  ChecklistSnapshot,
   ChecklistsSnapshot,
   DefaultChecklists,
   Task,
   TaskMap,
-  TaskStatus,
 } from "./types";
 import { DEFAULT_CHECKLIST } from "./types";
 import { validate } from "./validate";
+import { createView, refresh } from "./views";
+import type { ViewSource } from "./views";
 import type { Run, RunEvent, UiElements } from "../run/types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
@@ -56,13 +58,6 @@ type Event = ChecklistsEvent<
   Record<string, AnyTask>,
   ChecklistSelections<Record<string, AnyTask>>
 >;
-
-type View = {
-  readonly name: string;
-  readonly ids: readonly string[];
-  snapshot: ChecklistSnapshot<Named>;
-  readonly listeners: Set<() => void>;
-};
 
 /** What one command may do besides changing state, gathered until the change is committed. */
 type Change = {
@@ -114,18 +109,11 @@ export function createChecklists<
 
   // ---- state ----------------------------------------------------------------
 
-  let record = normalise(storage?.load() ?? config.stored ?? EMPTY, taskIds, viewNames);
-  let done = new Set(record.done);
-  const setRecord = (next: Stored) => {
-    record = normalise(next, taskIds, viewNames);
-    done = new Set(record.done);
-  };
-
-  const isSkipped = (name: string, id: string): boolean =>
-    record.skipped[name]?.includes(id) ?? false;
-  const statusOf = (name: string, id: string): TaskStatus =>
-    done.has(id) ? "done" : isSkipped(name, id) ? "skipped" : "todo";
-
+  const progress = createProgress(
+    taskIds,
+    viewNames,
+    storage?.load() ?? config.stored,
+  );
   let active: Active | null = null;
   let ownerSnapshot: ChecklistsSnapshot<Record<string, AnyTask>> = {
     active: null,
@@ -135,39 +123,14 @@ export function createChecklists<
 
   // ---- views ----------------------------------------------------------------
 
-  const buildSnapshot = (view: View): ChecklistSnapshot<Named> => {
-    const rows = view.ids.map((id) => ({
-      task: named[id]!,
-      status: statusOf(view.name, id),
-    }));
-    const finishedCount = rows.filter((row) => row.status !== "todo").length;
-    return {
-      tasks: rows,
-      finishedCount,
-      taskCount: rows.length,
-      complete: finishedCount === rows.length,
-      active:
-        active !== null && view.ids.includes(active.task.id) ? active : null,
-    };
+  const source: ViewSource<Named> = {
+    task: (id) => named[id]!,
+    status: progress.status,
+    active: () => active,
   };
-
-  const sameSnapshot = (
-    a: ChecklistSnapshot<Named>,
-    b: ChecklistSnapshot<Named>,
-  ): boolean =>
-    a.active === b.active &&
-    a.tasks.every((row, index) => row.status === b.tasks[index]!.status);
-
-  const views: View[] = viewNames.map((name) => {
-    const view: View = {
-      name,
-      ids: selections[name]!,
-      snapshot: undefined as unknown as ChecklistSnapshot<Named>,
-      listeners: new Set(),
-    };
-    view.snapshot = buildSnapshot(view);
-    return view;
-  });
+  const views = viewNames.map((name) =>
+    createView(name, selections[name]!, source),
+  );
 
   // ---- the one place state changes -------------------------------------------
 
@@ -181,25 +144,18 @@ export function createChecklists<
       silent: flags.silent ?? false,
       persist: flags.persist ?? true,
     };
-    const recordBefore = record;
+    const recordBefore = progress.record();
     const activeBefore = active;
     run(change);
 
     // Commit every affected snapshot before any callback sees the change.
-    const changedViews: View[] = [];
-    const completedViews: View[] = [];
-    for (const view of views) {
-      const next = buildSnapshot(view);
-      if (sameSnapshot(view.snapshot, next)) continue;
-      if (!view.snapshot.complete && next.complete) completedViews.push(view);
-      view.snapshot = next;
-      changedViews.push(view);
-    }
+    const { changed, completed } = refresh(views, source);
     const activeChanged = active !== activeBefore;
     if (activeChanged) ownerSnapshot = { active };
+    const record = progress.record();
     const recordChanged = !sameRecord(recordBefore, record);
 
-    for (const view of changedViews) queue.notify(view.listeners);
+    for (const view of changed) queue.notify(view.listeners);
     if (activeChanged) queue.notify(ownerListeners);
     if (recordChanged && change.persist) {
       queue.invoke(() => storage?.save(record));
@@ -207,7 +163,7 @@ export function createChecklists<
     }
     if (!change.silent) {
       for (const event of change.events) queue.invoke(() => emit?.(event));
-      for (const view of completedViews) {
+      for (const view of completed) {
         queue.invoke(() =>
           emit?.({
             type: "checklistComplete",
@@ -232,12 +188,9 @@ export function createChecklists<
 
   // ---- transitions -----------------------------------------------------------
 
-  /** Record done in one update and drop the Tasks from every skipped list. Already done ids are ignored. */
+  /** Record done in one update, announcing each Task that was not done already. */
   const recordDone = (change: Change, ...ids: string[]) => {
-    const fresh = ids.filter((id) => !done.has(id));
-    if (fresh.length === 0) return;
-    setRecord({ done: [...record.done, ...fresh], skipped: record.skipped });
-    for (const id of fresh)
+    for (const id of progress.addDone(ids))
       change.events.push({ type: "taskComplete", task: named[id]! });
   };
 
@@ -317,17 +270,9 @@ export function createChecklists<
     ) {
       release(change, "finished");
     }
-    if (!Object.hasOwn(named, id) || done.has(id)) return;
-    const fresh = checklists.filter((name) => !isSkipped(name, id));
+    if (!Object.hasOwn(named, id)) return;
+    const fresh = progress.addSkipped(id, checklists);
     if (fresh.length === 0) return;
-    // Null-prototype, so a checklist named `__proto__` is an ordinary key.
-    const skipped: Record<string, readonly string[]> = Object.assign(
-      Object.create(null),
-      record.skipped,
-    );
-    for (const name of fresh)
-      skipped[name] = [...(record.skipped[name] ?? []), id];
-    setRecord({ done: record.done, skipped });
     for (const name of fresh) {
       change.events.push({
         type: "taskSkipped",
@@ -365,7 +310,7 @@ export function createChecklists<
     const complete = taskIds.filter((id) => {
       const task = named[id]!;
       return (
-        !done.has(id) &&
+        !progress.isDone(id) &&
         task.isComplete !== undefined &&
         task.isComplete(context) === true
       );
@@ -377,45 +322,9 @@ export function createChecklists<
     send((change) => check(change, context));
 
   const load = (stored: Stored) =>
-    send(() => setRecord(stored), { silent: true, persist: false });
+    send(() => progress.replace(stored), { silent: true, persist: false });
 
-  const clear = () =>
-    send(
-      () => {
-        if (!isEmpty(record)) setRecord(EMPTY);
-      },
-      { silent: true },
-    );
-
-  const subscribeTo =
-    (listeners: Set<() => void>) => (listener: () => void) => {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    };
-
-  const subscribeActive = (listener: () => void) => {
-    // Wrapped, so the same listener given twice is two subscriptions to a Run.
-    const onRun = () => listener();
-    let followed: { run: Run<any>; unsubscribe: () => void } | undefined;
-    const follow = () => {
-      const run = ownerSnapshot.active?.run;
-      if (followed?.run === run) return;
-      followed?.unsubscribe();
-      followed = run === undefined ? undefined : { run, unsubscribe: run.subscribe(onRun) };
-    };
-    follow();
-    const unsubscribeOwner = subscribeTo(ownerListeners)(() => {
-      follow();
-      listener();
-    });
-    return () => {
-      unsubscribeOwner();
-      followed?.unsubscribe();
-      followed = undefined;
-    };
-  };
+  const clear = () => send(() => progress.clear(), { silent: true });
 
   // Creation checks the initial context like `update`, saving any change but
   // announcing nothing: the owner is not assigned yet, and a reload must not
@@ -431,7 +340,7 @@ export function createChecklists<
       markDone,
       skip: (id) => send((change) => recordSkipped(change, id, [view.name])),
       getSnapshot: () => view.snapshot,
-      subscribe: subscribeTo(view.listeners),
+      subscribe: listen(view.listeners),
     };
   }
 
@@ -453,8 +362,13 @@ export function createChecklists<
     },
     waymarkPadding: runOptions?.waymarkPadding ?? 0,
     getSnapshot: () => ownerSnapshot,
-    subscribe: subscribeTo(ownerListeners),
-    subscribeActive,
+    subscribe: listen(ownerListeners),
+    subscribeActive: (listener) =>
+      followActive(
+        listen(ownerListeners),
+        () => ownerSnapshot.active?.run,
+        listener,
+      ),
     update,
     load,
     clear,
