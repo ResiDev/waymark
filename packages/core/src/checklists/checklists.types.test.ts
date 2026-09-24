@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { createChecklists } from "./checklists";
-import type { ChecklistsEvent, StepOf, Stored, Task } from "./checklists";
+import type { Stored } from "./record";
+import type { ChecklistsEvent, StepOf, Task } from "./types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Run } from "../run/types";
 

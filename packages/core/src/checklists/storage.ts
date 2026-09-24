@@ -1,4 +1,4 @@
-import type { Stored } from "./checklists";
+import type { Stored } from "./record";
 
 /**
  * The optional browser persistence for a checklist record. Core never touches

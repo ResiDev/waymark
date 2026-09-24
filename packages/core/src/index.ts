@@ -1,6 +1,7 @@
 export { defineWalkthrough } from "./walkthrough/walkthrough";
 export { createRun } from "./run/run";
-export { createChecklists, DEFAULT_CHECKLIST } from "./checklists/checklists";
+export { createChecklists } from "./checklists/checklists";
+export { DEFAULT_CHECKLIST } from "./checklists/types";
 export { createLocalStorageRecord } from "./checklists/storage";
 export { actions } from "./run/types";
 export type { Exactly } from "./exact";
@@ -42,11 +43,11 @@ export type {
   NamedTask,
   SelectedTask,
   StepOf,
-  Stored,
   Task,
   TaskCommands,
   TaskId,
   TaskMap,
   TaskStatus,
-} from "./checklists/checklists";
+} from "./checklists/types";
+export type { Stored } from "./checklists/record";
 export type { StoredRecord } from "./checklists/storage";

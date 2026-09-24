@@ -2,7 +2,7 @@
 
 Two halves. The **public** terms are what an application author or a renderer
 speaks (declared in `walkthrough/types.ts`, `run/types.ts` and
-`checklists/checklists.ts`, and shared with the project's
+`checklists/types.ts`, and shared with the project's
 [CONTEXT.md](../../../CONTEXT.md)). The **machinery** terms are what the
 code inside core speaks; there are eleven of them, and no others.
 
