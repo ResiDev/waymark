@@ -151,6 +151,22 @@ describe("createChecklists types", () => {
     expectTypeOf(mistakes).toBeFunction();
   });
 
+  it("needs no context when no task has a condition", () => {
+    const owner = createChecklists({
+      tasks: { tour: { walkthrough: deckSteps }, hello: {} },
+      checklists: { home: ["tour", "hello"] },
+    });
+    expectTypeOf(owner.update).parameter(0).toEqualTypeOf<{}>();
+
+    const create = () =>
+      createChecklists({
+        // @ts-expect-error without a context, a condition has no fields to read
+        tasks: { deck: { isComplete: (c) => c.hasDeck } },
+        checklists: { home: ["deck"] },
+      });
+    expectTypeOf(create).toBeFunction();
+  });
+
   it("rejects a selection naming an unknown task", () => {
     const create = () =>
       createChecklists({

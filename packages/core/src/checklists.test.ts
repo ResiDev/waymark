@@ -77,6 +77,13 @@ describe("createChecklists", () => {
     },
   );
 
+  it("works without a context", () => {
+    const owner = createChecklists({ tasks: { hello: {} }, checklists: { home: ["hello"] } });
+    owner.update({});
+    owner.checklists.home.markDone("hello");
+    expect(owner.checklists.home.getSnapshot().complete).toBe(true);
+  });
+
   it("rejects definitions it cannot show", () => {
     expect(() => createChecklists({ context: {}, tasks: {}, checklists: { a: [] } })).toThrow(
       /at least one task/,

@@ -309,8 +309,11 @@ export type ChecklistsConfig<
   TShape = Task<TContext>,
   TStepShape extends Step = Step,
 > = Readonly<{
-  /** Initial application data. Its shape is the context type every condition receives. */
-  context: TContext;
+  /**
+   * Initial application data. Its shape is the context type every condition
+   * receives. Omit it when no Task has a condition.
+   */
+  context?: TContext;
   tasks: TTasks & ExactTasks<TTasks, TShape, TStepShape>;
   checklists: TSelections;
 }> &
@@ -427,12 +430,13 @@ type Change = {
 /**
  * Infers the context type from its initial values only, so `false` widens to
  * `boolean`. Tasks written inline are typed from that context; tasks in other
- * files go through `defineTask`.
+ * files go through `defineTask`. Without a context it is `{}`, so a condition
+ * that reads a field does not compile.
  */
 export function createChecklists<
-  TContext,
-  const TTasks extends TaskMap<NoInfer<TContext>>,
-  const TSelections extends ChecklistSelections<TTasks>,
+  TContext = {},
+  const TTasks extends TaskMap<NoInfer<TContext>> = TaskMap<TContext>,
+  const TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
 >(
   config: ChecklistsConfig<TContext, TTasks, TSelections>,
 ): Checklists<TContext, TTasks, TSelections> {
@@ -696,7 +700,7 @@ export function createChecklists<
   // Creation checks the initial context like `update`, saving any change but
   // announcing nothing: the owner is not assigned yet, and a reload must not
   // repeat completion for a view storage already had complete.
-  send((change) => check(change, config.context), { silent: true });
+  send((change) => check(change, config.context ?? ({} as TContext)), { silent: true });
 
   const checklists: Record<string, Checklist<Named>> = Object.create(null);
   for (const view of views) {

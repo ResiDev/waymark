@@ -337,12 +337,13 @@ type Checklists<
 // Infer context from its initial values only; checks must accept that shape.
 // Context is not const-inferred: false/true should widen to boolean.
 // No generics at the creation site; only tasks in other files need defineTask.
+// Without a context, TContext is {}: a condition reading a field does not compile.
 declare function createChecklists<
-  TContext,
+  TContext = {},
   const TTasks extends TaskMap<NoInfer<TContext>>,
   const TSelections extends ChecklistSelections<TTasks>,
 >(config: Readonly<{
-  context: TContext; // required initial application data, not just a type declaration
+  context?: TContext; // initial application data, not just a type declaration; omit when no task has a condition
   // ExactTasks applies Exactly to every task. An adapter passes its own task
   // type as the shape, which is how React admits `title`.
   tasks: TTasks & ExactTasks<TTasks, Task<TContext, any>>;

@@ -46,9 +46,11 @@ export function defineTask<TContext>(): <const TTask extends ReactTask<TContext>
  * Steps written inline on a Task are held to `WalkthroughStep`.
  */
 export const createChecklists = createCoreChecklists as <
-  TContext,
-  const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>>,
-  const TSelections extends ChecklistSelections<TTasks>,
+  TContext = {},
+  const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>> = Readonly<
+    Record<string, ReactTask<TContext>>
+  >,
+  const TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
 >(
   config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>,
 ) => Checklists<TContext, TTasks, TSelections>;

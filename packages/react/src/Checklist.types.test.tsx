@@ -104,6 +104,16 @@ describe("React definition functions", () => {
   });
 });
 
+describe("createChecklists", () => {
+  it("needs no context when no task has a condition", () => {
+    const plain = createChecklists({
+      tasks: { hello: { title: "Say hello", description: "No condition" } },
+      checklists: { home: ["hello"] },
+    });
+    expect(<Checklist checklist={plain.checklists.home} />).toBeTruthy();
+  });
+});
+
 describe("inline steps", () => {
   it("holds steps written on a task to React's step, and infers them for popovers", () => {
     const inline = createChecklists({
