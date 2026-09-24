@@ -12,18 +12,29 @@ import type { AdvanceCondition, ExactStep, Step, Walkthrough } from "./types";
 export function defineWalkthrough<const TStep extends Step>(
   steps: readonly TStep[] & readonly ExactStep<TStep, Step>[],
 ): Walkthrough<NoInfer<TStep>> {
+  return checkedWalkthrough<TStep>(steps, "");
+}
+
+/**
+ * `defineWalkthrough` without the typing, for Steps written somewhere else,
+ * such as inline on a Task. `where` prefixes every error, to say which.
+ */
+export function checkedWalkthrough<TStep extends Step>(
+  steps: readonly TStep[],
+  where: string,
+): Walkthrough<TStep> {
   if (steps.length === 0) {
-    throw new Error("A walkthrough needs at least one step.");
+    throw new Error(`${where}A walkthrough needs at least one step.`);
   }
   steps.forEach((step, index) => {
     if (step.waymark !== undefined && step.selector !== undefined) {
       throw new Error(
-        `Step ${index} sets both 'waymark' and 'selector'; a step has one waymark.`,
+        `${where}Step ${index} sets both 'waymark' and 'selector'; a step has one waymark.`,
       );
     }
     const when = conditionOf(step);
     if (typeof when === "object" && "event" in when && eventsOf(step).length === 0) {
-      throw new Error(`Step ${index} advances on an event but names no events; it could never advance.`);
+      throw new Error(`${where}Step ${index} advances on an event but names no events; it could never advance.`);
     }
   });
   return { steps };

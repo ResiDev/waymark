@@ -116,7 +116,9 @@ collection.stop(); // Ends any active guidance.
 // Map keys supply ids. Tasks written inline are typed from the initial context;
 // tasks in other files go through defineTask (below).
 type Task<TContext, TStep extends Step = Step> = Readonly<{
-  walkthrough?: Walkthrough<TStep>;
+  // The steps inline, or a Walkthrough from defineWalkthrough to share between
+  // tasks. Creation checks inline steps as defineWalkthrough would, naming the task.
+  walkthrough?: Walkthrough<TStep> | readonly TStep[];
   // Pure synchronous check; update(context) evaluates it and records completion.
   // Without this condition, finishing the active walkthrough records done.
   // The application may also call markDone, including for tasks without guidance.
@@ -155,15 +157,20 @@ type ChecklistSelections<TTasks> = Readonly<
   Record<string, readonly TaskId<TTasks>[]>
 >;
 
-// Recover the instructions carried by tasks; tasks without guidance contribute
-// no step type. Distribute over task unions and retain custom step fields.
+// Recover the instructions carried by tasks, however written; tasks without
+// guidance contribute no step type. Distribute over task unions and retain
+// custom step fields. An inline adapter step sharing no key with core's
+// all-optional Step (`{ content }`) is intersected with Step, not dropped.
 type StepOf<TTask> = TTask extends unknown
   ? "walkthrough" extends keyof TTask
-    ? NonNullable<TTask["walkthrough"]> extends Walkthrough<infer TStep>
-      ? TStep
-      : never
+    ? StepsOf<NonNullable<TTask["walkthrough"]>>
     : never
   : never;
+type StepsOf<W> = W extends Walkthrough<infer TStep>
+  ? TStep
+  : W extends readonly (infer TStep)[]
+    ? TStep extends Step ? TStep : TStep & Step
+    : never;
 
 // Snapshot rows expose a task's map key alongside its original fields.
 // The mapped union preserves the relationship between each id and its definition.
@@ -554,7 +561,11 @@ const collection = createChecklists({
     "create-deck": {
       title: "Create your first deck",
       description: "Decks group the cards you want to study.",
-      walkthrough: createDeckWalkthrough,
+      // Inline steps; defineWalkthrough is for walkthroughs shared between tasks.
+      walkthrough: [
+        { waymark: "new-deck", content: "Press New deck", advance: "click" },
+        { content: "Decks group the cards you study." },
+      ],
       isComplete: (context) => context.hasDeck,
     },
     "add-photo": {
@@ -650,6 +661,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Event order per change: task events, then `checklistComplete` for each newly complete view in declaration order.
 - Conditions run only in `update`; finishing a walkthrough does not re-check them.
 - Tasks in separate files use the curried `defineTask<AppContext>()` helper; inline tasks need nothing.
+- A task's `walkthrough` may be its steps written inline. Snapshots keep the task as written; the owner checks the steps at creation and builds the Walkthrough itself.
 - Commands are re-entrant on the same terms as the Run's `act`.
 - Ships from the existing `waymark` and `react-waymark` entry points; both are `sideEffects: false`.
 - Core's `Step` and `Task` name every field they accept, plus one `meta` slot for application data. Adapter fields such as `content` or `title` are named by the adapter's own types and admitted through its typed definition functions. A step or task made only of `meta` still satisfies the core types and `StepOf` recovers it.

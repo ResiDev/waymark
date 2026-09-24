@@ -1,7 +1,9 @@
 import { createQueue } from "./queue";
 import { createRun } from "./run";
+import { checkedWalkthrough } from "./walkthrough";
 import type {
   Exactly,
+  ExactStep,
   Run,
   RunEvent,
   RunOptions,
@@ -33,7 +35,11 @@ import type {
  * reads; TStep types its walkthrough's instructions. Map keys supply ids.
  */
 export type Task<TContext, TStep extends Step = Step> = Readonly<{
-  walkthrough?: Walkthrough<TStep>;
+  /**
+   * The Steps themselves, or a Walkthrough built with `defineWalkthrough` to
+   * share between Tasks. Either way the owner checks them at creation.
+   */
+  walkthrough?: Walkthrough<TStep> | readonly TStep[];
   /**
    * Pure, synchronous. `update(context)` evaluates it and records completion.
    * Without it, finishing the walkthrough records done, and the application
@@ -51,13 +57,13 @@ export type Task<TContext, TStep extends Step = Step> = Readonly<{
  *   export type AppContext = typeof initialContext;
  *   "create-deck": defineTask<AppContext>()({ walkthrough, isComplete: (c) => c.hasDeck })
  */
-export function defineTask<TContext>(): <const TTask extends Task<TContext, any>>(
-  task: TTask & Exactly<TTask, Task<TContext, any>>,
+export function defineTask<TContext>(): <const TTask extends Task<TContext>>(
+  task: TTask & Exactly<TTask, Task<TContext>>,
 ) => TTask {
   return (task) => task;
 }
 
-export type TaskMap<TContext> = Readonly<Record<string, Task<TContext, any>>>;
+export type TaskMap<TContext> = Readonly<Record<string, Task<TContext>>>;
 export type TaskId<TTasks> = keyof TTasks & string;
 
 /** Each checklist name maps to task ids in display order. */
@@ -65,14 +71,25 @@ export type ChecklistSelections<TTasks> = Readonly<
   Record<string, readonly TaskId<TTasks>[]>
 >;
 
-/** The step type carried by a Task's walkthrough; never for a Task without one. */
+/** The step type carried by a Task's walkthrough, however written; never for a Task without one. */
 export type StepOf<TTask> = TTask extends unknown
   ? "walkthrough" extends keyof TTask
-    ? NonNullable<TTask["walkthrough"]> extends Walkthrough<infer TStep>
-      ? TStep
-      : never
+    ? StepsOf<NonNullable<TTask["walkthrough"]>>
     : never
   : never;
+
+type StepsOf<TWalkthrough> = TWalkthrough extends Walkthrough<infer TStep>
+  ? TStep
+  : TWalkthrough extends readonly (infer TStep)[]
+    ? AsStep<TStep>
+    : never;
+
+/**
+ * Each inline Step, typed as a Step. An adapter's Step that shares no key
+ * with core's all-optional one, such as `{ content }`, does not extend it;
+ * it gains core's optional fields rather than being lost.
+ */
+type AsStep<TStep> = TStep extends Step ? TStep : TStep & Step;
 
 /** A Task as views and events see it: its own fields plus its map key. */
 export type NamedTask<TTasks, TId extends TaskId<TTasks> = TaskId<TTasks>> = {
@@ -264,10 +281,22 @@ export type Checklists<
   clear: () => void;
 }>;
 
-/** Every Task in the map, with keys its shape does not name turned into errors. */
-export type ExactTasks<TTasks, TShape> = {
-  readonly [K in keyof TTasks]: Exactly<TTasks[K], TShape>;
+/**
+ * Every Task in the map, with keys its shape does not name turned into errors.
+ * Steps written inline are held to TStepShape as `defineWalkthrough` holds
+ * its own, since nothing else checks them.
+ */
+export type ExactTasks<TTasks, TShape, TStepShape extends Step = Step> = {
+  readonly [K in keyof TTasks]: Exactly<TTasks[K], TShape> & ExactInlineSteps<TTasks[K], TStepShape>;
 };
+
+// `infer` is unconstrained: a Step sharing no key with core's all-optional
+// `Step` fails to extend it, and would slip past this check altogether.
+type ExactInlineSteps<TTask, TStepShape extends Step> = TTask extends {
+  readonly walkthrough: readonly (infer TStep extends object)[];
+}
+  ? { readonly walkthrough: readonly TStepShape[] & readonly ExactStep<TStep, TStepShape>[] }
+  : unknown;
 
 /**
  * TShape names the fields a Task may carry. Core's own is `Task`; an adapter
@@ -277,11 +306,12 @@ export type ChecklistsConfig<
   TContext,
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,
-  TShape = Task<TContext, any>,
+  TShape = Task<TContext>,
+  TStepShape extends Step = Step,
 > = Readonly<{
   /** Initial application data. Its shape is the context type every condition receives. */
   context: TContext;
-  tasks: TTasks & ExactTasks<TTasks, TShape>;
+  tasks: TTasks & ExactTasks<TTasks, TShape, TStepShape>;
   checklists: TSelections;
 }> &
   ChecklistsOptions<TTasks, TSelections>;
@@ -367,6 +397,10 @@ function validate(tasks: TaskMap<any>, selections: Readonly<Record<string, reado
 
 // ---- Creation --------------------------------------------------------------
 
+const isSteps = <TStep extends Step>(
+  walkthrough: Walkthrough<TStep> | readonly TStep[],
+): walkthrough is readonly TStep[] => Array.isArray(walkthrough);
+
 type AnyTask = Task<any, any>;
 type Named = Readonly<AnyTask & { id: string }>;
 type Active = Readonly<{ task: Named; run: Run<any>; checklists: readonly string[] }>;
@@ -411,6 +445,15 @@ export function createChecklists<
   const taskIds = Object.keys(tasks);
   const named: Record<string, Named> = Object.create(null);
   for (const id of taskIds) named[id] = { ...tasks[id]!, id };
+  // Snapshots keep each Task as written; Runs need a checked Walkthrough.
+  const walkthroughs: Record<string, Walkthrough<any>> = Object.create(null);
+  for (const id of taskIds) {
+    const walkthrough = tasks[id]!.walkthrough;
+    if (walkthrough === undefined) continue;
+    walkthroughs[id] = isSteps(walkthrough)
+      ? checkedWalkthrough(walkthrough, `Task "${id}": `)
+      : walkthrough;
+  }
   const viewNames = Object.keys(selections);
 
   // ---- state ----------------------------------------------------------------
@@ -556,7 +599,8 @@ export function createChecklists<
   const start = (id: string, checklists: readonly string[]) =>
     send((change) => {
       const task = named[id];
-      if (task?.walkthrough === undefined) return;
+      const walkthrough = walkthroughs[id];
+      if (task === undefined || walkthrough === undefined) return;
       if (active?.task.id === id) {
         // Already guiding this Task: it now counts for these checklists too.
         const merged = unique([...active.checklists, ...checklists]);
@@ -564,7 +608,7 @@ export function createChecklists<
         return;
       }
       release(change, "stopped");
-      const run: Run<any> = createRun(task.walkthrough, {
+      const run: Run<any> = createRun(walkthrough, {
         ...runOptions,
         ui: () => boundUi?.() ?? NO_UI,
         onEvent: (event) => {

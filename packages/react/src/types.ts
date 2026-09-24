@@ -58,7 +58,13 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
  * title and nothing else still belongs.
  */
 export type ReactGuidanceTasks = Readonly<
-  Record<string, Readonly<{ walkthrough?: Walkthrough<WalkthroughStep>; [field: string]: unknown }>>
+  Record<
+    string,
+    Readonly<{
+      walkthrough?: Walkthrough<WalkthroughStep> | readonly WalkthroughStep[];
+      [field: string]: unknown;
+    }>
+  >
 >;
 
 /**

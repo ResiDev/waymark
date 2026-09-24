@@ -118,7 +118,7 @@ type ExactAdvance<A> = A extends { when: unknown }
  * would otherwise compile. `NoInfer`: the Step is inferred from the plain
  * `TStep[]` beside this, never back through the mapping.
  */
-export type ExactStep<TStep extends Step, TShape> = NoInfer<
+export type ExactStep<TStep extends object, TShape> = NoInfer<
   TStep extends unknown
     ? {
         readonly [K in keyof TStep]: K extends "advance"

@@ -43,11 +43,12 @@ export function defineTask<TContext>(): <const TTask extends ReactTask<TContext>
 /**
  * Core's `createChecklists` with every Task held to `ReactTask`: a title is
  * required, and the display fields sit beside core's rather than in `meta`.
+ * Steps written inline on a Task are held to `WalkthroughStep`.
  */
 export const createChecklists = createCoreChecklists as <
   TContext,
   const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>>,
   const TSelections extends ChecklistSelections<TTasks>,
 >(
-  config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>>,
+  config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>,
 ) => Checklists<TContext, TTasks, TSelections>;

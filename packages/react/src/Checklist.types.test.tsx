@@ -104,6 +104,51 @@ describe("React definition functions", () => {
   });
 });
 
+describe("inline steps", () => {
+  it("holds steps written on a task to React's step, and infers them for popovers", () => {
+    const inline = createChecklists({
+      context: initialContext,
+      tasks: {
+        "create-deck": {
+          title: "Create a deck",
+          walkthrough: [
+            { waymark: "new-deck", content: "Press New deck", advance: "click" },
+            // Shares no field with core's Step, and must not be lost for it.
+            { content: "Decks group your cards" },
+          ],
+        },
+      },
+      checklists: { home: ["create-deck"] },
+    });
+    const element = (
+      <Walkthrough
+        checklists={inline}
+        renderPopover={({ currentStep }) => {
+          expectTypeOf(currentStep.content).toEqualTypeOf<"Press New deck" | "Decks group your cards">();
+          return currentStep.content;
+        }}
+      />
+    );
+    expect(element).toBeTruthy();
+
+    const mistakes = () => {
+      createChecklists({
+        context: initialContext,
+        // @ts-expect-error steps need content
+        tasks: { deck: { title: "Deck", walkthrough: [{ waymark: "new-deck" }] } },
+        checklists: { home: ["deck"] },
+      });
+      createChecklists({
+        context: initialContext,
+        // @ts-expect-error misspelled content
+        tasks: { deck: { title: "Deck", walkthrough: [{ contnet: "Press", content: "Press" }] } },
+        checklists: { home: ["deck"] },
+      });
+    };
+    expectTypeOf(mistakes).toBeFunction();
+  });
+});
+
 describe("Checklist and useChecklist", () => {
   it("types views over their selected React tasks", () => {
     const plain = createCoreChecklists({ context: {}, tasks: { a: {} }, checklists: { all: ["a"] } });

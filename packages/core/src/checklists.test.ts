@@ -446,6 +446,35 @@ describe("guidance", () => {
     expect(owner.checklists.decks.getSnapshot().active).toBeNull();
   });
 
+  it("runs steps written inline on the task, and shows the task as written", () => {
+    const steps = [{ waymark: "save" }, {}] as const;
+    const owner = createChecklists({
+      context: {},
+      tasks: { tour: { walkthrough: steps } },
+      checklists: { home: ["tour"] },
+    });
+    expect(owner.checklists.home.getSnapshot().tasks[0]!.task.walkthrough).toBe(steps);
+
+    owner.start("tour");
+    const { run } = owner.getSnapshot().active!;
+    expect(run.getSnapshot()).toMatchObject({ phase: "running", stepCount: 2 });
+    finish(run, 2);
+    expect(statuses(owner.checklists.home)).toEqual({ tour: "done" });
+  });
+
+  it("checks inline steps at creation, naming the task", () => {
+    expect(() =>
+      createChecklists({ context: {}, tasks: { tour: { walkthrough: [] } }, checklists: { home: ["tour"] } }),
+    ).toThrow('Task "tour": A walkthrough needs at least one step.');
+    expect(() =>
+      createChecklists({
+        context: {},
+        tasks: { tour: { walkthrough: [{}, { waymark: "a", selector: "#a" }] } },
+        checklists: { home: ["tour"] },
+      }),
+    ).toThrow(/^Task "tour": Step 1 sets both/);
+  });
+
   it("ignores tasks without a walkthrough", () => {
     const onEvent = vi.fn();
     const owner = setup({ onEvent });

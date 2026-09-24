@@ -97,6 +97,60 @@ describe("createChecklists types", () => {
     }
   });
 
+  it("takes a task's steps inline, typed and checked as defineWalkthrough's are", () => {
+    const owner = createChecklists({
+      context: initialContext,
+      tasks: {
+        deck: {
+          walkthrough: [
+            { waymark: "new-deck", advance: "click" },
+            {
+              advance: {
+                state: (waymark) => {
+                  expectTypeOf(waymark).toEqualTypeOf<Element | null>();
+                  return waymark !== null;
+                },
+              },
+            },
+          ],
+          isComplete: (c) => c.hasDeck,
+        },
+        photo: { walkthrough: photoSteps },
+      },
+      checklists: { home: ["deck", "photo"] },
+    });
+
+    type DeckActive = NonNullable<ReturnType<typeof owner.checklists.home.getSnapshot>["active"]>;
+    type DeckStep = DeckActive["run"] extends Run<infer TStep> ? TStep : never;
+    expectTypeOf<Extract<DeckStep, { readonly waymark: "new-deck" }>>().toEqualTypeOf<{
+      readonly waymark: "new-deck";
+      readonly advance: "click";
+    }>();
+    expectTypeOf<Extract<DeckStep, { readonly waymark: "avatar" }>>().toEqualTypeOf<{ readonly waymark: "avatar" }>();
+
+    const mistakes = () => {
+      createChecklists({
+        context: initialContext,
+        // @ts-expect-error misspelled advance
+        tasks: { deck: { walkthrough: [{ advnace: "click" }] } },
+        checklists: { home: ["deck"] },
+      });
+      createChecklists({
+        context: initialContext,
+        // @ts-expect-error misspelled delayMs
+        tasks: { deck: { walkthrough: [{ advance: { when: "click", delay: 500 } }] } },
+        checklists: { home: ["deck"] },
+      });
+      createChecklists({
+        context: initialContext,
+        // @ts-expect-error a waymark is a name
+        tasks: { deck: { walkthrough: [{ waymark: 5 }] } },
+        checklists: { home: ["deck"] },
+      });
+    };
+    expectTypeOf(mistakes).toBeFunction();
+  });
+
   it("rejects a selection naming an unknown task", () => {
     const create = () =>
       createChecklists({
