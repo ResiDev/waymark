@@ -633,6 +633,70 @@ describe("guidance", () => {
   });
 });
 
+describe("subscribeActive", () => {
+  const setupRuns = () => {
+    const runEvents: string[] = [];
+    const owner = createChecklists({
+      tasks: { tour: { walkthrough: [{}, {}] }, other: { walkthrough: [{}] } },
+      run: { onEvent: (event) => runEvents.push(event.type) },
+    });
+    return { owner, runEvents };
+  };
+
+  it("leaves the active Run asleep when only the owner is subscribed", () => {
+    const { owner, runEvents } = setupRuns();
+    owner.subscribe(() => {});
+    owner.start("tour");
+    // Nothing subscribed to the Run, so it never starts watching the page.
+    expect(runEvents).toEqual([]);
+  });
+
+  it("wakes the active Run, and hears the owner and every step", () => {
+    const { owner, runEvents } = setupRuns();
+    const listener = vi.fn();
+    owner.subscribeActive(listener);
+
+    owner.start("tour");
+    expect(runEvents).toEqual(["start"]);
+    expect(listener).toHaveBeenCalled();
+
+    listener.mockClear();
+    owner.getSnapshot().active!.run.act("advance");
+    expect(owner.getSnapshot().active!.run.getSnapshot()).toMatchObject({ stepIndex: 1 });
+    expect(listener).toHaveBeenCalled();
+  });
+
+  it("wakes a Run already active when it subscribes", () => {
+    const { owner, runEvents } = setupRuns();
+    owner.start("tour");
+    owner.subscribeActive(() => {});
+    expect(runEvents).toEqual(["start"]);
+  });
+
+  it("follows the Run that replaces the last one", () => {
+    const { owner, runEvents } = setupRuns();
+    owner.subscribeActive(() => {});
+    owner.start("tour");
+    owner.start("other");
+    // The owner exits the old Run once the change is announced, by which
+    // time the listener has already moved to the new one.
+    expect(runEvents).toEqual(["start", "start", "exit"]);
+  });
+
+  it("lets go of the owner and the Run when unsubscribed", () => {
+    const { owner } = setupRuns();
+    const listener = vi.fn();
+    const unsubscribe = owner.subscribeActive(listener);
+    owner.start("tour");
+    unsubscribe();
+    listener.mockClear();
+
+    owner.getSnapshot().active!.run.act("advance");
+    owner.stop();
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
+
 describe("markDone and skip", () => {
   it("records done everywhere and lets guidance continue", () => {
     const onEvent = vi.fn();
@@ -698,6 +762,45 @@ describe("markDone and skip", () => {
       complete: true,
     });
     expect(owner.checklists.decks.getSnapshot().complete).toBe(false);
+  });
+});
+
+describe("storage", () => {
+  const storageOf = (saved: Stored) => {
+    const calls: string[] = [];
+    return {
+      calls,
+      storage: {
+        load: vi.fn(() => saved),
+        save: vi.fn(() => {
+          calls.push("save");
+        }),
+      },
+    };
+  };
+
+  it("loads once at creation and saves each local change before onChange", () => {
+    const { calls, storage } = storageOf({ done: ["hello"], skipped: {} });
+    const onChange = vi.fn(() => {
+      calls.push("onChange");
+    });
+    const owner = createChecklists({ tasks: { hello: {}, invite: {} }, storage, onChange });
+    expect(storage.load).toHaveBeenCalledOnce();
+    expect(statuses(owner.checklists.main)).toEqual({ hello: "done", invite: "todo" });
+
+    owner.checklists.main.skip("invite");
+    expect(storage.save).toHaveBeenCalledExactlyOnceWith({ done: ["hello"], skipped: { main: ["invite"] } });
+    expect(calls).toEqual(["save", "onChange"]);
+  });
+
+  it("saves a clear but not a load", () => {
+    const { storage } = storageOf({ done: ["hello"], skipped: {} });
+    const owner = createChecklists({ tasks: { hello: {} }, storage });
+    owner.load({ done: [], skipped: {} });
+    expect(storage.save).not.toHaveBeenCalled();
+    owner.markDone("hello");
+    owner.clear();
+    expect(storage.save).toHaveBeenLastCalledWith({ done: [], skipped: {} });
   });
 });
 

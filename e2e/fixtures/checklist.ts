@@ -1,5 +1,5 @@
 import { createChecklists, createLocalStorageRecord, defineWalkthrough } from "waymark";
-import type { Checklist, ChecklistsEvent, Run, Snapshot, Stored } from "waymark";
+import type { Checklist, ChecklistsEvent, Snapshot, Stored } from "waymark";
 
 /**
  * A lab for checklists. The page is a small application; the panel is the
@@ -47,11 +47,8 @@ const owner = createChecklists({
     home: ["create-deck", "add-photo", "read-tips", "say-hello"],
     decks: ["create-deck"],
   },
-  stored: record.load(),
-  onChange: (stored) => {
-    record.save(stored);
-    renderStored(stored);
-  },
+  storage: record,
+  onChange: (stored) => renderStored(stored),
   onEvent: (event) => {
     events.push(event);
     renderLog();
@@ -174,8 +171,6 @@ function renderLog() {
 
 owner.bindUi(() => ({ dialog: ui.popover, beacon: null }));
 
-let drawn: { run: Run<any>; stop: () => void } | undefined;
-
 const describeRun = (snapshot: Snapshot): string => {
   if (snapshot.phase !== "running") return snapshot.phase;
   const parts = [`step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`, snapshot.waymark.status];
@@ -211,18 +206,8 @@ function drawRun() {
   }
 }
 
-/** Follow the owner: subscribe to the Run it holds, which is what switches page watching on. */
-owner.subscribe(() => {
-  const active = owner.getSnapshot().active;
-  if (drawn && drawn.run !== active?.run) {
-    drawn.stop();
-    drawn = undefined;
-  }
-  if (active && !drawn) {
-    drawn = { run: active.run, stop: active.run.subscribe(drawRun) };
-  }
-  drawRun();
-});
+/** Follow the owner and whichever Run it holds; subscribing is what switches page watching on. */
+owner.subscribeActive(drawRun);
 
 $("#previous").addEventListener("click", () => owner.getSnapshot().active?.run.act("previous"));
 $("#advance").addEventListener("click", () => owner.getSnapshot().active?.run.act("advance"));

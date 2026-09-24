@@ -2,10 +2,9 @@ import type { Stored } from "./checklists";
 
 /**
  * The optional browser persistence for a checklist record. Core never touches
- * local storage itself; this pairs with `stored` and `onChange`:
+ * local storage itself; it loads and saves through this:
  *
- *   const record = createLocalStorageRecord("study-setup");
- *   createChecklists({ ..., stored: record.load(), onChange: record.save });
+ *   createChecklists({ ..., storage: createLocalStorageRecord("study-setup") });
  *
  * Non-empty records are written as `{ version: 1, record }`. An empty record
  * removes the key. Missing, invalid, or unknown-version data loads as empty.

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createChecklists } from "./checklists";
 import { createLocalStorageRecord } from "./storage";
 
 afterEach(() => {
@@ -69,6 +70,14 @@ describe("createLocalStorageRecord", () => {
       localStorage.setItem("setup", text);
       expect(record.load()).toEqual(empty);
     }
+  });
+
+  it("keeps an owner's progress across a reload as its storage", () => {
+    const create = () =>
+      createChecklists({ tasks: { hello: {}, invite: {} }, storage: createLocalStorageRecord("setup") });
+    create().checklists.main.markDone("hello");
+    const reloaded = create().checklists.main.getSnapshot();
+    expect(reloaded.tasks.map((row) => row.status)).toEqual(["done", "todo"]);
   });
 
   it("swallows storage errors", () => {

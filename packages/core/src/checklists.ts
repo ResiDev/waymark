@@ -1,6 +1,7 @@
 import { createQueue } from "./queue";
 import { createRun } from "./run";
 import { checkedWalkthrough } from "./walkthrough";
+import type { StoredRecord } from "./storage";
 import type {
   Exactly,
   ExactStep,
@@ -24,8 +25,8 @@ import type {
  * changes, `subscribe` returns an unsubscribe.
  *
  * Core keeps progress in memory only. Persistence is `stored` in and
- * `onChange` out; the local storage adapter in storage.ts is one caller of
- * that pair.
+ * `onChange` out, or a `storage` that does both, such as the local storage
+ * adapter in storage.ts.
  */
 
 // ---- Tasks and selections --------------------------------------------------
@@ -219,18 +220,33 @@ export type ChecklistsEvent<
 export type ChecklistsOptions<
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,
-> = Readonly<{
-  /** Starts empty if omitted. */
-  stored?: Stored;
-  /** The whole record after each local change. */
-  onChange?: (stored: Stored) => void;
-  onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
-  /**
-   * Options for every Run the owner creates. Core supplies `startAt` and `ui`
-   * itself and wraps `onEvent`: it handles finish and exit first, then calls yours.
-   */
-  run?: Omit<RunOptions<StepOf<TTasks[keyof TTasks]>>, "startAt" | "ui">;
-}>;
+> = Persistence &
+  Readonly<{
+    /** The whole record after each local change. */
+    onChange?: (stored: Stored) => void;
+    onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
+    /**
+     * Options for every Run the owner creates. Core supplies `startAt` and `ui`
+     * itself and wraps `onEvent`: it handles finish and exit first, then calls yours.
+     */
+    run?: Omit<RunOptions<StepOf<TTasks[keyof TTasks]>>, "startAt" | "ui">;
+  }>;
+
+/** Where progress starts from, and whether core saves it: one or the other. */
+type Persistence =
+  | Readonly<{
+      /** Starts empty if omitted. */
+      stored?: Stored;
+      storage?: never;
+    }>
+  | Readonly<{
+      /**
+       * Loaded once at creation and saved after each local change, before
+       * `onChange`. `load` never saves; `clear` does.
+       */
+      storage: StoredRecord;
+      stored?: never;
+    }>;
 
 export type ChecklistViews<
   TTasks,
@@ -299,6 +315,14 @@ export type Checklists<
   /** Changes identity only when the active Task changes. */
   getSnapshot: () => ChecklistsSnapshot<TTasks, TSelections>;
   subscribe: (listener: () => void) => () => void;
+  /**
+   * For a renderer drawing guidance itself. Like `subscribe`, but also
+   * subscribes to whichever Run is active, swapping as it changes, so the
+   * listener hears every step too. A Run watches the page only while
+   * subscribed: reading the active Run through `subscribe` alone leaves its
+   * Waymark searching and its clicks unheard. Unsubscribing lets go of both.
+   */
+  subscribeActive: (listener: () => void) => () => void;
 
   /**
    * Checks every non-done Task's condition once, in task map order, and
@@ -498,7 +522,7 @@ export function createChecklists<
       [DEFAULT_CHECKLIST]: Object.keys(tasks),
     };
   validate(tasks, selections);
-  const { onChange, onEvent, run: runOptions } = config;
+  const { onChange, onEvent, run: runOptions, storage } = config;
   const emit = onEvent as ((event: Event) => void) | undefined;
 
   const taskIds = Object.keys(tasks);
@@ -517,7 +541,7 @@ export function createChecklists<
 
   // ---- state ----------------------------------------------------------------
 
-  let record = normalise(config.stored ?? EMPTY, taskIds, viewNames);
+  let record = normalise(storage?.load() ?? config.stored ?? EMPTY, taskIds, viewNames);
   let done = new Set(record.done);
   const setRecord = (next: Stored) => {
     record = normalise(next, taskIds, viewNames);
@@ -604,7 +628,10 @@ export function createChecklists<
 
     for (const view of changedViews) queue.notify(view.listeners);
     if (activeChanged) queue.notify(ownerListeners);
-    if (recordChanged && change.persist) queue.invoke(() => onChange?.(record));
+    if (recordChanged && change.persist) {
+      queue.invoke(() => storage?.save(record));
+      queue.invoke(() => onChange?.(record));
+    }
     if (!change.silent) {
       for (const event of change.events) queue.invoke(() => emit?.(event));
       for (const view of completedViews) {
@@ -795,6 +822,28 @@ export function createChecklists<
       };
     };
 
+  const subscribeActive = (listener: () => void) => {
+    // Wrapped, so the same listener given twice is two subscriptions to a Run.
+    const onRun = () => listener();
+    let followed: { run: Run<any>; unsubscribe: () => void } | undefined;
+    const follow = () => {
+      const run = ownerSnapshot.active?.run;
+      if (followed?.run === run) return;
+      followed?.unsubscribe();
+      followed = run === undefined ? undefined : { run, unsubscribe: run.subscribe(onRun) };
+    };
+    follow();
+    const unsubscribeOwner = subscribeTo(ownerListeners)(() => {
+      follow();
+      listener();
+    });
+    return () => {
+      unsubscribeOwner();
+      followed?.unsubscribe();
+      followed = undefined;
+    };
+  };
+
   // Creation checks the initial context like `update`, saving any change but
   // announcing nothing: the owner is not assigned yet, and a reload must not
   // repeat completion for a view storage already had complete.
@@ -832,6 +881,7 @@ export function createChecklists<
     waymarkPadding: runOptions?.waymarkPadding ?? 0,
     getSnapshot: () => ownerSnapshot,
     subscribe: subscribeTo(ownerListeners),
+    subscribeActive,
     update,
     load,
     clear,

@@ -321,6 +321,11 @@ type Checklists<
     }> | null;
   }>;
   subscribe: (listener: () => void) => () => void; // fires when active changes
+  // For a renderer drawing guidance itself: subscribe, plus a subscription to
+  // whichever Run is active, swapped as it changes. A Run watches the page only
+  // while subscribed, so reading active.run through `subscribe` alone leaves its
+  // waymark searching. Unsubscribing releases both.
+  subscribeActive: (listener: () => void) => () => void;
 
   // Check each non-done task once, even if it appears in several views.
   // True overrides skipped in every checklist. Done stays recorded until load/clear. No polling.
@@ -417,25 +422,26 @@ declare function createLocalStorageRecord(key: string): Readonly<{
 }>;
 
 // Application setup owns both the storage key and live instance.
-const record = createLocalStorageRecord("study-setup");
 const collection = createChecklists({
   context: { hasDeck: false, hasPhoto: false }, // initial values also infer the type
   tasks: { ...accountTasks, ...deckTasks }, // built with defineTask<AppContext>() in their own files
   checklists: { home: ["add-photo", "create-deck"], decks: ["create-deck"] },
-  stored: record.load(),
-  onChange: record.save,
+  // Loaded once at creation, saved after each local change (before onChange).
+  // Any { load, save } works; `stored` and `storage` cannot be given together.
+  storage: createLocalStorageRecord("study-setup"),
 });
-// Remote persistence uses stored/onChange too; later records enter via collection.load.
+// Remote persistence can use storage, or stored/onChange; later records enter via collection.load.
 
 collection.clear();
-// Clears live progress and calls onChange with { done: [], skipped: {} }.
-// With record.save wired above, this removes the local-storage key.
+// Clears live progress and saves { done: [], skipped: {} } through storage.
+// The local storage adapter removes the key for it.
 // A subsequent localStorage.getItem("study-setup") returns null.
 ```
 
-Omit `stored` and `onChange` for memory-only progress. Custom persistence supplies
-initial data through `stored` and saves changes through `onChange`; it decides
-how to store or delete an empty record. `load(record)` accepts incoming progress
+Omit `storage`, `stored` and `onChange` for memory-only progress. Custom persistence
+is either a `{ load, save }` passed as `storage`, or initial data through `stored`
+and saving through `onChange`; it decides how to store or delete an empty record.
+`onChange` stays free for the application when `storage` saves. `load(record)` accepts incoming progress
 without saving it back. `clear()` changes progress locally and calls `onChange`
 when the record changes. Later updates or Run completion can record progress again.
 
@@ -447,7 +453,7 @@ its own lifecycle; nothing here is React-specific.
 | Core fact | What an adapter does |
 |---|---|
 | Views and the owner are stores (`getSnapshot`, `subscribe`). | Subscribe in its reactive primitive after client-only mounting. Server rendering shows an empty region or an application-owned placeholder. |
-| The owner's active Run must be drawn by exactly one renderer. | Ship one guidance component that reads `getSnapshot().active` and draws the Run's popover and beacon. |
+| The owner's active Run must be drawn by exactly one renderer. | Ship one guidance component that reads `getSnapshot().active` and draws the Run's popover and beacon. Without a framework store per Run, follow it with `subscribeActive`. |
 | The Run needs its UI elements to tell clicks on them from clicks away. | Call `bindUi` when the guidance component mounts, release on unmount. |
 | Removing the guidance renderer ends its active Run, retaining completed and skipped tasks. | Mount the renderer at the root for cross-page guidance, or inside a page to end guidance when that page unmounts. Temporary framework cleanup and reattachment must not stop the Run. |
 | Commands are plain functions on views and the owner. | Expose them unchanged; no wrapping needed. |
@@ -643,6 +649,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Skip is per checklist. Done is shared and wins over skipped everywhere.
 - `clear()` empties all progress and persists through `onChange`; `load()` receives progress without saving it back. Un-doing a single task has no use case yet.
 - Local storage is opt-in. Its adapter removes the key when saving an empty record; custom persistence decides how to handle that record.
+- `storage: { load, save }` wires persistence in one option, so neither half can be forgotten. It excludes `stored`; `onChange` still fires, after `save`.
 - `stop()` on the owner ends active guidance.
 - Creation checks context and persists like `update`, but emits no events.
 - `checklistComplete` carries the view's snapshot, typed over all tasks.
