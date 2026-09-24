@@ -1,20 +1,12 @@
 import { keyAction, whereClicked } from "./input";
-import { createQueue } from "./queue";
+import { createQueue } from "../queue";
 import { apply, liveWatchers, needsAdvanceRead, sameWaymarkAria, sameWaymarkEvents } from "./rules";
 import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
 import { enter } from "./state";
 import type { State } from "./state";
-import { checkOf, hasWaymark, selectorOf } from "./walkthrough";
-import type {
-  Action,
-  Rect,
-  Run,
-  RunOptions,
-  Snapshot,
-  Step,
-  UiElements,
-  Walkthrough,
-} from "./types";
+import { checkOf, hasWaymark, selectorOf } from "../walkthrough/walkthrough";
+import type { Action, Rect, Run, RunOptions, Snapshot, UiElements } from "./types";
+import type { Step, Walkthrough } from "../walkthrough/types";
 
 /**
  * The driver: everything impure, and nothing else.
@@ -150,7 +142,7 @@ export function createRun<TStep extends Step>(
    * event the Run is listening for. That Message joins the queue and runs
    * once this one has been notified and announced in full, so every event of
    * a change carries the Snapshot that change produced, never one a callback
-   * made afterwards. See queue.ts for how callback errors are reported.
+   * made afterwards. See ../queue.ts for how callback errors are reported.
    */
   const send = (...messages: Message[]) =>
     queue.run(...messages.map((message) => () => obey(message)));

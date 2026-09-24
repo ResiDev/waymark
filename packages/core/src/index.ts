@@ -1,14 +1,19 @@
-export { defineWalkthrough } from "./walkthrough";
-export { createRun } from "./run";
-export { createChecklists, DEFAULT_CHECKLIST } from "./checklists";
-export { createLocalStorageRecord } from "./storage";
-export { actions } from "./types";
+export { defineWalkthrough } from "./walkthrough/walkthrough";
+export { createRun } from "./run/run";
+export { createChecklists, DEFAULT_CHECKLIST } from "./checklists/checklists";
+export { createLocalStorageRecord } from "./checklists/storage";
+export { actions } from "./run/types";
+export type { Exactly } from "./exact";
+export type {
+  AdvanceCondition,
+  ExactStep,
+  Step,
+  Walkthrough,
+  WaymarkEventName,
+} from "./walkthrough/types";
 export type {
   Action,
-  AdvanceCondition,
   Ended,
-  Exactly,
-  ExactStep,
   Location,
   Rect,
   Run,
@@ -17,11 +22,8 @@ export type {
   RunOptions,
   Running,
   Snapshot,
-  Step,
-  Walkthrough,
   UiElements,
-  WaymarkEventName,
-} from "./types";
+} from "./run/types";
 export type {
   ActiveTask,
   Checklist,
@@ -46,5 +48,5 @@ export type {
   TaskId,
   TaskMap,
   TaskStatus,
-} from "./checklists";
-export type { StoredRecord } from "./storage";
+} from "./checklists/checklists";
+export type { StoredRecord } from "./checklists/storage";

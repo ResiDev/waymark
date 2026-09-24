@@ -4,9 +4,9 @@ import { defineConfig } from "vitest/config";
 /**
  * Two projects, one runner:
  *
- *   unit     jsdom, faked clock and rects   src/*.test.ts
- *   browser  real Chromium                  src/*.browser.test.ts
- *   perf     real Chromium, measurements    src/*.perf.ts
+ *   unit     jsdom, faked clock and rects   *.test.ts under src
+ *   browser  real Chromium                  *.browser.test.ts under src
+ *   perf     real Chromium, measurements    *.perf.ts under src
  *
  * Browser tests are for what jsdom cannot do: real layout, real scrolling,
  * real pointer coordinates, real time. Behaviour lives in unit tests.

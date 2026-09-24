@@ -1,17 +1,10 @@
-import { createQueue } from "./queue";
-import { createRun } from "./run";
-import { checkedWalkthrough } from "./walkthrough";
+import { createQueue } from "../queue";
+import { createRun } from "../run/run";
+import { checkedWalkthrough } from "../walkthrough/walkthrough";
 import type { StoredRecord } from "./storage";
-import type {
-  Exactly,
-  ExactStep,
-  Run,
-  RunEvent,
-  RunOptions,
-  Step,
-  UiElements,
-  Walkthrough,
-} from "./types";
+import type { Exactly } from "../exact";
+import type { Run, RunEvent, RunOptions, UiElements } from "../run/types";
+import type { ExactStep, Step, Walkthrough } from "../walkthrough/types";
 
 /**
  * Checklists: named, ordered views of Tasks that share one user's completion
@@ -647,7 +640,7 @@ export function createChecklists<
    * next: state, then view and owner snapshots, then listeners, `onChange`,
    * events, and finally the command's effects on Runs. A command sent from a
    * listener or event handler joins the queue and runs once this one is over.
-   * See queue.ts for how callback errors are reported.
+   * See ../queue.ts for how callback errors are reported.
    */
   const send = (run: (change: Change) => void, flags: Partial<Change> = {}) =>
     queue.run(() => commit(run, flags));

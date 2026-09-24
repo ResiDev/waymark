@@ -1,8 +1,9 @@
 import type { ClickHit } from "./input";
 import { end, enter, ABSENT, LOST, NO_EVENTS, noChange, SEARCHING, show } from "./state";
 import type { Outcome, State } from "./state";
-import { checkOf, delayOf, eventsOf, hasWaymark, isAuto, isClick } from "./walkthrough";
-import type { Action, Location, Rect, Step, Walkthrough } from "./types";
+import { checkOf, delayOf, eventsOf, hasWaymark, isAuto, isClick } from "../walkthrough/walkthrough";
+import type { Action, Location, Rect } from "./types";
+import type { Step, Walkthrough } from "../walkthrough/types";
 
 /**
  * Pure state transitions for a walkthrough run.

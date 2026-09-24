@@ -1,12 +1,6 @@
-import { hasWaymark } from "./walkthrough";
-import type {
-  Location,
-  RunEventType,
-  Running,
-  Snapshot,
-  Step,
-  Walkthrough,
-} from "./types";
+import { hasWaymark } from "../walkthrough/walkthrough";
+import type { Location, RunEventType, Running, Snapshot } from "./types";
+import type { Step, Walkthrough } from "../walkthrough/types";
 
 /**
  * The whole of what a Run knows.

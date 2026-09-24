@@ -1,7 +1,8 @@
 # Waymark core — glossary
 
 Two halves. The **public** terms are what an application author or a renderer
-speaks (all declared in `types.ts`, and shared with the project's
+speaks (declared in `walkthrough/types.ts`, `run/types.ts` and
+`checklists/checklists.ts`, and shared with the project's
 [CONTEXT.md](../../../CONTEXT.md)). The **machinery** terms are what the
 code inside core speaks; there are eleven of them, and no others.
 
@@ -59,7 +60,7 @@ Snapshot as it stands *after*.
 
 **Checklists** — The owner `createChecklists` returns: it defines Tasks by
 id, hands out a named Checklist view per selection, keeps the one shared
-completion record, and holds at most one active Run. See checklists.ts.
+completion record, and holds at most one active Run. See `checklists/checklists.ts`.
 _Avoid_: onboarding, registry.
 
 **Task** — One thing the user should accomplish. May carry a Walkthrough and
@@ -84,7 +85,7 @@ name. No version field; a storage adapter wraps it.
 **State** — The whole of what a Run knows: the Snapshot, two facts about the
 Run as a whole (`started`, `mounted`), and Scratch. Immutable; only `enter`
 and `end` build one from nothing, and both carry the Run-wide facts across.
-`state.ts`.
+`run/state.ts`.
 
 **Scratch** — The part of State about the current Step only, which no
 renderer sees: the Waymark `element`, whether a condition has been
@@ -99,7 +100,7 @@ index. Each read is stamped with it and ignored if it has since changed.
 user actions, `observe` applies a StepRead, `satisfy` records clicks and
 events, `start` announces startup, and `mount` handles subscription changes.
 `observe` is two smaller rules in order: `observeWaymark` for location and
-scrolling, then `observeAdvance` for the condition's clock. `rules.ts`.
+scrolling, then `observeAdvance` for the condition's clock. `run/rules.ts`.
 
 **StepRead** — One look at the current Step, taken by the Driver once a
 frame and handed to `observe` as plain data. It has two optional halves,
@@ -135,7 +136,7 @@ its Rule, and it alone knows what a click or an event means to the current
 Step. Because a Message is data, a Run is a fold over its Messages, and a
 recorded session can be replayed with no DOM.
 
-**Driver** — The impure half, all of it in `run.ts`: take StepReads, turn
+**Driver** — The impure half, all of it in `run/run.ts`: take StepReads, turn
 frames, clicks, keys and Waymark events into Messages, reconcile the Live
 watchers. It decides nothing. It obeys one Message in full (scroll, store,
 reconcile, notify, announce) before the next.
@@ -234,7 +235,7 @@ a check can stop holding, a flickering check starts its delay over.
 - `Announcement`: a Run event is stamped with the Step index of the State it
   left, which is the same for every event, so a Rule just names the type.
 - `Definition` and `AdvanceRule`: a Step is read on the spot through five
-  small accessors in `walkthrough.ts`, with nothing precomputed or cached.
+  small accessors in `walkthrough/walkthrough.ts`, with nothing precomputed or cached.
 - The `Resource` / `keepInSync` / deps system and its memo layer: four live
   watchers described by one pure function and reconciled in one place.
 - The reused Reading buffer: measured as noise.

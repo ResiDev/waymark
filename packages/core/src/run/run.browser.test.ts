@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { createRun } from "./run";
-import { defineWalkthrough } from "./walkthrough";
-import type { ExactStep, Run, Running, Step } from "./types";
+import { defineWalkthrough } from "../walkthrough/walkthrough";
+import type { Run, Running } from "./types";
+import type { ExactStep, Step } from "../walkthrough/types";
 
 /**
  * Real-browser checks on the Run: real layout, real scrolling, real pointer

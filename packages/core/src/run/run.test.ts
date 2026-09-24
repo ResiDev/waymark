@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRun } from "./run";
-import { defineWalkthrough } from "./walkthrough";
-import type { RunEvent, Running, Step } from "./types";
+import { defineWalkthrough } from "../walkthrough/walkthrough";
+import type { RunEvent, Running } from "./types";
+import type { Step } from "../walkthrough/types";
 
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;

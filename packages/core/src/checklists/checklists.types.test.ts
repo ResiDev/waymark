@@ -1,8 +1,8 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { createChecklists } from "./checklists";
 import type { ChecklistsEvent, StepOf, Stored, Task } from "./checklists";
-import { defineWalkthrough } from "./walkthrough";
-import type { Run } from "./types";
+import { defineWalkthrough } from "../walkthrough/walkthrough";
+import type { Run } from "../run/types";
 
 /**
  * The inference claims of the design, checked by `tsc` on this file. The

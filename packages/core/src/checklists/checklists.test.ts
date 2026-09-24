@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createChecklists } from "./checklists";
 import type { Task } from "./checklists";
 import type { ChecklistsEvent, Stored } from "./checklists";
-import { defineWalkthrough } from "./walkthrough";
+import { defineWalkthrough } from "../walkthrough/walkthrough";
 
 const guide = defineWalkthrough([{ waymark: "save" }, {}]);
 const single = defineWalkthrough([{}]);

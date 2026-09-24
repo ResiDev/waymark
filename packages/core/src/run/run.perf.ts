@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createRun } from "./run";
-import { defineWalkthrough } from "./walkthrough";
+import { defineWalkthrough } from "../walkthrough/walkthrough";
 
 /**
  * What one frame of a Run costs, and how much of it is the browser.

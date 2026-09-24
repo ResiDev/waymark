@@ -3,8 +3,8 @@ import { act, apply, liveWatchers, mount, observe, observeAdvance, observeWaymar
 import type { AdvanceRead, Message, WaymarkRead } from "./rules";
 import { enter } from "./state";
 import type { State } from "./state";
-import { defineWalkthrough } from "./walkthrough";
-import type { Step, Walkthrough } from "./types";
+import { defineWalkthrough } from "../walkthrough/walkthrough";
+import type { Step, Walkthrough } from "../walkthrough/types";
 
 /** Pure rules exercised independently with plain observations and queued messages. */
 
