@@ -5,6 +5,7 @@ import {
 import type {
   ChecklistSelections,
   Checklists,
+  DefaultChecklists,
   ChecklistsConfig,
   Exactly,
   ExactStep,
@@ -50,7 +51,7 @@ export const createChecklists = createCoreChecklists as <
   const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>> = Readonly<
     Record<string, ReactTask<TContext>>
   >,
-  const TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
+  const TSelections extends ChecklistSelections<TTasks> = DefaultChecklists<TTasks>,
 >(
   config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>,
 ) => Checklists<TContext, TTasks, TSelections>;

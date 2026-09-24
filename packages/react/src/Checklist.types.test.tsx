@@ -112,6 +112,14 @@ describe("createChecklists", () => {
     });
     expect(<Checklist checklist={plain.checklists.home} />).toBeTruthy();
   });
+
+  it("gives one checklist, main, when it names none", () => {
+    const single = createChecklists({
+      tasks: { tour: { title: "Take the tour", walkthrough: [{ content: "Hello" }] } },
+    });
+    expect(<Checklist checklist={single.checklists.main} />).toBeTruthy();
+    expect(<Walkthrough checklists={single} />).toBeTruthy();
+  });
 });
 
 describe("inline steps", () => {

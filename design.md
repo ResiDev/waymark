@@ -341,13 +341,15 @@ type Checklists<
 declare function createChecklists<
   TContext = {},
   const TTasks extends TaskMap<NoInfer<TContext>>,
-  const TSelections extends ChecklistSelections<TTasks>,
+  const TSelections extends ChecklistSelections<TTasks> = DefaultChecklists<TTasks>,
 >(config: Readonly<{
   context?: TContext; // initial application data, not just a type declaration; omit when no task has a condition
   // ExactTasks applies Exactly to every task. An adapter passes its own task
   // type as the shape, which is how React admits `title`.
   tasks: TTasks & ExactTasks<TTasks, Task<TContext, any>>;
-  checklists: TSelections;
+  // Omit for one checklist named "main" (DEFAULT_CHECKLIST) of every task in map order.
+  // The name is fixed for good: skips are stored under it.
+  checklists?: TSelections;
 }> & ChecklistsOptions<TTasks, TSelections>): Checklists<TContext, TTasks, TSelections>;
 ```
 

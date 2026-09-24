@@ -84,6 +84,24 @@ describe("createChecklists", () => {
     expect(owner.checklists.home.getSnapshot().complete).toBe(true);
   });
 
+  it("has one checklist, main, of every task in order when it names none", () => {
+    const onChange = vi.fn();
+    const owner = createChecklists({
+      tasks: { tour: { walkthrough: single }, hello: {}, invite: {} },
+      onChange,
+    });
+    expect(Object.keys(owner.checklists)).toEqual(["main"]);
+    expect(owner.checklists.main.getSnapshot().tasks.map((row) => row.task.id)).toEqual([
+      "tour",
+      "hello",
+      "invite",
+    ]);
+
+    // Skips are stored under the checklist's name.
+    owner.checklists.main.skip("hello");
+    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: { main: ["hello"] } });
+  });
+
   it("rejects definitions it cannot show", () => {
     expect(() => createChecklists({ context: {}, tasks: {}, checklists: { a: [] } })).toThrow(
       /at least one task/,

@@ -1,7 +1,7 @@
 export { createChecklists, defineTask, defineWalkthrough } from "./definition";
 export { Walkthrough } from "./Walkthrough";
 export { Checklist, useChecklist } from "./Checklist";
-export { createLocalStorageRecord } from "waymark";
+export { createLocalStorageRecord, DEFAULT_CHECKLIST } from "waymark";
 
 export type {
   ChecklistLabels,
@@ -30,6 +30,7 @@ export type {
   ChecklistsEvent,
   ChecklistsOptions,
   ChecklistsSnapshot,
+  DefaultChecklists,
   NamedTask,
   SelectedTask,
   StepOf,
