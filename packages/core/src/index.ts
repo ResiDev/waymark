@@ -1,6 +1,6 @@
 export { defineWalkthrough } from "./walkthrough";
 export { createRun } from "./run";
-export { createChecklists, defineTask, DEFAULT_CHECKLIST } from "./checklists";
+export { createChecklists, DEFAULT_CHECKLIST } from "./checklists";
 export { createLocalStorageRecord } from "./storage";
 export { actions } from "./types";
 export type {

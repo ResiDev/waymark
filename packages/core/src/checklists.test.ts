@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { createChecklists, defineTask } from "./checklists";
+import { createChecklists } from "./checklists";
+import type { Task } from "./checklists";
 import type { ChecklistsEvent, Stored } from "./checklists";
 import { defineWalkthrough } from "./walkthrough";
 
@@ -1041,9 +1042,9 @@ describe("re-entrancy and errors", () => {
   });
 });
 
-describe("defineTask", () => {
-  it("returns the task unchanged for use in another owner", () => {
-    const task = defineTask<Context>()({ walkthrough: guide, isComplete: (c) => c.hasDeck });
+describe("a task written in its own file", () => {
+  it("is used unchanged by an owner", () => {
+    const task = { walkthrough: guide, isComplete: (c) => c.hasDeck } satisfies Task<Context>;
     const owner = createChecklists({
       context,
       tasks: { deck: task },

@@ -3,8 +3,8 @@ import {
   createChecklists as createCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
 } from "waymark";
-import { Checklist, createChecklists, defineTask, defineWalkthrough, useChecklist, Walkthrough } from "./index";
-import type { WalkthroughStep } from "./types";
+import { Checklist, createChecklists, defineWalkthrough, useChecklist, Walkthrough } from "./index";
+import type { ReactTask, WalkthroughStep } from "./types";
 
 /**
  * The adapter's inference claims, checked by `tsc`. Nothing here runs a
@@ -16,12 +16,14 @@ type AppContext = typeof initialContext;
 
 const deckSteps = defineWalkthrough([{ content: "Open decks", meta: { helpUrl: "/help" } }, { content: "Press new" }]);
 const photoSteps = defineWalkthrough([{ content: "Pick a photo", waymark: "avatar" }]);
+/** A task written in its own file: `satisfies` supplies the context type and keeps the step type. */
+const addPhoto = { title: "Add a photo", walkthrough: photoSteps } satisfies ReactTask<AppContext>;
 
 const owner = createChecklists({
   context: initialContext,
   tasks: {
     "create-deck": { title: "Create a deck", walkthrough: deckSteps, isComplete: (c) => c.hasDeck },
-    "add-photo": defineTask<AppContext>()({ title: "Add a photo", walkthrough: photoSteps }),
+    "add-photo": addPhoto,
     "say-hello": { title: "Say hello", description: "No guidance needed" },
   },
   checklists: { home: ["create-deck", "add-photo", "say-hello"], decks: ["create-deck"] },
@@ -82,11 +84,12 @@ describe("React definition functions", () => {
     // @ts-expect-error misspelled delayMs
     defineWalkthrough([{ content: "Open decks", advance: { click: true, delay: 500 } }]);
 
-    defineTask<AppContext>()({
+    const misspelled = {
       title: "Add a photo",
       // @ts-expect-error misspelled description
       descripton: "Pick one you like",
-    });
+    } satisfies ReactTask<AppContext>;
+    expectTypeOf(misspelled).toBeObject();
 
     const create = () =>
       createChecklists({
@@ -197,20 +200,24 @@ describe("Checklist and useChecklist", () => {
     expectTypeOf(Headless).toBeFunction();
   });
 
-  it("types defineTask from the app context and requires a title", () => {
-    const task = defineTask<AppContext>()({
+  it("types a task written with satisfies from the app context and requires a title", () => {
+    const task = {
       title: "Add a photo",
       action: { label: "Choose", onSelect: () => {} },
       isComplete: (c) => {
         expectTypeOf(c).toEqualTypeOf<AppContext>();
         return c.hasPhoto;
       },
-    });
-    expectTypeOf(task.title).toEqualTypeOf<"Add a photo">();
+    } satisfies ReactTask<AppContext>;
+    expectTypeOf(task.title).toEqualTypeOf<string>();
     // @ts-expect-error a React task has a title
-    defineTask<AppContext>()({ walkthrough: deckSteps });
-    // @ts-expect-error steps need content
-    defineTask<AppContext>()({ title: "x", walkthrough: defineCoreWalkthrough([{ waymark: "save" }]) });
+    const untitled = { walkthrough: deckSteps } satisfies ReactTask<AppContext>;
+    const plain = {
+      title: "x",
+      // @ts-expect-error steps need content
+      walkthrough: defineCoreWalkthrough([{ waymark: "save" }]),
+    } satisfies ReactTask<AppContext>;
+    expectTypeOf([untitled, plain]).toBeArray();
     expectTypeOf<WalkthroughStep["content"]>().not.toBeNever();
   });
 });

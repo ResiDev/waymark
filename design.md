@@ -114,7 +114,7 @@ collection.stop(); // Ends any active guidance.
 ```ts
 // One objective. TContext types application data; TStep types walkthrough instructions.
 // Map keys supply ids. Tasks written inline are typed from the initial context;
-// tasks in other files go through defineTask (below).
+// tasks in other files are written with `satisfies` (below).
 type Task<TContext, TStep extends Step = Step> = Readonly<{
   // The steps inline, or a Walkthrough from defineWalkthrough to share between
   // tasks. Creation checks inline steps as defineWalkthrough would, naming the task.
@@ -140,13 +140,15 @@ type Exactly<T, TShape> = T extends unknown
 
 // For tasks declared outside createChecklists. An arrow parameter is typed by
 // the expression it is written in, so a task in its own file has no context
-// type unless something supplies it. Curried, as in Zustand's create<T>()():
-// TypeScript cannot infer TStep while TContext is given by hand in one call.
+// type unless something supplies it. `satisfies` does: it types the condition's
+// parameter, keeps the written shape so the step type is still inferred, and
+// rejects a misspelled field with the compiler's own "did you mean" message.
+// No helper is needed; a curried defineTask<AppContext>()(...) in the style of
+// Zustand's create<T>()() was tried and dropped, since its Exactly-based check
+// reports a typo as "'string' is not assignable to 'never'".
 //   export type AppContext = typeof initialContext;   // once, in setup
-//   "create-deck": defineTask<AppContext>()({ walkthrough, isComplete: (c) => c.hasDeck })
-declare function defineTask<TContext>(): <const TTask extends Task<TContext, any>>(
-  task: TTask & Exactly<TTask, Task<TContext, any>>,
-) => TTask;
+//   export const createDeck = { walkthrough, isComplete: (c) => c.hasDeck } satisfies Task<AppContext>;
+// `as const satisfies` keeps literal types inside `meta` as well.
 
 // The inferred keys are the only valid task ids.
 type TaskMap<TContext> = Readonly<Record<string, Task<TContext, any>>>;
@@ -341,7 +343,7 @@ type Checklists<
 
 // Infer context from its initial values only; checks must accept that shape.
 // Context is not const-inferred: false/true should widen to boolean.
-// No generics at the creation site; only tasks in other files need defineTask.
+// No generics at the creation site; only tasks in other files need `satisfies`.
 // Without a context, TContext is {}: a condition reading a field does not compile.
 declare function createChecklists<
   TContext = {},
@@ -424,7 +426,7 @@ declare function createLocalStorageRecord(key: string): Readonly<{
 // Application setup owns both the storage key and live instance.
 const collection = createChecklists({
   context: { hasDeck: false, hasPhoto: false }, // initial values also infer the type
-  tasks: { ...accountTasks, ...deckTasks }, // built with defineTask<AppContext>() in their own files
+  tasks: { ...accountTasks, ...deckTasks }, // written with `satisfies Task<AppContext>` in their own files
   checklists: { home: ["add-photo", "create-deck"], decks: ["create-deck"] },
   // Loaded once at creation, saved after each local change (before onChange).
   // Any { load, save } works; `stored` and `storage` cannot be given together.
@@ -462,10 +464,11 @@ its own lifecycle; nothing here is React-specific.
 ## React adapter
 
 ```ts
-// React extends task content, not state ownership. Its createChecklists,
-// defineTask and defineWalkthrough are core's at runtime; they differ only in
-// type, holding tasks to ReactTask and steps to WalkthroughStep so React's
-// fields are known. React applications import all three from react-waymark.
+// React extends task content, not state ownership. Its createChecklists and
+// defineWalkthrough are core's at runtime; they differ only in type, holding
+// tasks to ReactTask and steps to WalkthroughStep so React's fields are known.
+// React applications import both from react-waymark, and write a task in its
+// own file as `{ ... } satisfies ReactTask<AppContext>`.
 type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
   title: ReactNode;
   description?: ReactNode; // shown inline beneath the title; no Run needed
@@ -670,7 +673,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - `taskStopped` carries `reason: "finished" | "skipped" | "stopped"`.
 - Event order per change: task events, then `checklistComplete` for each newly complete view in declaration order.
 - Conditions run only in `update`; finishing a walkthrough does not re-check them.
-- Tasks in separate files use the curried `defineTask<AppContext>()` helper; inline tasks need nothing.
+- Tasks in separate files are written `{ ... } satisfies Task<AppContext>` (or `ReactTask`); inline tasks need nothing. The curried `defineTask<AppContext>()` helper was dropped: `satisfies` gives the same inference with the compiler's own excess-property error.
 - A task's `walkthrough` may be its steps written inline. Snapshots keep the task as written; the owner checks the steps at creation and builds the Walkthrough itself.
 - Commands are re-entrant on the same terms as the Run's `act`.
 - Ships from the existing `waymark` and `react-waymark` entry points; both are `sideEffects: false`.

@@ -7,7 +7,6 @@ import type {
   Checklists,
   DefaultChecklists,
   ChecklistsConfig,
-  Exactly,
   ExactStep,
   Step,
   Walkthrough,
@@ -28,23 +27,10 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
 }
 
 /**
- * Types a React task declared away from `createChecklists`: a title, optional
- * description and action, and a walkthrough with React content. Curried like
- * core's `defineTask` so the step type is still inferred:
- *
- *   export type AppContext = typeof initialContext;
- *   "add-photo": defineTask<AppContext>()({ title: "Add a photo", isComplete: (c) => c.hasPhoto })
- */
-export function defineTask<TContext>(): <const TTask extends ReactTask<TContext>>(
-  task: TTask & Exactly<TTask, ReactTask<TContext>>,
-) => TTask {
-  return (task) => task;
-}
-
-/**
  * Core's `createChecklists` with every Task held to `ReactTask`: a title is
  * required, and the display fields sit beside core's rather than in `meta`.
- * Steps written inline on a Task are held to `WalkthroughStep`.
+ * Steps written inline on a Task are held to `WalkthroughStep`. A Task in its
+ * own file is written `{ ... } satisfies ReactTask<AppContext>`.
  */
 export const createChecklists = createCoreChecklists as <
   TContext = {},

@@ -36,6 +36,14 @@ import type {
  * reads; TStep types its walkthrough's instructions. Map keys supply ids.
  */
 export type Task<TContext, TStep extends Step = Step> = Readonly<{
+  // A Task declared away from `createChecklists` has no context type unless
+  // something supplies it. `satisfies` does, keeps the written shape for step
+  // inference, and rejects a misspelled field with the compiler's own message:
+  //
+  //   export type AppContext = typeof initialContext;
+  //   export const addPhoto = { walkthrough, isComplete: (c) => c.hasPhoto } satisfies Task<AppContext>;
+  //
+  // `as const satisfies` keeps literal types inside `meta` too.
   /**
    * The Steps themselves, or a Walkthrough built with `defineWalkthrough` to
    * share between Tasks. Either way the owner checks them at creation.
@@ -50,19 +58,6 @@ export type Task<TContext, TStep extends Step = Step> = Readonly<{
   /** The application's own data for this Task. Core keeps it in snapshots and ignores it. */
   meta?: unknown;
 }>;
-
-/**
- * Types a Task declared away from `createChecklists`, where nothing supplies
- * the context type. Curried so TypeScript can still infer the step type:
- *
- *   export type AppContext = typeof initialContext;
- *   "create-deck": defineTask<AppContext>()({ walkthrough, isComplete: (c) => c.hasDeck })
- */
-export function defineTask<TContext>(): <const TTask extends Task<TContext>>(
-  task: TTask & Exactly<TTask, Task<TContext>>,
-) => TTask {
-  return (task) => task;
-}
 
 export type TaskMap<TContext> = Readonly<Record<string, Task<TContext>>>;
 export type TaskId<TTasks> = keyof TTasks & string;
@@ -505,7 +500,7 @@ type Change = {
 /**
  * Infers the context type from its initial values only, so `false` widens to
  * `boolean`. Tasks written inline are typed from that context; tasks in other
- * files go through `defineTask`. Without a context it is `{}`, so a condition
+ * files use `satisfies Task<AppContext>`. Without a context it is `{}`, so a condition
  * that reads a field does not compile.
  */
 export function createChecklists<

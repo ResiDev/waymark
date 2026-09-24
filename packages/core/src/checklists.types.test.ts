@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from "vitest";
-import { createChecklists, defineTask } from "./checklists";
-import type { ChecklistsEvent, StepOf, Stored } from "./checklists";
+import { createChecklists } from "./checklists";
+import type { ChecklistsEvent, StepOf, Stored, Task } from "./checklists";
 import { defineWalkthrough } from "./walkthrough";
 import type { Run } from "./types";
 
@@ -18,10 +18,10 @@ const deckSteps = defineWalkthrough([
 ]);
 const photoSteps = defineWalkthrough([{ waymark: "avatar" }]);
 
-const external = defineTask<AppContext>()({
+const external = {
   walkthrough: photoSteps,
   isComplete: (c) => c.hasPhoto,
-});
+} satisfies Task<AppContext>;
 
 describe("createChecklists types", () => {
   it("infers context from initial values and types inline conditions from it", () => {
@@ -294,20 +294,24 @@ describe("createChecklists types", () => {
     });
   });
 
-  it("types defineTask conditions from the supplied context and keeps meta", () => {
-    const task = defineTask<AppContext>()({
+  it("types a task written with satisfies from the supplied context and keeps meta", () => {
+    const task = {
       meta: { title: "Add a photo" },
       isComplete: (c) => {
         expectTypeOf(c).toEqualTypeOf<AppContext>();
         return c.hasPhoto;
       },
-    });
-    expectTypeOf(task.meta.title).toEqualTypeOf<"Add a photo">();
+    } satisfies Task<AppContext>;
+    // `meta` is `unknown` to core, so its literals widen unless written `as const`.
+    expectTypeOf(task.meta.title).toEqualTypeOf<string>();
+    const literal = { meta: { title: "Add a photo" } } as const satisfies Task<AppContext>;
+    expectTypeOf(literal.meta.title).toEqualTypeOf<"Add a photo">();
 
-    defineTask<AppContext>()({
+    const wrongContext = {
       // @ts-expect-error the condition must accept the app context
       isComplete: (c: { other: string }) => c.other === "",
-    });
+    } satisfies Task<AppContext>;
+    expectTypeOf(wrongContext).toBeObject();
   });
 
   it("rejects a field that neither core nor meta names", () => {
@@ -316,10 +320,11 @@ describe("createChecklists types", () => {
     // @ts-expect-error application data belongs in meta
     defineWalkthrough([{ waymark: "new-deck", helpUrl: "/help/decks" }]);
 
-    defineTask<AppContext>()({
+    const misspelled = {
       // @ts-expect-error misspelled isComplete
       iscomplete: (c: AppContext) => c.hasDeck,
-    });
+    } satisfies Task<AppContext>;
+    expectTypeOf(misspelled).toBeObject();
 
     const create = () =>
       createChecklists({
