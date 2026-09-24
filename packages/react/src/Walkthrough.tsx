@@ -114,9 +114,11 @@ function ChecklistGuidance({
   }, [checklists, ui]);
 
   if (active === null) return null;
+  const { run } = active;
   return (
     <RunView
-      run={active.run}
+      run={run}
+      skipTask={active.checklists.length > 0 ? () => checklists.skipActive(run) : undefined}
       waymarkPadding={checklists.waymarkPadding}
       renderPopover={renderPopover}
       dialogRef={dialogRef}
@@ -127,12 +129,14 @@ function ChecklistGuidance({
 
 function RunView<TStep extends WalkthroughStep>({
   run,
+  skipTask,
   waymarkPadding,
   renderPopover,
   dialogRef,
   beaconRef,
 }: UiRefs & {
   run: Run<TStep>;
+  skipTask?: (() => void) | undefined;
   waymarkPadding: number;
   renderPopover?: ((props: WalkthroughRenderProps<TStep>) => ReactNode) | undefined;
 }) {
@@ -160,6 +164,7 @@ function RunView<TStep extends WalkthroughStep>({
       collapse,
       reset,
       exit,
+      ...(skipTask ? { skipTask } : {}),
     };
     return renderPopover?.(renderProps) ?? <DefaultPopover {...renderProps} />;
   };

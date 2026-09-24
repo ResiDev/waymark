@@ -413,13 +413,30 @@ describe("guidance", () => {
     expect(() => owner.start("add-photo", ["home", "nope"])).toThrow(/Unknown checklist "nope"/);
   });
 
-  it("keeps the first checklists when the task already active is started again", () => {
-    const owner = setup();
+  it("adds the checklists when the task already active is started again", () => {
+    const onEvent = vi.fn();
+    const owner = setup({ onEvent });
     owner.checklists.decks.start("create-deck");
-    const active = owner.getSnapshot().active;
-    owner.start("create-deck", "home");
-    expect(owner.getSnapshot().active).toBe(active);
-    expect(active!.checklists).toEqual(["decks"]);
+    const first = owner.getSnapshot().active!;
+    const home = vi.fn();
+    owner.checklists.home.subscribe(home);
+
+    owner.checklists.home.start("create-deck");
+    const merged = owner.getSnapshot().active!;
+    expect(merged.checklists).toEqual(["decks", "home"]);
+    expect(merged.run).toBe(first.run);
+    expect(owner.checklists.home.getSnapshot().active).toBe(merged);
+    expect(home).toHaveBeenCalledOnce();
+    expect(types(onEvent)).toEqual(["taskStarted:create-deck"]);
+
+    // Nothing new to count for: the same snapshot.
+    owner.start("create-deck");
+    owner.start("create-deck", "decks");
+    expect(owner.getSnapshot().active).toBe(merged);
+
+    owner.skipActive(merged.run);
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
+    expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
   });
 
   it("hides the Run from views that do not hold its task", () => {

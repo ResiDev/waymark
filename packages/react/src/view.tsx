@@ -150,6 +150,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
   previous,
   advance,
   exit,
+  skipTask,
 }: WalkthroughRenderProps<TStep>) {
   const secondaryButton = {
     border: 0,
@@ -188,9 +189,16 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
           gap: 12,
         }}
       >
-        <button type="button" onClick={exit} style={secondaryButton}>
-          Skip
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button type="button" onClick={exit} style={secondaryButton}>
+            Close
+          </button>
+          {skipTask && (
+            <button type="button" onClick={skipTask} style={secondaryButton}>
+              Skip task
+            </button>
+          )}
+        </div>
         <div style={{ display: "flex", gap: 10 }}>
           {snapshot.stepIndex > 0 && (
             <button type="button" onClick={previous} style={secondaryButton}>

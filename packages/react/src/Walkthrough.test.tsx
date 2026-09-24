@@ -1,7 +1,7 @@
 import { act, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createChecklists, defineWalkthrough, Walkthrough } from "./index";
+import { createChecklists, defineWalkthrough, Walkthrough, type WalkthroughRenderProps } from "./index";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -45,6 +45,12 @@ afterEach(async () => {
   delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
     .IS_REACT_ACT_ENVIRONMENT;
 });
+
+/** The dialog's button with this label, if any. */
+const buttonNamed = (label: string) =>
+  [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+    (button) => button.textContent === label,
+  );
 
 const addTarget = (waymark: string, label: string): HTMLButtonElement => {
   const target = document.createElement("button");
@@ -215,8 +221,7 @@ describe("Walkthrough", () => {
       );
     });
 
-    const finish = document.querySelector('[role="dialog"] button:last-child');
-    await act(async () => (finish as HTMLButtonElement).click());
+    await act(async () => buttonNamed("Finish")!.click());
 
     expect(phases).toEqual(["advance:completed", "finish:completed"]);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -258,8 +263,7 @@ describe("Walkthrough with checklists", () => {
     await act(async () => owner.start("read-tips"));
     expect(dialog()).toHaveTextContent("Here are the tips");
 
-    const finish = dialog()!.querySelector("button:last-child") as HTMLButtonElement;
-    await act(async () => finish.click());
+    await act(async () => buttonNamed("Finish")!.click());
     expect(dialog()).toBeNull();
     expect(owner.getSnapshot().active).toBeNull();
     expect(owner.checklists.home.getSnapshot().tasks[1]!.status).toBe("done");
@@ -306,6 +310,28 @@ describe("Walkthrough with checklists", () => {
     await act(async () => (dialog()!.querySelector("button") as HTMLButtonElement).click());
     expect(owner.getSnapshot().active).toBeNull();
     expect(dialog()).toBeNull();
+  });
+
+  it("offers to skip the task in the checklists its guidance counts for", async () => {
+    const owner = setup();
+    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    // Started from the owner with no checklists: nothing to skip in.
+    await act(async () => owner.start("create-deck"));
+    expect(buttonNamed("Skip task")).toBeUndefined();
+
+    await act(async () => owner.checklists.decks.start("create-deck"));
+    await act(async () => buttonNamed("Skip task")!.click());
+    expect(dialog()).toBeNull();
+    expect(owner.checklists.decks.getSnapshot().tasks[0]!.status).toBe("skipped");
+    expect(owner.checklists.home.getSnapshot().tasks[0]!.status).toBe("todo");
+  });
+
+  it("offers no task skip to a walkthrough it owns", async () => {
+    const renderPopover = vi.fn((_props: WalkthroughRenderProps) => null);
+    const walkthrough = defineWalkthrough([{ content: "Alone" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} renderPopover={renderPopover} />));
+    expect(renderPopover).toHaveBeenCalled();
+    expect(renderPopover.mock.calls.every(([props]) => !("skipTask" in props))).toBe(true);
   });
 
   it("follows the owner when guidance is stopped or replaced", async () => {

@@ -200,7 +200,7 @@ type ChecklistSnapshot<TTask extends { readonly id: string }> = Readonly<{
   complete: boolean; // finishedCount === taskCount
   // The shared active Run only when its task belongs to this checklist.
   // A done or skipped task may still have active guidance. `checklists` are
-  // the ones the Run counts for, as `start` was given them.
+  // the ones the Run counts for, as every `start` of it named them.
   active: Readonly<{ task: TTask; run: Run<StepOf<TTask>>; checklists: readonly string[] }> | null;
 }>;
 
@@ -237,7 +237,7 @@ type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
   | Readonly<{
       type: "taskStopped";
       task: NamedTask<TTasks>;
-      // finished: reached the last step. skipped: a view skipped it.
+      // finished: reached the last step. skipped: a view or `skipActive` skipped it.
       // stopped: exit from the popover, stop(), or start() of another task.
       reason: "finished" | "skipped" | "stopped";
     }>
@@ -310,7 +310,7 @@ type Checklists<
     active: Readonly<{
       task: NamedTask<TTasks>;
       run: Run<any>;
-      checklists: readonly (keyof TSelections & string)[]; // as `start` was given them
+      checklists: readonly (keyof TSelections & string)[]; // as every `start` of it named them
     }> | null;
   }>;
   subscribe: (listener: () => void) => () => void; // fires when active changes
@@ -369,7 +369,7 @@ unsubscribe on unmount.
 
 | Input | Shared state change |
 |---|---|
-| `start(id)` | Exit the previous Run, commit the new active task with the checklists it counts for (none unless named), create its Run with core's own `onEvent`. Finish and exit are observed there; core never subscribes to the Run, since subscribing switches on page watching. No-op without guidance or if already active. |
+| `start(id)` | Exit the previous Run, commit the new active task with the checklists it counts for (none unless named), create its Run with core's own `onEvent`. Finish and exit are observed there; core never subscribes to the Run, since subscribing switches on page watching. If the task is already active, add the named checklists to its Run's instead, with no event. No-op without guidance. |
 | `stop()` | Exit the active Run and clear active. No-op when nothing is active. |
 | Run finishes without `isComplete` | Mark its task done and clear active, updating every affected view. |
 | Run finishes with `isComplete` | Clear active; finishing instructions does not assert application completion. |
@@ -463,6 +463,9 @@ type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
 // `walkthrough` it creates and owns a Run, as today. With `checklists` it draws
 // whichever Run the owner started, binds its elements through bindUi on mount,
 // and releases on unmount. Removing the renderer also stops its active Run.
+// Its popover gets `skipTask`, calling `skipActive` with the Run it draws, when
+// the guidance counts for a checklist; the default popover shows it as "Skip
+// task", beside "Close", which exits.
 // Both shapes share popover, beacon, shade, and placement code. Padding and
 // onEvent are owner options in the second shape.
 // Checklist views never render guidance, so two views showing the same task on

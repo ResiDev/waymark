@@ -34,6 +34,11 @@ export type WalkthroughRenderProps<
   collapse: () => void;
   reset: () => void;
   exit: () => void;
+  /**
+   * Skips the Task in the checklists its guidance counts for. Only when drawn
+   * for a Checklists owner and the guidance counts for at least one.
+   */
+  skipTask?: () => void;
 }>;
 
 /** The self-owned shape: the component creates and owns one Run of this walkthrough. */

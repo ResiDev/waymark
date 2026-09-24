@@ -132,7 +132,11 @@ export type ChecklistSnapshot<TTask extends { readonly id: string }> = Readonly<
 }>;
 
 export type TaskCommands<TId extends string> = Readonly<{
-  /** Starts or replays guidance; exits any previous Run. No-op without a walkthrough or if already active. */
+  /**
+   * Starts or replays guidance counting for this checklist; exits any previous
+   * Run. If the Task is already active, its Run counts for this checklist too.
+   * No-op without a walkthrough.
+   */
   start: (id: TId) => void;
   /** Records done in every view; guidance can continue. */
   markDone: (id: TId) => void;
@@ -161,7 +165,7 @@ export type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTas
   | Readonly<{
       type: "taskStopped";
       task: NamedTask<TTasks>;
-      /** finished: reached the last step. skipped: a view skipped it. stopped: exit, `stop()`, or another `start()`. */
+      /** finished: reached the last step. skipped: a view or `skipActive` skipped it. stopped: exit, `stop()`, or another `start()`. */
       reason: "finished" | "skipped" | "stopped";
     }>
   | Readonly<{
@@ -200,7 +204,7 @@ export type ChecklistsSnapshot<
     task: NamedTask<TTasks>;
     run: Run<any>;
     /**
-     * The checklists the Run counts for, as `start` was given them. A
+     * The checklists the Run counts for, as every `start` of it named them. A
      * renderer skips from guidance with `skipActive(run)`; with none, it offers no skip.
      */
     checklists: readonly (keyof TSelections & string)[];
@@ -217,8 +221,9 @@ export type Checklists<
   /**
    * Starts or replays guidance; exits any previous Run. `checklists` are the
    * ones the guidance counts for, where a skip from it applies; a view's
-   * `start` names its own. Throws for a checklist that does not select the
-   * Task. No-op without a walkthrough or if already active.
+   * `start` names its own. If the Task is already active, its Run counts for
+   * them too. Throws for a checklist that does not select the Task. No-op
+   * without a walkthrough.
    */
   start: <TId extends TaskId<TTasks>>(
     id: TId,
@@ -551,7 +556,13 @@ export function createChecklists<
   const start = (id: string, checklists: readonly string[]) =>
     send((change) => {
       const task = named[id];
-      if (task?.walkthrough === undefined || active?.task.id === id) return;
+      if (task?.walkthrough === undefined) return;
+      if (active?.task.id === id) {
+        // Already guiding this Task: it now counts for these checklists too.
+        const merged = unique([...active.checklists, ...checklists]);
+        if (merged.length > active.checklists.length) active = { ...active, checklists: merged };
+        return;
+      }
       release(change, "stopped");
       const run: Run<any> = createRun(task.walkthrough, {
         ...runOptions,
