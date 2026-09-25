@@ -157,6 +157,7 @@ export type Checklist<TTask extends { readonly id: string }> = TaskCommands<
 > &
   Readonly<{
     getSnapshot: () => ChecklistSnapshot<TTask>;
+    /** Calls the listener at once with the current snapshot, then with each new one. */
     subscribe: (listener: (snapshot: ChecklistSnapshot<TTask>) => void) => () => void;
   }>;
 
@@ -314,6 +315,7 @@ export type Checklists<
 
   /** Changes identity only when the active Task changes. */
   getSnapshot: () => ChecklistsSnapshot<TTasks, TSelections>;
+  /** Calls the listener at once with the current snapshot, then with each new one. */
   subscribe: (
     listener: (snapshot: ChecklistsSnapshot<TTasks, TSelections>) => void,
   ) => () => void;
@@ -322,7 +324,8 @@ export type Checklists<
    * subscribes to whichever Run is active, swapping as it changes, so the
    * listener hears every step too. A Run watches the page only while
    * subscribed: reading the active Run through `subscribe` alone leaves its
-   * Waymark searching and its clicks unheard. Unsubscribing lets go of both.
+   * Waymark searching and its clicks unheard. The listener is called at once,
+   * like `subscribe`'s. Unsubscribing lets go of both.
    */
   subscribeActive: (
     listener: (snapshot: ActiveSnapshot<TTasks, TSelections>) => void,

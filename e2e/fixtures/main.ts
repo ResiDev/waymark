@@ -93,7 +93,6 @@ const start = (steps: readonly Step[], options: StartOptions = {}) => {
   };
   run = createRun(defineWalkthrough(steps.map(hydrate)) as Walkthrough, runOptions);
   stop = run.subscribe(render);
-  render();
   return run;
 };
 

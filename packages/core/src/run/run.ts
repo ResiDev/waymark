@@ -274,17 +274,19 @@ export function createRun<TStep extends Step>(
     subscribe: (listener) => {
       const first = listeners.size === 0;
       listeners.add(listener);
-      if (first) {
-        try {
-          send({ kind: "mounted" });
+      try {
+        if (first) send({ kind: "mounted" });
+        queue.now(() => {
           // Queued with the first look so that `start` precedes anything a
           // subscriber does on seeing it. Once started it is a no-op.
-          sendRead({ kind: "start" });
-        } catch (error) {
-          listeners.delete(listener);
-          if (listeners.size === 0) send({ kind: "unmounted" });
-          throw error;
-        }
+          if (first) sendRead({ kind: "start" });
+          // Called at once with the Snapshot as it stands, before those are obeyed.
+          queue.invoke(() => listener(state.snapshot));
+        });
+      } catch (error) {
+        listeners.delete(listener);
+        if (listeners.size === 0) send({ kind: "unmounted" });
+        throw error;
       }
       return () => {
         if (listeners.delete(listener) && listeners.size === 0) {

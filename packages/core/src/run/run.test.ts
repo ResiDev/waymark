@@ -56,6 +56,15 @@ const watch = <TStep extends Step>(run: {
   };
 };
 
+/** Leaves out the call `subscribe` makes at once, keeping only changes. */
+const skipFirstCall = (listener: () => void) => {
+  let called = false;
+  return () => {
+    if (called) listener();
+    called = true;
+  };
+};
+
 beforeEach(() => {
   document.body.innerHTML = "";
   frames = new Map();
@@ -95,15 +104,30 @@ describe("createRun", () => {
     expect(target).not.toHaveAttribute("aria-haspopup");
   });
 
-  it("hands subscribers each new Snapshot", () => {
+  it("calls a subscriber at once with the current Snapshot, then with each new one", () => {
     const run = createRun(defineWalkthrough([{}, {}]));
     const listener = vi.fn();
     run.subscribe(listener);
-    listener.mockClear();
+    expect(listener).toHaveBeenCalledExactlyOnceWith(run.getSnapshot());
 
     run.act("advance");
-    expect(listener).toHaveBeenCalledWith(run.getSnapshot());
+    expect(listener).toHaveBeenLastCalledWith(run.getSnapshot());
     expect(listener.mock.lastCall![0]).toMatchObject({ stepIndex: 1 });
+  });
+
+  it("calls a subscriber added from inside a listener before subscribe returns", () => {
+    const run = createRun(defineWalkthrough([{}, {}]));
+    const inner = vi.fn();
+    let calledBeforeReturn = false;
+    run.subscribe(skipFirstCall(() => {
+      run.subscribe(inner);
+      calledBeforeReturn = inner.mock.calls.length === 1;
+    }));
+
+    run.act("advance");
+    expect(calledBeforeReturn).toBe(true);
+    expect(inner).toHaveBeenCalledExactlyOnceWith(run.getSnapshot());
+    expect(inner.mock.lastCall![0]).toMatchObject({ stepIndex: 1 });
   });
 
   it.each(["unsubscribe", "exit", "advance"])("restores authored ARIA attributes on %s", (cleanup) => {
@@ -337,7 +361,7 @@ describe("createRun", () => {
     ]));
     const view = watch(run);
     const seen: unknown[] = [];
-    const stop = run.subscribe(() => seen.push(run.getSnapshot()));
+    const stop = run.subscribe(skipFirstCall(() => seen.push(run.getSnapshot())));
     const target = addTarget("later");
 
     flush();
@@ -587,11 +611,11 @@ describe("createRun", () => {
     const run = createRun(defineWalkthrough([{}, {}, {}]));
     const seenByFirst: number[] = [];
     const seenBySecond: number[] = [];
-    run.subscribe(() => {
+    run.subscribe(skipFirstCall(() => {
       seenByFirst.push(run.getSnapshot().stepIndex);
       if (run.getSnapshot().stepIndex === 1) run.act("advance");
-    });
-    run.subscribe(() => seenBySecond.push(run.getSnapshot().stepIndex));
+    }));
+    run.subscribe(skipFirstCall(() => seenBySecond.push(run.getSnapshot().stepIndex)));
 
     run.act("advance");
 
@@ -633,10 +657,10 @@ describe("createRun", () => {
     });
     watch(run);
     const seen: string[] = [];
-    const broken = run.subscribe(() => {
+    const broken = run.subscribe(skipFirstCall(() => {
       throw new Error("renderer broke");
-    });
-    run.subscribe(() => seen.push(run.getSnapshot().phase));
+    }));
+    run.subscribe(skipFirstCall(() => seen.push(run.getSnapshot().phase)));
 
     expect(() => run.act("advance")).toThrow("renderer broke");
 
@@ -652,12 +676,12 @@ describe("createRun", () => {
   it("gathers several callback errors into one", () => {
     const run = createRun(defineWalkthrough([{}]));
     watch(run);
-    run.subscribe(() => {
+    run.subscribe(skipFirstCall(() => {
       throw new Error("one");
-    });
-    run.subscribe(() => {
+    }));
+    run.subscribe(skipFirstCall(() => {
       throw new Error("two");
-    });
+    }));
 
     expect(() => run.act("exit")).toThrow(AggregateError);
   });
@@ -678,7 +702,7 @@ describe("createRun", () => {
     expect(frames.size).toBe(0);
   });
 
-  it("announces start before actions caused by the initial waymark notification", () => {
+  it("announces start before anything a subscriber does on its first call", () => {
     addTarget("save");
     const events: string[] = [];
     const run = createRun(defineWalkthrough([{ waymark: "save" }]), {
@@ -743,7 +767,7 @@ describe("createRun", () => {
       { waymark: "later", advance: { state: check } }, {},
     ]));
     const view = watch(run);
-    const stopBroken = run.subscribe(() => { throw subscriberError; });
+    const stopBroken = run.subscribe(skipFirstCall(() => { throw subscriberError; }));
     addTarget("later");
     check.mockImplementationOnce(() => { throw checkError; });
 
@@ -763,7 +787,7 @@ describe("createRun", () => {
   it("continues observing after a frame subscriber throws", () => {
     const run = createRun(defineWalkthrough([{ waymark: "later" }]));
     const view = watch(run);
-    const stopBroken = run.subscribe(() => { throw new Error("renderer"); });
+    const stopBroken = run.subscribe(skipFirstCall(() => { throw new Error("renderer"); }));
     const target = addTarget("later");
 
     expect(() => flush()).toThrow("renderer");
@@ -783,8 +807,9 @@ describe("createRun", () => {
       onEvent: (event) => { if (source === "start handler" && event.type === "start") fail(); },
     });
 
-    expect(() => run.subscribe(source === "subscriber" ? fail : () => {}))
-      .toThrow("startup failed");
+    // The subscriber throws on its first call, made inside subscribe.
+    const subscriber = source === "subscriber" ? vi.fn().mockImplementationOnce(fail) : () => {};
+    expect(() => run.subscribe(subscriber)).toThrow("startup failed");
     expect(frames.size).toBe(0);
     expect(target).not.toHaveAttribute("aria-haspopup");
     press("Escape");

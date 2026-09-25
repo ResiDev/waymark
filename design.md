@@ -231,7 +231,7 @@ type TaskCommands<TId extends string> = Readonly<{
 type Checklist<TTask extends { readonly id: string }> =
   TaskCommands<TTask["id"]> & Readonly<{
     getSnapshot: () => ChecklistSnapshot<TTask>; // stable until observable change
-    // The listener is handed the new snapshot; returns unsubscribe.
+    // Calls the listener at once with the current snapshot, then with each new one; returns unsubscribe.
     subscribe: (listener: (snapshot: ChecklistSnapshot<TTask>) => void) => () => void;
   }>;
 ```
@@ -336,7 +336,7 @@ type Checklists<
       checklists: readonly (keyof TSelections & string)[]; // as every `start` of it named them
     }> | null;
   }>;
-  subscribe: (listener: (snapshot) => void) => () => void; // fires when active changes
+  subscribe: (listener: (snapshot) => void) => () => void; // at once, then when active changes
   // For a renderer drawing guidance itself: subscribe, plus a subscription to
   // whichever Run is active, swapped as it changes. A Run watches the page only
   // while subscribed, so reading active.run through `subscribe` alone leaves its
@@ -686,7 +686,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Checklist and guidance rendering are browser-only. Server-rendered applications mount them after a matching empty region or placeholder; no server checklist snapshot is provided.
 - Custom popovers infer their step union from the supplied owner's tasks. Callers need no explicit generic; fields present on only some steps require narrowing.
 - Core observes the Run through `onEvent`, never `subscribe`.
-- Every store hands its listeners the new snapshot, and `getSnapshot` still returns it; React ignores the argument. `subscribeActive` has two sources, so it hands `{ active, step }`, a new object whenever either changes. Svelte's store contract would also need a call on subscribe; not provided.
+- Every store meets Svelte's store contract: `subscribe` calls the listener at once with the current snapshot, then with each new one, and `getSnapshot` still returns it. Svelte's `$store` and Solid's `from` take a view or the owner as it is; React's `useSyncExternalStore` ignores the argument and the extra call. A subscriber added inside a callback is still called before `subscribe` returns. `subscribeActive` has two sources, so it hands `{ active, step }`, a new object only when either changes, and calls the listener once on subscribing, not once per source.
 - One guidance renderer per owner; views only render lists and commands.
 - A root-mounted renderer keeps guidance across route changes. A page-mounted renderer stops guidance when removed; the app can also call `stop()` explicitly.
 - Versioning lives in the storage adapter's envelope, not in `Stored`.

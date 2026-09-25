@@ -15,6 +15,12 @@ export type Queue = Readonly<{
   invoke: (callback: () => void) => void;
   /** Calls each listener with the store's new snapshot. */
   notify: <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => void;
+  /**
+   * Runs work at once: in place inside a drain, else as a drain of its own.
+   * For a new subscriber's first call, which Svelte's store contract wants
+   * before `subscribe` returns. Whatever the work queues still waits its turn.
+   */
+  now: (work: () => void) => void;
   /** Report an error with those of the next drain, ahead of them. */
   fail: (error: unknown) => void;
 }>;
@@ -59,5 +65,7 @@ export function createQueue(failure: string): Queue {
     if (thrown.length > 1) throw new AggregateError(thrown, failure);
   };
 
-  return { run, invoke, notify, fail: (error) => errors.push(error) };
+  const now = (work: () => void) => (draining ? work() : run(work));
+
+  return { run, invoke, notify, now, fail: (error) => errors.push(error) };
 }

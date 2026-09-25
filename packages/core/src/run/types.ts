@@ -118,6 +118,9 @@ export type Run<TStep extends Step = Step> = Readonly<{
    */
   act: (action: Action) => void;
   getSnapshot: () => Snapshot<TStep>;
-  /** The listener is handed each new Snapshot; it may also read `getSnapshot`. */
+  /**
+   * The listener is handed the current Snapshot at once, then each new one;
+   * it may also read `getSnapshot`. Svelte's store contract.
+   */
   subscribe: (listener: (snapshot: Snapshot<TStep>) => void) => () => void;
 }>;

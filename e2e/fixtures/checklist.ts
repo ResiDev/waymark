@@ -132,10 +132,8 @@ function renderView(name: string, view: AnyView) {
   section.append(heading, list);
 }
 
-for (const [name, view] of views) {
-  renderView(name, view);
-  view.subscribe(() => renderView(name, view));
-}
+// Each subscribe renders at once, then on every change.
+for (const [name, view] of views) view.subscribe(() => renderView(name, view));
 
 ui.owner.append(
   button("stop", () => owner.stop()),
@@ -205,14 +203,15 @@ function drawRun() {
   }
 }
 
-/** Follow the owner and whichever Run it holds; subscribing is what switches page watching on. */
+/**
+ * Follow the owner and whichever Run it holds; subscribing is what switches
+ * page watching on, and draws at once.
+ */
 owner.subscribeActive(drawRun);
 
 $("#previous").addEventListener("click", () => owner.getSnapshot().active?.run.act("previous"));
 $("#advance").addEventListener("click", () => owner.getSnapshot().active?.run.act("advance"));
 $("#exit").addEventListener("click", () => owner.getSnapshot().active?.run.act("exit"));
-
-drawRun();
 
 // ---- what a script drives ------------------------------------------------------------
 

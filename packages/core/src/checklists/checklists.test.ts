@@ -190,6 +190,8 @@ describe("update", () => {
     const decks = vi.fn();
     owner.checklists.home.subscribe(home);
     owner.checklists.decks.subscribe(decks);
+    home.mockClear();
+    decks.mockClear();
 
     owner.update({ hasDeck: true, hasPhoto: false });
 
@@ -221,6 +223,7 @@ describe("update", () => {
     });
     const listener = vi.fn();
     owner.checklists.all.subscribe(listener);
+    listener.mockClear();
     seen.length = 0;
 
     owner.update({ ready: true });
@@ -292,6 +295,7 @@ describe("guidance", () => {
     const owner = setup({ onEvent });
     const ownerListener = vi.fn();
     owner.subscribe(ownerListener);
+    ownerListener.mockClear();
     const before = owner.getSnapshot();
 
     owner.checklists.decks.start("create-deck");
@@ -422,6 +426,7 @@ describe("guidance", () => {
     const { run } = owner.getSnapshot().active!;
     // Sent while create-deck is active, queued behind a start of add-photo.
     const unsubscribe = owner.checklists.home.subscribe(() => {
+      if (statuses(owner.checklists.home)["say-hello"] === "todo") return;
       unsubscribe();
       owner.checklists.home.start("add-photo");
       owner.skipActive(run);
@@ -446,6 +451,7 @@ describe("guidance", () => {
     const first = owner.getSnapshot().active!;
     const home = vi.fn();
     owner.checklists.home.subscribe(home);
+    home.mockClear();
 
     owner.checklists.home.start("create-deck");
     const merged = owner.getSnapshot().active!;
@@ -635,17 +641,32 @@ describe("guidance", () => {
 });
 
 describe("subscribe", () => {
-  it("hands view and owner listeners their new snapshot", () => {
+  it("calls view and owner listeners at once with the current snapshot, then with each new one", () => {
     const owner = setup();
     const view = vi.fn();
     const own = vi.fn();
     owner.checklists.home.subscribe(view);
     owner.subscribe(own);
+    expect(view).toHaveBeenCalledExactlyOnceWith(owner.checklists.home.getSnapshot());
+    expect(own).toHaveBeenCalledExactlyOnceWith({ active: null });
 
     owner.start("read-tips");
     expect(view).toHaveBeenLastCalledWith(owner.checklists.home.getSnapshot());
     expect(own).toHaveBeenLastCalledWith(owner.getSnapshot());
     expect(own.mock.lastCall![0].active.task.id).toBe("read-tips");
+  });
+
+  it("throws from subscribe if the listener throws when first called, and drops it", () => {
+    const owner = setup();
+    const broken = vi.fn(() => {
+      throw new Error("renderer broke");
+    });
+    // subscribe calls the listener before returning, so its error surfaces here.
+    expect(() => owner.checklists.home.subscribe(broken)).toThrow("renderer broke");
+
+    // The caller got no unsubscribe, so the listener is not kept.
+    owner.markDone("say-hello");
+    expect(broken).toHaveBeenCalledOnce();
   });
 });
 
@@ -671,6 +692,7 @@ describe("subscribeActive", () => {
     const { owner, runEvents } = setupRuns();
     const listener = vi.fn();
     owner.subscribeActive(listener);
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ active: null, step: null });
 
     owner.start("tour");
     expect(runEvents).toEqual(["start"]);
@@ -684,11 +706,15 @@ describe("subscribeActive", () => {
     expect(listener).toHaveBeenLastCalledWith({ active: null, step: null });
   });
 
-  it("wakes a Run already active when it subscribes", () => {
+  it("wakes a Run already active when it subscribes, calling the listener once", () => {
     const { owner, runEvents } = setupRuns();
     owner.start("tour");
-    owner.subscribeActive(() => {});
+    const listener = vi.fn();
+    owner.subscribeActive(listener);
     expect(runEvents).toEqual(["start"]);
+    // Owner and Run each call at once on subscribe; the listener hears one call.
+    const { active } = owner.getSnapshot();
+    expect(listener).toHaveBeenCalledExactlyOnceWith({ active, step: active!.run.getSnapshot() });
   });
 
   it("follows the Run that replaces the last one", () => {
@@ -925,6 +951,8 @@ describe("load and clear", () => {
     const decks = vi.fn();
     owner.checklists.home.subscribe(home);
     owner.checklists.decks.subscribe(decks);
+    home.mockClear();
+    decks.mockClear();
     onChange.mockClear();
     onEvent.mockClear();
 
@@ -958,6 +986,7 @@ describe("load and clear", () => {
     owner.start("add-photo");
     const listener = vi.fn();
     owner.checklists.home.subscribe(listener);
+    listener.mockClear();
     onChange.mockClear();
     onEvent.mockClear();
 
@@ -994,8 +1023,10 @@ describe("re-entrancy and errors", () => {
       onEvent: (event) => order.push(`event:${event.type}`),
     });
     owner.checklists.home.subscribe(() => {
-      order.push(`home:${statuses(owner.checklists.home)["read-tips"]}`);
-      if (statuses(owner.checklists.home)["say-hello"] === "todo") owner.markDone("say-hello");
+      const status = statuses(owner.checklists.home);
+      if (status["read-tips"] === "todo") return;
+      order.push(`home:${status["read-tips"]}`);
+      if (status["say-hello"] === "todo") owner.markDone("say-hello");
     });
 
     owner.markDone("read-tips");
@@ -1012,13 +1043,15 @@ describe("re-entrancy and errors", () => {
   it("keeps notifying when a listener throws, and reports the errors after", () => {
     const owner = setup();
     const after = vi.fn();
+    const done = () => statuses(owner.checklists.home)["say-hello"] === "done";
     owner.checklists.home.subscribe(() => {
-      throw new Error("first");
+      if (done()) throw new Error("first");
     });
     owner.checklists.home.subscribe(() => {
-      throw new Error("second");
+      if (done()) throw new Error("second");
     });
     owner.checklists.home.subscribe(after);
+    after.mockClear();
 
     expect(() => owner.markDone("say-hello")).toThrow(AggregateError);
     expect(after).toHaveBeenCalledOnce();

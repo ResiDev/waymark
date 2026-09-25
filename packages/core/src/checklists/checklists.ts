@@ -33,7 +33,9 @@ import type { Step, Walkthrough } from "../walkthrough/types";
  * done and what each view has skipped, and holds the Run of whichever Task's
  * walkthrough is currently being followed. Views and the owner are stores on
  * the same terms as a Run: `getSnapshot` is stable until something observable
- * changes, `subscribe` returns an unsubscribe.
+ * changes; `subscribe` calls the listener at once with the current snapshot,
+ * then with each new one, and returns an unsubscribe. That is Svelte's store
+ * contract, which React's `useSyncExternalStore` also accepts.
  *
  * Core keeps progress in memory only. Persistence is `stored` in and
  * `onChange` out, or a `storage` that does both, such as the local storage
@@ -378,10 +380,11 @@ export function createChecklists<
       skip: (id) => send((change) => recordSkipped(change, id, [view.name])),
       toggle: (id) => toggle(id, view.name),
       getSnapshot: () => view.snapshot,
-      subscribe: listen(view.listeners),
+      subscribe: listen(queue, view.listeners, () => view.snapshot),
     };
   }
 
+  const subscribe = listen(queue, ownerListeners, () => ownerSnapshot);
   const owner: Checklists<TContext, Tasks, Selections> = {
     checklists,
     start: (id, names) => start(id, checklistsFor(id, names)),
@@ -397,13 +400,9 @@ export function createChecklists<
     },
     waymarkPadding: runOptions?.waymarkPadding ?? 0,
     getSnapshot: () => ownerSnapshot,
-    subscribe: listen(ownerListeners),
+    subscribe,
     subscribeActive: (listener) =>
-      followActive(
-        listen(ownerListeners),
-        () => ownerSnapshot.active,
-        listener,
-      ),
+      followActive(subscribe, () => ownerSnapshot.active, listener),
     update,
     load,
     clear,

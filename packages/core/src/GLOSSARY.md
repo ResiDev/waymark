@@ -165,9 +165,11 @@ hand.
 
 ## How a Run starts
 
-1. The first `subscribe` sends `mounted`, then a StepRead of the current
-   Step with `start` queued behind it, so `start` precedes anything a
-   subscriber does on seeing the first look.
+1. The first `subscribe` sends `mounted`, then queues a StepRead of the
+   current Step with `start` behind it. Only then is the subscriber called
+   with the Snapshot as it stands, as every `subscribe` does at once, so
+   `start` precedes anything a subscriber does on that first call or the
+   first look.
 2. `mount` records the Run as Mounted. `reconcile` opens the input
    listeners and, if the Step needs one, requests a frame.
 3. The first look only locates: a Run that has not started needs no
