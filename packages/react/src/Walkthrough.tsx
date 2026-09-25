@@ -114,11 +114,11 @@ function ChecklistGuidance({
   }, [checklists, ui]);
 
   if (active === null) return null;
-  const { run } = active;
+  const { task, run } = active;
   return (
     <RunView
       run={run}
-      skipTask={active.checklists.length > 0 ? () => checklists.skipActive(run) : undefined}
+      skipTask={() => checklists.skip(task.id)}
       waymarkPadding={checklists.waymarkPadding}
       renderPopover={renderPopover}
       dialogRef={dialogRef}

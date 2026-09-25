@@ -48,10 +48,7 @@ export type ChecklistSelections<TTasks> = Readonly<
   Record<string, readonly TaskId<TTasks>[]>
 >;
 
-/**
- * The name of the one checklist an owner has when it names none. Skips are
- * stored under a checklist's name, so this can never change.
- */
+/** The name of the one checklist an owner has when it names none. */
 export const DEFAULT_CHECKLIST = "main";
 
 /** The checklists an owner has when it names none: one of every Task, in task map order. */
@@ -85,16 +82,6 @@ export type NamedTask<TTasks, TId extends TaskId<TTasks> = TaskId<TTasks>> = {
   [K in TId]: Readonly<TTasks[K] & { id: K }>;
 }[TId];
 
-/** The checklists whose selection includes the Task `TId`; for a union, every member of it. */
-export type ChecklistsWith<TSelections, TId> = {
-  [Name in keyof TSelections]: TSelections[Name] extends readonly (infer TSelected)[]
-    ? [TId] extends [TSelected]
-      ? Name
-      : never
-    : never;
-}[keyof TSelections] &
-  string;
-
 /** Exactly the Task types one selection names. */
 export type SelectedTask<
   TTasks,
@@ -104,7 +91,7 @@ export type SelectedTask<
 
 // ---- Status and snapshots --------------------------------------------------
 
-/** Remaining, accomplished, or deliberately skipped. Active guidance is separate. */
+/** Remaining, accomplished, or deliberately skipped; the same in every view. Active guidance is separate. */
 export type TaskStatus = "todo" | "done" | "skipped";
 
 export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
@@ -115,15 +102,13 @@ export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
 export type ActiveTask<TTask extends { readonly id: string }> = Readonly<{
   task: TTask;
   run: Run<StepOf<TTask>>;
-  /** The checklists the Run counts for: where a skip from its guidance applies. */
-  checklists: readonly string[];
 }>;
 
 /** Current display data for one view. A new object only when something in it changed. */
 export type ChecklistSnapshot<TTask extends { readonly id: string }> =
   Readonly<{
     tasks: readonly ChecklistRow<TTask>[];
-    /** Done plus skipped in this checklist. */
+    /** Done plus skipped. */
     finishedCount: number;
     taskCount: number;
     complete: boolean;
@@ -133,20 +118,18 @@ export type ChecklistSnapshot<TTask extends { readonly id: string }> =
 
 export type TaskCommands<TId extends string> = Readonly<{
   /**
-   * Starts or replays guidance counting for this checklist; exits any previous
-   * Run. If the Task is already active, its Run counts for this checklist too.
-   * No-op without a walkthrough.
+   * Starts or replays guidance; exits any previous Run. No-op if the Task is
+   * already active or has no walkthrough.
    */
   start: (id: TId) => void;
-  /** Records done in every view; guidance can continue. */
+  /** Records done; guidance can continue. */
   markDone: (id: TId) => void;
-  /** Todo to skipped in this checklist only; exits this Task's active Run. */
+  /** Todo to skipped; exits this Task's active Run. */
   skip: (id: TId) => void;
   /**
-   * What ticking the Task's box means: todo to done in every view, done back
-   * to todo in every view, skipped back to todo in this checklist only. A
-   * Task with a condition, taken back from done, is not completed by the
-   * condition again until it has been false.
+   * What ticking the Task's box means: todo to done, done or skipped back to
+   * todo. A Task with a condition, taken back from done, is not completed by
+   * the condition again until it has been false.
    */
   toggle: (id: TId) => void;
 }>;
@@ -180,19 +163,11 @@ export type ChecklistsEvent<
   | Readonly<{
       type: "taskStopped";
       task: NamedTask<TTasks>;
-      /** finished: reached the last step. skipped: a view or `skipActive` skipped it. stopped: exit, `stop()`, or another `start()`. */
+      /** finished: reached the last step. skipped: `skip` skipped it. stopped: exit, `stop()`, or another `start()`. */
       reason: "finished" | "skipped" | "stopped";
     }>
-  | Readonly<{
-      type: "taskSkipped";
-      task: NamedTask<TTasks>;
-      checklist: keyof TSelections & string;
-    }>
-  | Readonly<{
-      type: "taskUnskipped";
-      task: NamedTask<TTasks>;
-      checklist: keyof TSelections & string;
-    }>
+  | Readonly<{ type: "taskSkipped"; task: NamedTask<TTasks> }>
+  | Readonly<{ type: "taskUnskipped"; task: NamedTask<TTasks> }>
   | Readonly<{
       type: "checklistComplete";
       checklist: keyof TSelections & string;
@@ -239,30 +214,16 @@ export type ChecklistViews<
   >;
 };
 
-export type ChecklistsSnapshot<
-  TTasks,
-  TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
-> = Readonly<{
-  active: Readonly<{
-    task: NamedTask<TTasks>;
-    run: Run<any>;
-    /**
-     * The checklists the Run counts for, as every `start` of it named them. A
-     * renderer skips from guidance with `skipActive(run)`; with none, it offers no skip.
-     */
-    checklists: readonly (keyof TSelections & string)[];
-  }> | null;
+export type ChecklistsSnapshot<TTasks> = Readonly<{
+  active: Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
 }>;
 
 /**
  * What `subscribeActive` hands its listener: the active Task, and the step
  * its Run is on. A new object whenever either changes.
  */
-export type ActiveSnapshot<
-  TTasks,
-  TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
-> = Readonly<{
-  active: ChecklistsSnapshot<TTasks, TSelections>["active"];
+export type ActiveSnapshot<TTasks> = Readonly<{
+  active: ChecklistsSnapshot<TTasks>["active"];
   /** The active Run's Snapshot; null when nothing is active. */
   step: Snapshot<any> | null;
 }>;
@@ -275,35 +236,21 @@ export type Checklists<
   checklists: ChecklistViews<TTasks, TSelections>;
 
   /**
-   * Starts or replays guidance; exits any previous Run. `checklists` are the
-   * ones the guidance counts for, where a skip from it applies; a view's
-   * `start` names its own. If the Task is already active, its Run counts for
-   * them too. Throws for a checklist that does not select the Task. No-op
-   * without a walkthrough.
+   * Starts or replays guidance; exits any previous Run. No-op if the Task is
+   * already active or has no walkthrough.
    */
-  start: <TId extends TaskId<TTasks>>(
-    id: TId,
-    checklists?:
-      | ChecklistsWith<TSelections, TId>
-      | readonly ChecklistsWith<TSelections, TId>[],
-  ) => void;
+  start: (id: TaskId<TTasks>) => void;
   /** Exits the active Run. No-op when nothing is active. */
   stop: () => void;
   /** Records done across every view. */
   markDone: (id: TaskId<TTasks>) => void;
   /**
-   * Back to todo in every view: from done, and from skipped in every
-   * checklist. A Task with a condition, taken back from done, is not
-   * completed by the condition again until it has been false.
+   * Back to todo from done or skipped. A Task with a condition, taken back
+   * from done, is not completed by the condition again until it has been false.
    */
   markTodo: (id: TaskId<TTasks>) => void;
-  /**
-   * For the guidance renderer: skips the active Task in the checklists its
-   * Run counts for, as one change, and exits the Run. `run` is the Run the
-   * renderer drew; no-op unless it is still the active Run, so a second press
-   * cannot skip the guidance that replaced it.
-   */
-  skipActive: (run: Run) => void;
+  /** Todo to skipped; exits this Task's active Run. */
+  skip: (id: TaskId<TTasks>) => void;
 
   /**
    * For the one guidance renderer. Runs read their UI elements through the
@@ -314,10 +261,10 @@ export type Checklists<
   waymarkPadding: number;
 
   /** Changes identity only when the active Task changes. */
-  getSnapshot: () => ChecklistsSnapshot<TTasks, TSelections>;
+  getSnapshot: () => ChecklistsSnapshot<TTasks>;
   /** Calls the listener at once with the current snapshot, then with each new one. */
   subscribe: (
-    listener: (snapshot: ChecklistsSnapshot<TTasks, TSelections>) => void,
+    listener: (snapshot: ChecklistsSnapshot<TTasks>) => void,
   ) => () => void;
   /**
    * For a renderer drawing guidance itself. Like `subscribe`, but also
@@ -328,7 +275,7 @@ export type Checklists<
    * like `subscribe`'s. Unsubscribing lets go of both.
    */
   subscribeActive: (
-    listener: (snapshot: ActiveSnapshot<TTasks, TSelections>) => void,
+    listener: (snapshot: ActiveSnapshot<TTasks>) => void,
   ) => () => void;
 
   /**

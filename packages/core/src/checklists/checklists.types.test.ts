@@ -78,39 +78,12 @@ describe("createChecklists types", () => {
         readonly meta: { readonly helpUrl: "/help/decks" };
       }>
     >();
-    type OwnerActive = NonNullable<
-      ReturnType<typeof owner.getSnapshot>["active"]
-    >;
-    expectTypeOf<OwnerActive["checklists"]>().toEqualTypeOf<
-      readonly ("home" | "decks")[]
-    >();
 
-    // The checklists a Run counts for, and a skip from it applies to, must select the task.
-    owner.start("create-deck", "decks");
-    owner.start("create-deck", ["home", "decks"]);
-    owner.start("add-photo", "home");
-    // For an id that may be any task, only checklists selecting all of them.
-    const anyTask = "create-deck" as "create-deck" | "add-photo";
-    owner.start(anyTask, "home");
-    // Any Task's Run, from the owner's snapshot or a view's.
+    // A guidance renderer skips the Task it drew, from the owner's snapshot or a view's.
     const ownerActive = owner.getSnapshot().active;
-    if (ownerActive) owner.skipActive(ownerActive.run);
+    if (ownerActive) owner.skip(ownerActive.task.id);
     const deckActive = owner.checklists.decks.getSnapshot().active;
-    if (deckActive) owner.skipActive(deckActive.run);
-    // Checked, never called: each would throw.
-    const mistakes = () => {
-      // @ts-expect-error decks does not select add-photo
-      owner.start("add-photo", "decks");
-      // @ts-expect-error decks does not select add-photo
-      owner.start("add-photo", ["home", "decks"]);
-      // @ts-expect-error not a checklist
-      owner.start("create-deck", "nope");
-      // @ts-expect-error decks does not select every task the id may be
-      owner.start(anyTask, "decks");
-      // @ts-expect-error the renderer names the Run it drew
-      owner.skipActive();
-    };
-    expectTypeOf(mistakes).toBeFunction();
+    if (deckActive) owner.skip(deckActive.task.id);
 
     const home = owner.checklists.home.getSnapshot();
     for (const row of home.tasks) {
@@ -210,12 +183,9 @@ describe("createChecklists types", () => {
     expectTypeOf(owner.checklists.main.start)
       .parameter(0)
       .toEqualTypeOf<"tour" | "hello">();
-    owner.start("tour", "main");
     const mistakes = () => {
       // @ts-expect-error the one checklist is main
       owner.checklists.home.start("tour");
-      // @ts-expect-error not a checklist
-      owner.start("tour", "home");
     };
     expectTypeOf(mistakes).toBeFunction();
   });
@@ -268,8 +238,10 @@ describe("createChecklists types", () => {
           | "checklistComplete"
         >();
         if (event.type === "taskSkipped") {
-          expectTypeOf(event.checklist).toEqualTypeOf<"home" | "decks">();
           expectTypeOf(event.task.id).toEqualTypeOf<"deck" | "hello">();
+        }
+        if (event.type === "checklistComplete") {
+          expectTypeOf(event.checklist).toEqualTypeOf<"home" | "decks">();
         }
         if (event.type === "taskStopped") {
           expectTypeOf(event.reason).toEqualTypeOf<
@@ -381,7 +353,7 @@ describe("createChecklists types", () => {
   });
 
   it("accepts a stored record and an event handler typed over the owner", () => {
-    const stored: Stored = { done: ["x"], skipped: { home: ["y"] } };
+    const stored: Stored = { x: "done", y: "skipped", z: "reopened" };
     const owner = createChecklists({
       context: {},
       tasks: { a: {} },

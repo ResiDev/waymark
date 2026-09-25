@@ -71,17 +71,17 @@ _Avoid_: item, milestone, step.
 **Checklist** — A named, ordered view of Tasks with their shared completion:
 `getSnapshot`, `subscribe`, and the commands `start`, `markDone`, `skip`,
 `toggle`.
-Done is the same in every view; skipped is the view's own.
+Done and skipped are the same in every view.
 _Avoid_: progress, session.
 
 **Context** — Application data given to `update`, checked once against each
 non-done Task's condition. Conditions run only then.
 _Avoid_: facts, state.
 
-**Stored** — The persisted record: done ids, skipped ids per checklist name,
-and reopened ids: Tasks taken back from done that their condition may not
-re-complete until it has been false. No version field; a storage adapter
-wraps it.
+**Stored** — The persisted record: each Task's status by id, `done`,
+`skipped`, or `reopened` (taken back from done, and not re-completed by its
+condition until it has been false). A Task with no entry is todo. No version
+field; a storage adapter wraps it.
 
 ## Machinery terms
 

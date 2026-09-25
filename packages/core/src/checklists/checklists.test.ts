@@ -66,15 +66,15 @@ describe("createChecklists", () => {
       view.skip(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       const stored = onChange.mock.calls[0]![0];
-      expect(Object.hasOwn(stored.skipped, name)).toBe(true);
-      expect(stored.skipped[name]).toEqual([name]);
+      expect(Object.hasOwn(stored, name)).toBe(true);
+      expect(stored[name]).toBe("skipped");
 
       owner.clear();
       owner.load(JSON.parse(JSON.stringify(stored)));
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       view.markDone(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("done");
-      expect(onChange.mock.lastCall![0]).toEqual({ done: [name], skipped: {} });
+      expect(onChange.mock.lastCall![0]).toEqual({ [name]: "done" });
     },
   );
 
@@ -98,9 +98,8 @@ describe("createChecklists", () => {
       "invite",
     ]);
 
-    // Skips are stored under the checklist's name.
     owner.checklists.main.skip("hello");
-    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: { main: ["hello"] } });
+    expect(onChange).toHaveBeenLastCalledWith({ hello: "skipped" });
   });
 
   it("rejects definitions it cannot show", () => {
@@ -146,37 +145,29 @@ describe("createChecklists", () => {
     const owner = setup({ context: { hasDeck: true, hasPhoto: false }, onChange, onEvent });
     expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "done" });
     expect(owner.checklists.decks.getSnapshot().complete).toBe(true);
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ done: ["create-deck"], skipped: {} });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "done" });
     expect(onEvent).not.toHaveBeenCalled();
   });
 
-  it("does not save a difference that is only normalisation", () => {
+  it("does not save the record it starts from", () => {
     const onChange = vi.fn();
-    const owner = setup({
-      stored: { done: ["read-tips", "read-tips", "ghost"], skipped: { home: ["read-tips", "say-hello"] } },
-      onChange,
-    });
+    const owner = setup({ stored: { "read-tips": "done", "say-hello": "skipped" }, onChange });
     expect(onChange).not.toHaveBeenCalled();
     expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "done", "say-hello": "skipped" });
 
     owner.markDone("say-hello");
-    // Known ids in task order, the unknown one after; done wins over skipped.
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({
-      done: ["read-tips", "say-hello", "ghost"],
-      skipped: {},
-    });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "read-tips": "done", "say-hello": "done" });
   });
 
-  it("preserves unknown ids and names across local changes, in input order", () => {
+  it("preserves unknown ids across local changes", () => {
     const onChange = vi.fn();
-    const owner = setup({
-      stored: { done: ["zeta", "alpha"], skipped: { archive: ["gone"], home: ["say-hello"] } },
-      onChange,
-    });
+    const owner = setup({ stored: { zeta: "done", gone: "skipped", old: "reopened" }, onChange });
     owner.checklists.decks.skip("create-deck");
     expect(onChange).toHaveBeenLastCalledWith({
-      done: ["zeta", "alpha"],
-      skipped: { home: ["say-hello"], decks: ["create-deck"], archive: ["gone"] },
+      zeta: "done",
+      gone: "skipped",
+      old: "reopened",
+      "create-deck": "skipped",
     });
   });
 });
@@ -199,7 +190,7 @@ describe("update", () => {
     expect(statuses(owner.checklists.decks)["create-deck"]).toBe("done");
     expect(home).toHaveBeenCalledOnce();
     expect(decks).toHaveBeenCalledOnce();
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ done: ["create-deck"], skipped: {} });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "done" });
     expect(types(onEvent)).toEqual(["taskComplete:create-deck", "checklistComplete:decks"]);
     const complete = onEvent.mock.calls[1]![0] as Extract<ChecklistsEvent<any, any>, { type: "checklistComplete" }>;
     expect(complete.snapshot).toBe(owner.checklists.decks.getSnapshot());
@@ -217,7 +208,7 @@ describe("update", () => {
         a: { isComplete: (c) => (seen.push("a"), c.ready) },
       },
       checklists: { all: ["a", "b"] },
-      stored: { done: ["unknown-task"], skipped: { all: ["a"], retired: ["b", "unknown-skipped"] } },
+      stored: { "unknown-task": "done", a: "skipped", "unknown-skipped": "skipped" },
       onEvent,
       onChange,
     });
@@ -230,8 +221,10 @@ describe("update", () => {
     expect(seen).toEqual(["b", "a"]);
     expect(listener).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledExactlyOnceWith({
-      done: ["b", "a", "unknown-task"],
-      skipped: { retired: ["unknown-skipped"] },
+      "unknown-task": "done",
+      a: "done",
+      b: "done",
+      "unknown-skipped": "skipped",
     });
     expect(types(onEvent)).toEqual(["taskComplete:b", "taskComplete:a", "checklistComplete:all"]);
   });
@@ -324,153 +317,6 @@ describe("guidance", () => {
     expect(onEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("records the checklists a Run counts for, so a renderer can skip the task in them", () => {
-    const onEvent = vi.fn();
-    const onChange = vi.fn();
-    const owner = setup({ onEvent, onChange });
-    owner.checklists.decks.start("create-deck");
-
-    const active = owner.getSnapshot().active!;
-    expect(active.checklists).toEqual(["decks"]);
-    expect(owner.checklists.home.getSnapshot().active).toBe(active);
-
-    // A renderer's "skip task".
-    owner.skipActive(active.run);
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
-    expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
-    expect(active.run.getSnapshot().phase).toBe("exited");
-    expect(onChange).toHaveBeenCalledOnce();
-    expect(types(onEvent)).toEqual([
-      "taskStarted:create-deck",
-      "taskSkipped:create-deck",
-      "taskStopped:create-deck",
-      "checklistComplete:decks",
-    ]);
-    expect(onEvent.mock.calls[2]![0]).toMatchObject({ reason: "skipped" });
-  });
-
-  it("takes the checklists a Run counts for from the application", () => {
-    const owner = setup();
-    owner.start("create-deck");
-    expect(owner.getSnapshot().active!.checklists).toEqual([]);
-    owner.start("add-photo", "home");
-    expect(owner.getSnapshot().active!.checklists).toEqual(["home"]);
-    owner.start("create-deck", ["home", "decks", "home"]);
-    expect(owner.getSnapshot().active!.checklists).toEqual(["home", "decks"]);
-  });
-
-  it("skips in several checklists as one change", () => {
-    const onEvent = vi.fn();
-    const onChange = vi.fn();
-    const owner = setup({ onEvent, onChange });
-    owner.start("create-deck", ["home", "decks"]);
-    const { run } = owner.getSnapshot().active!;
-    onEvent.mockClear();
-
-    owner.skipActive(run);
-    expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
-    expect(run.getSnapshot().phase).toBe("exited");
-    expect(onChange).toHaveBeenCalledOnce();
-    expect(onChange.mock.calls[0]![0].skipped).toEqual({
-      home: ["create-deck"],
-      decks: ["create-deck"],
-    });
-    expect(types(onEvent)).toEqual([
-      "taskSkipped:create-deck",
-      "taskSkipped:create-deck",
-      "taskStopped:create-deck",
-      "checklistComplete:decks",
-    ]);
-    expect(onEvent.mock.calls.slice(0, 2).map(([e]) => e.checklist)).toEqual(["home", "decks"]);
-  });
-
-  it("skips the active task in nothing when its Run counts for no checklists", () => {
-    const onChange = vi.fn();
-    const owner = setup({ onChange });
-    owner.start("create-deck");
-    const active = owner.getSnapshot().active;
-    owner.skipActive(active!.run);
-    expect(owner.getSnapshot().active).toBe(active);
-    expect(active!.run.getSnapshot().phase).not.toBe("exited");
-    expect(onChange).not.toHaveBeenCalled();
-  });
-
-  it("skips nothing for a Run that is no longer active", () => {
-    const onChange = vi.fn();
-    const owner = setup({ onChange });
-    owner.checklists.decks.start("create-deck");
-    const first = owner.getSnapshot().active!.run;
-    owner.skipActive(first);
-    expect(onChange).toHaveBeenCalledOnce();
-
-    // A second press after guidance moved on, or a replay of the same task.
-    owner.checklists.home.start("add-photo");
-    owner.skipActive(first);
-    owner.stop();
-    owner.checklists.decks.start("create-deck");
-    const replay = owner.getSnapshot().active;
-    owner.skipActive(first);
-    expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
-    expect(owner.getSnapshot().active).toBe(replay);
-    expect(onChange).toHaveBeenCalledOnce();
-
-    owner.stop();
-    owner.skipActive(first);
-    expect(onChange).toHaveBeenCalledOnce();
-  });
-
-  it("checks the Run is still active when the command runs, not when it was sent", () => {
-    const owner = setup();
-    owner.checklists.decks.start("create-deck");
-    const { run } = owner.getSnapshot().active!;
-    // Sent while create-deck is active, queued behind a start of add-photo.
-    const unsubscribe = owner.checklists.home.subscribe(() => {
-      if (statuses(owner.checklists.home)["say-hello"] === "todo") return;
-      unsubscribe();
-      owner.checklists.home.start("add-photo");
-      owner.skipActive(run);
-    });
-    owner.markDone("say-hello");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("todo");
-    expect(owner.getSnapshot().active!.task.id).toBe("add-photo");
-  });
-
-  it("rejects a checklist that does not exist or does not select the task", () => {
-    const owner = setup() as unknown as {
-      start: (id: string, checklists?: string | readonly string[]) => void;
-    };
-    expect(() => owner.start("add-photo", "decks")).toThrow(/Checklist "decks" does not select task "add-photo"/);
-    expect(() => owner.start("add-photo", ["home", "nope"])).toThrow(/Unknown checklist "nope"/);
-  });
-
-  it("adds the checklists when the task already active is started again", () => {
-    const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.checklists.decks.start("create-deck");
-    const first = owner.getSnapshot().active!;
-    const home = vi.fn();
-    owner.checklists.home.subscribe(home);
-    home.mockClear();
-
-    owner.checklists.home.start("create-deck");
-    const merged = owner.getSnapshot().active!;
-    expect(merged.checklists).toEqual(["decks", "home"]);
-    expect(merged.run).toBe(first.run);
-    expect(owner.checklists.home.getSnapshot().active).toBe(merged);
-    expect(home).toHaveBeenCalledOnce();
-    expect(types(onEvent)).toEqual(["taskStarted:create-deck"]);
-
-    // Nothing new to count for: the same snapshot.
-    owner.start("create-deck");
-    owner.start("create-deck", "decks");
-    expect(owner.getSnapshot().active).toBe(merged);
-
-    owner.skipActive(merged.run);
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
-    expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
-  });
-
   it("hides the Run from views that do not hold its task", () => {
     const owner = setup();
     owner.start("add-photo");
@@ -541,7 +387,7 @@ describe("guidance", () => {
 
     expect(owner.getSnapshot().active).toBeNull();
     expect(statuses(owner.checklists.home)["read-tips"]).toBe("done");
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ done: ["read-tips"], skipped: {} });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "read-tips": "done" });
     expect(types(onEvent)).toEqual(["taskStopped:read-tips", "taskComplete:read-tips"]);
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
   });
@@ -761,26 +607,30 @@ describe("markDone and skip", () => {
     expect(onEvent).toHaveBeenCalledTimes(2);
   });
 
-  it("skips in one view only and exits that task's Run", () => {
+  it("skips in every view and exits that task's Run", () => {
     const onEvent = vi.fn();
     const onChange = vi.fn();
     const owner = setup({ onEvent, onChange });
-    owner.start("create-deck");
+    owner.checklists.decks.start("create-deck");
     const { run } = owner.getSnapshot().active!;
     onEvent.mockClear();
 
+    // From any view, or the owner as a guidance renderer does.
     owner.checklists.home.skip("create-deck");
 
     expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("todo");
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
     expect(owner.getSnapshot().active).toBeNull();
     expect(run.getSnapshot().phase).toBe("exited");
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ done: [], skipped: { home: ["create-deck"] } });
-    expect(types(onEvent)).toEqual(["taskSkipped:create-deck", "taskStopped:create-deck"]);
-    expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "home" });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "skipped" });
+    expect(types(onEvent)).toEqual([
+      "taskSkipped:create-deck",
+      "taskStopped:create-deck",
+      "checklistComplete:decks",
+    ]);
     expect(onEvent.mock.calls[1]![0]).toMatchObject({ reason: "skipped" });
 
-    owner.checklists.home.skip("create-deck");
+    owner.skip("create-deck");
     expect(onChange).toHaveBeenCalledOnce();
   });
 
@@ -805,7 +655,7 @@ describe("markDone and skip", () => {
       taskCount: 4,
       complete: true,
     });
-    expect(owner.checklists.decks.getSnapshot().complete).toBe(false);
+    expect(owner.checklists.decks.getSnapshot().complete).toBe(true);
   });
 });
 
@@ -822,22 +672,20 @@ describe("toggle and markTodo", () => {
     expect(statuses(owner.checklists.home)["say-hello"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskComplete:say-hello", "taskReopened:say-hello"]);
     // No condition, so nothing to hold back: the record is simply empty again.
-    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: {} });
+    expect(onChange).toHaveBeenLastCalledWith({});
   });
 
-  it("takes a skipped task back in its own checklist only", () => {
+  it("takes a skipped task back, in every view", () => {
     const onEvent = vi.fn();
     const owner = setup({ onEvent });
     owner.checklists.home.skip("create-deck");
-    owner.checklists.decks.skip("create-deck");
     onEvent.mockClear();
 
-    owner.checklists.home.toggle("create-deck");
+    owner.checklists.decks.toggle("create-deck");
 
     expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskUnskipped:create-deck"]);
-    expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "home" });
   });
 
   it("keeps a reopened task todo until its condition has been false", () => {
@@ -847,13 +695,13 @@ describe("toggle and markTodo", () => {
     expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
 
     owner.checklists.home.toggle("add-photo");
-    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: {}, reopened: ["add-photo"] });
+    expect(onChange).toHaveBeenLastCalledWith({ "add-photo": "reopened" });
 
     owner.update({ ...context, hasPhoto: true });
     expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
 
     owner.update({ ...context, hasPhoto: false });
-    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: {} });
+    expect(onChange).toHaveBeenLastCalledWith({});
 
     onEvent.mockClear();
     owner.update({ ...context, hasPhoto: true });
@@ -866,23 +714,22 @@ describe("toggle and markTodo", () => {
     const owner = setup({ context: { ...context, hasPhoto: true }, onChange });
     owner.checklists.home.toggle("add-photo");
     owner.checklists.home.toggle("add-photo");
-    expect(onChange).toHaveBeenLastCalledWith({ done: ["add-photo"], skipped: {} });
+    expect(onChange).toHaveBeenLastCalledWith({ "add-photo": "done" });
   });
 
   it("holds a reopened task back across a reload", () => {
     const owner = setup({
       context: { ...context, hasPhoto: true },
-      stored: { done: [], skipped: {}, reopened: ["add-photo"] },
+      stored: { "add-photo": "reopened" },
     });
     expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
   });
 
-  it("markTodo takes a task back from done, and from skipped in every checklist", () => {
+  it("markTodo takes a task back from done or skipped", () => {
     const onEvent = vi.fn();
     const owner = setup({ onEvent });
     owner.markDone("read-tips");
     owner.checklists.home.skip("create-deck");
-    owner.checklists.decks.skip("create-deck");
     onEvent.mockClear();
 
     owner.markTodo("read-tips");
@@ -890,11 +737,7 @@ describe("toggle and markTodo", () => {
 
     expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "todo", "create-deck": "todo" });
     expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "todo" });
-    expect(types(onEvent)).toEqual([
-      "taskReopened:read-tips",
-      "taskUnskipped:create-deck",
-      "taskUnskipped:create-deck",
-    ]);
+    expect(types(onEvent)).toEqual(["taskReopened:read-tips", "taskUnskipped:create-deck"]);
 
     onEvent.mockClear();
     owner.markTodo("read-tips");
@@ -917,7 +760,7 @@ describe("storage", () => {
   };
 
   it("loads once at creation and saves each local change before onChange", () => {
-    const { calls, storage } = storageOf({ done: ["hello"], skipped: {} });
+    const { calls, storage } = storageOf({ hello: "done" });
     const onChange = vi.fn(() => {
       calls.push("onChange");
     });
@@ -926,18 +769,18 @@ describe("storage", () => {
     expect(statuses(owner.checklists.main)).toEqual({ hello: "done", invite: "todo" });
 
     owner.checklists.main.skip("invite");
-    expect(storage.save).toHaveBeenCalledExactlyOnceWith({ done: ["hello"], skipped: { main: ["invite"] } });
+    expect(storage.save).toHaveBeenCalledExactlyOnceWith({ hello: "done", invite: "skipped" });
     expect(calls).toEqual(["save", "onChange"]);
   });
 
   it("saves a clear but not a load", () => {
-    const { storage } = storageOf({ done: ["hello"], skipped: {} });
+    const { storage } = storageOf({ hello: "done" });
     const owner = createChecklists({ tasks: { hello: {} }, storage });
-    owner.load({ done: [], skipped: {} });
+    owner.load({});
     expect(storage.save).not.toHaveBeenCalled();
     owner.markDone("hello");
     owner.clear();
-    expect(storage.save).toHaveBeenLastCalledWith({ done: [], skipped: {} });
+    expect(storage.save).toHaveBeenLastCalledWith({});
   });
 });
 
@@ -956,7 +799,7 @@ describe("load and clear", () => {
     onChange.mockClear();
     onEvent.mockClear();
 
-    owner.load({ done: ["ghost"], skipped: { home: ["add-photo"] } });
+    owner.load({ ghost: "done", "add-photo": "skipped" });
 
     expect(statuses(owner.checklists.home)).toEqual({
       "add-photo": "skipped",
@@ -972,15 +815,16 @@ describe("load and clear", () => {
     // The loaded unknown id survives the next local change.
     owner.markDone("read-tips");
     expect(onChange).toHaveBeenCalledExactlyOnceWith({
-      done: ["read-tips", "ghost"],
-      skipped: { home: ["add-photo"] },
+      ghost: "done",
+      "add-photo": "skipped",
+      "read-tips": "done",
     });
   });
 
   it("clears everything once, keeps the Run, and is a no-op when already empty", () => {
     const onChange = vi.fn();
     const onEvent = vi.fn();
-    const owner = setup({ stored: { done: ["ghost"], skipped: { gone: ["x"] } }, onChange, onEvent });
+    const owner = setup({ stored: { ghost: "done", gone: "skipped" }, onChange, onEvent });
     owner.markDone("say-hello");
     owner.checklists.decks.skip("create-deck");
     owner.start("add-photo");
@@ -992,7 +836,7 @@ describe("load and clear", () => {
 
     owner.clear();
 
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ done: [], skipped: {} });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({});
     expect(onEvent).not.toHaveBeenCalled();
     expect(listener).toHaveBeenCalledOnce();
     expect(statuses(owner.checklists.home)).toEqual({
@@ -1086,7 +930,7 @@ describe("re-entrancy and errors", () => {
         expect(statuses(owner.checklists.first).a).toBe("done");
         expect(owner.getSnapshot().active?.task.id ?? null).toBe(command === "start" ? "b" : null);
         expect(run.getSnapshot().phase).toBe("completed");
-        expect(onChange).toHaveBeenCalledExactlyOnceWith({ done: ["a"], skipped: {} });
+        expect(onChange).toHaveBeenCalledExactlyOnceWith({ a: "done" });
         expect(types(onEvent)).toEqual([
           "taskStopped:a",
           "taskComplete:a",

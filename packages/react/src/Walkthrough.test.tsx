@@ -309,18 +309,14 @@ describe("Walkthrough with checklists", () => {
     expect(dialog()).toBeNull();
   });
 
-  it("offers to skip the task in the checklists its guidance counts for", async () => {
+  it("offers to skip the task being guided, in every view", async () => {
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
-    // Started from the owner with no checklists: nothing to skip in.
     await act(async () => owner.start("create-deck"));
-    expect(buttonNamed("Skip task")).toBeUndefined();
-
-    await act(async () => owner.checklists.decks.start("create-deck"));
     await act(async () => buttonNamed("Skip task")!.click());
     expect(dialog()).toBeNull();
     expect(owner.checklists.decks.getSnapshot().tasks[0]!.status).toBe("skipped");
-    expect(owner.checklists.home.getSnapshot().tasks[0]!.status).toBe("todo");
+    expect(owner.checklists.home.getSnapshot().tasks[0]!.status).toBe("skipped");
   });
 
   it("offers no task skip to a walkthrough it owns", async () => {

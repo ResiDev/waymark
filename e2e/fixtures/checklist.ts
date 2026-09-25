@@ -150,8 +150,6 @@ const describeEvent = (event: ChecklistsEvent<any, any>): string => {
   switch (event.type) {
     case "taskStopped":
       return `${event.type} ${event.task.id} (${event.reason})`;
-    case "taskSkipped":
-      return `${event.type} ${event.task.id} in ${event.checklist}`;
     case "checklistComplete":
       return `${event.type} ${event.checklist} (${event.snapshot.finishedCount} of ${event.snapshot.taskCount})`;
     default:

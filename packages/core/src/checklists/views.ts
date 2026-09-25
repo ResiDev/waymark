@@ -14,7 +14,7 @@ export type View<TTask extends { readonly id: string }> = {
 /** Where a view's snapshot is read from: the owner's current state. */
 export type ViewSource<TTask extends { readonly id: string }> = Readonly<{
   task: (id: string) => TTask;
-  status: (name: string, id: string) => TaskStatus;
+  status: (id: string) => TaskStatus;
   active: () => ActiveTask<TTask> | null;
 }>;
 
@@ -26,7 +26,7 @@ export function createView<TTask extends { readonly id: string }>(
   return {
     name,
     ids,
-    snapshot: snapshotOf(name, ids, source),
+    snapshot: snapshotOf(ids, source),
     listeners: new Set(),
   };
 }
@@ -43,7 +43,7 @@ export function refresh<TTask extends { readonly id: string }>(
   const changed: View<TTask>[] = [];
   const completed: View<TTask>[] = [];
   for (const view of views) {
-    const next = snapshotOf(view.name, view.ids, source);
+    const next = snapshotOf(view.ids, source);
     if (sameSnapshot(view.snapshot, next)) continue;
     if (!view.snapshot.complete && next.complete) completed.push(view);
     view.snapshot = next;
@@ -53,13 +53,12 @@ export function refresh<TTask extends { readonly id: string }>(
 }
 
 function snapshotOf<TTask extends { readonly id: string }>(
-  name: string,
   ids: readonly string[],
   source: ViewSource<TTask>,
 ): ChecklistSnapshot<TTask> {
   const rows = ids.map((id) => ({
     task: source.task(id),
-    status: source.status(name, id),
+    status: source.status(id),
   }));
   const finishedCount = rows.filter((row) => row.status !== "todo").length;
   const active = source.active();
