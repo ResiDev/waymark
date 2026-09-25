@@ -113,6 +113,8 @@ export function createChecklists<
 
   const progress = createProgress(storage?.load() ?? config.stored);
   let active: Active | null = null;
+  /** The view whose `start` began the active Run, if one did. */
+  let startedFrom: string | undefined;
   let ownerSnapshot: ChecklistsSnapshot<Tasks> = {
     active: null,
   };
@@ -188,6 +190,10 @@ export function createChecklists<
 
   // ---- transitions -----------------------------------------------------------
 
+  /** The `checklist` of a skip event: the view it came from, if any. */
+  const fromView = (checklist: string | undefined) =>
+    checklist === undefined ? {} : { checklist };
+
   /** Record done, announcing each Task that was not done already. */
   const recordDone = (change: Change, ...ids: string[]) => {
     for (const id of ids) {
@@ -207,6 +213,7 @@ export function createChecklists<
     // A subscriber may release the Run before its finish event reaches us.
     if (run.getSnapshot().phase === "completed") reason = "finished";
     active = null;
+    startedFrom = undefined;
     change.events.push({ type: "taskStopped", task, reason });
     if (reason === "finished") {
       if (task.isComplete === undefined) recordDone(change, task.id);
@@ -228,7 +235,7 @@ export function createChecklists<
     });
   };
 
-  const start = (id: string) =>
+  const start = (id: string, from?: string) =>
     send((change) => {
       const task = named[id];
       const walkthrough = walkthroughs[id];
@@ -244,6 +251,7 @@ export function createChecklists<
         },
       });
       active = { task, run };
+      startedFrom = from;
       change.events.push({ type: "taskStarted", task });
     });
 
@@ -254,8 +262,12 @@ export function createChecklists<
       if (Object.hasOwn(named, id)) recordDone(change, id);
     });
 
-  /** Todo to skipped, exiting the Task's active Run. */
-  const skip = (id: string) =>
+  /**
+   * Todo to skipped, exiting the Task's active Run. `from` is the view it was
+   * skipped from; without one, a skip of the Task being guided is from the
+   * view that started its guidance.
+   */
+  const skip = (id: string, from?: string) =>
     send((change) => {
       // A finished Run settles first, so its Task is done rather than skipped.
       if (
@@ -266,16 +278,21 @@ export function createChecklists<
       }
       const task = named[id];
       if (task === undefined || progress.status(id) !== "todo") return;
+      const guided = active?.task.id === id;
       progress.set(id, "skipped");
-      change.events.push({ type: "taskSkipped", task });
-      if (active?.task.id === id) release(change, "skipped");
+      change.events.push({
+        type: "taskSkipped",
+        task,
+        ...fromView(from ?? (guided ? startedFrom : undefined)),
+      });
+      if (guided) release(change, "skipped");
     });
 
   /**
    * Back to todo. A Task with a condition, taken back from done, is held
    * until the condition has been false.
    */
-  const recordTodo = (change: Change, id: string) => {
+  const recordTodo = (change: Change, id: string, from?: string) => {
     const task = named[id];
     if (task === undefined) return;
     const status = progress.status(id);
@@ -284,17 +301,17 @@ export function createChecklists<
       change.events.push({ type: "taskReopened", task });
     } else if (status === "skipped") {
       progress.set(id, undefined);
-      change.events.push({ type: "taskUnskipped", task });
+      change.events.push({ type: "taskUnskipped", task, ...fromView(from) });
     }
   };
 
   const markTodo = (id: string) => send((change) => recordTodo(change, id));
 
-  const toggle = (id: string) =>
+  const toggle = (id: string, from: string) =>
     send((change) => {
       if (!Object.hasOwn(named, id)) return;
       if (progress.status(id) === "todo") recordDone(change, id);
-      else recordTodo(change, id);
+      else recordTodo(change, id, from);
     });
 
   /**
@@ -337,10 +354,10 @@ export function createChecklists<
   const checklists: Record<string, Checklist<Named>> = Object.create(null);
   for (const view of views) {
     checklists[view.name] = {
-      start,
+      start: (id) => start(id, view.name),
       markDone,
-      skip,
-      toggle,
+      skip: (id) => skip(id, view.name),
+      toggle: (id) => toggle(id, view.name),
       getSnapshot: () => view.snapshot,
       subscribe: listen(queue, view.listeners, () => view.snapshot),
     };
@@ -349,11 +366,11 @@ export function createChecklists<
   const subscribe = listen(queue, ownerListeners, () => ownerSnapshot);
   const owner: Checklists<TContext, Tasks, Selections> = {
     checklists,
-    start,
+    start: (id) => start(id),
     stop,
     markDone,
     markTodo,
-    skip,
+    skip: (id) => skip(id),
     bindUi: (ui) => {
       boundUi = ui;
       return () => {

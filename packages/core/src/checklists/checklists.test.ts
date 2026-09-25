@@ -628,10 +628,37 @@ describe("markDone and skip", () => {
       "taskStopped:create-deck",
       "checklistComplete:decks",
     ]);
+    expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "home" });
     expect(onEvent.mock.calls[1]![0]).toMatchObject({ reason: "skipped" });
 
     owner.skip("create-deck");
     expect(onChange).toHaveBeenCalledOnce();
+  });
+
+  it("names the view a skip came from, or the view that started the guidance skipped", () => {
+    const onEvent = vi.fn();
+    const owner = setup({ onEvent });
+    const skippedFrom = () =>
+      onEvent.mock.calls
+        .map(([event]) => event)
+        .filter((event) => event.type === "taskSkipped")
+        .map((event) => `${event.task.id}:${"checklist" in event ? event.checklist : "none"}`);
+
+    owner.checklists.home.skip("say-hello");
+    // A guidance renderer's skip, for guidance a view started and guidance the app started.
+    owner.checklists.decks.start("create-deck");
+    owner.skip("create-deck");
+    owner.start("add-photo");
+    owner.skip("add-photo");
+    // Nothing guided.
+    owner.skip("read-tips");
+
+    expect(skippedFrom()).toEqual([
+      "say-hello:home",
+      "create-deck:decks",
+      "add-photo:none",
+      "read-tips:none",
+    ]);
   });
 
   it("does not skip a done task", () => {
@@ -686,6 +713,7 @@ describe("toggle and markTodo", () => {
     expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
     expect(statuses(owner.checklists.decks)["create-deck"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskUnskipped:create-deck"]);
+    expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "decks" });
   });
 
   it("keeps a reopened task todo until its condition has been false", () => {
@@ -738,6 +766,7 @@ describe("toggle and markTodo", () => {
     expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "todo", "create-deck": "todo" });
     expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "todo" });
     expect(types(onEvent)).toEqual(["taskReopened:read-tips", "taskUnskipped:create-deck"]);
+    expect(onEvent.mock.calls[1]![0]).not.toHaveProperty("checklist");
 
     onEvent.mockClear();
     owner.markTodo("read-tips");

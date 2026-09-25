@@ -166,8 +166,21 @@ export type ChecklistsEvent<
       /** finished: reached the last step. skipped: `skip` skipped it. stopped: exit, `stop()`, or another `start()`. */
       reason: "finished" | "skipped" | "stopped";
     }>
-  | Readonly<{ type: "taskSkipped"; task: NamedTask<TTasks> }>
-  | Readonly<{ type: "taskUnskipped"; task: NamedTask<TTasks> }>
+  | Readonly<{
+      type: "taskSkipped";
+      task: NamedTask<TTasks>;
+      /**
+       * The view it was skipped from: from its list, or from guidance its
+       * `start` began. Absent when neither.
+       */
+      checklist?: keyof TSelections & string;
+    }>
+  | Readonly<{
+      type: "taskUnskipped";
+      task: NamedTask<TTasks>;
+      /** The view whose `toggle` took it back; absent for `markTodo`. */
+      checklist?: keyof TSelections & string;
+    }>
   | Readonly<{
       type: "checklistComplete";
       checklist: keyof TSelections & string;
@@ -249,7 +262,11 @@ export type Checklists<
    * from done, is not completed by the condition again until it has been false.
    */
   markTodo: (id: TaskId<TTasks>) => void;
-  /** Todo to skipped; exits this Task's active Run. */
+  /**
+   * Todo to skipped; exits this Task's active Run. For the Task being guided,
+   * `taskSkipped` names the view whose `start` began the guidance, so a
+   * guidance renderer's skip is counted where the user started it.
+   */
   skip: (id: TaskId<TTasks>) => void;
 
   /**

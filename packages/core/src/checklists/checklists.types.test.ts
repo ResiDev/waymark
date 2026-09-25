@@ -239,6 +239,9 @@ describe("createChecklists types", () => {
         >();
         if (event.type === "taskSkipped") {
           expectTypeOf(event.task.id).toEqualTypeOf<"deck" | "hello">();
+          expectTypeOf(event.checklist).toEqualTypeOf<
+            "home" | "decks" | undefined
+          >();
         }
         if (event.type === "checklistComplete") {
           expectTypeOf(event.checklist).toEqualTypeOf<"home" | "decks">();

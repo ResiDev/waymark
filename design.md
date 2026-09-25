@@ -235,7 +235,8 @@ type Checklist<TTask extends { readonly id: string }> =
 ```ts
 // Task events occur once per shared transition, not once per checklist view.
 // taskStarted/taskStopped describe walkthrough Runs, not application actions.
-// Checklist completion names the view it happened in.
+// Checklist completion names the view it happened in; a skip or unskip names
+// the view it came from, when it came from one.
 // Order within one change: task events first, then checklistComplete for each
 // view that went from incomplete to complete, in declaration order.
 // checklistComplete carries that view's committed snapshot, so a handler such
@@ -252,8 +253,18 @@ type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
       // stopped: exit from the popover, stop(), or start() of another task.
       reason: "finished" | "skipped" | "stopped";
     }>
-  | Readonly<{ type: "taskSkipped"; task: NamedTask<TTasks> }>
-  | Readonly<{ type: "taskUnskipped"; task: NamedTask<TTasks> }> // taken back from skipped
+  | Readonly<{
+      type: "taskSkipped";
+      task: NamedTask<TTasks>;
+      // The view it was skipped from: from its list, or from guidance its
+      // `start` began. Absent when neither.
+      checklist?: keyof TSelections & string;
+    }>
+  | Readonly<{
+      type: "taskUnskipped"; // taken back from skipped
+      task: NamedTask<TTasks>;
+      checklist?: keyof TSelections & string; // the view whose toggle did it; absent for markTodo
+    }>
   | Readonly<{
       type: "checklistComplete";
       checklist: keyof TSelections & string;
@@ -293,7 +304,8 @@ type Checklists<
   markDone: (id: TaskId<TTasks>) => void; // records done across all views
   markTodo: (id: TaskId<TTasks>) => void; // back to todo from done or skipped
   // Todo -> skipped; exits this task's active Run. The guidance renderer calls
-  // it with the task it drew, so a second press is a no-op.
+  // it with the task it drew, so a second press is a no-op. For the task being
+  // guided, `taskSkipped` names the view whose `start` began the guidance.
   skip: (id: TaskId<TTasks>) => void;
 
   // For the single app-level walkthrough renderer. Core reads the active Run's
@@ -377,8 +389,8 @@ unsubscribe on unmount.
 | Run finishes with `isComplete` | Clear active; finishing instructions does not assert application completion. |
 | Run exits | Clear active; retain completion. |
 | `markDone(id)` | Record done, replacing skipped or reopened. No-op if already done. |
-| `skip(id)` | Record skipped, with a `taskSkipped`, and exit the task's active Run. A task that was reopened loses its hold. No-op unless todo. |
-| `toggle(id)` on a view | Todo: as `markDone`. Done or skipped: as `markTodo`. |
+| `skip(id)` | Record skipped, with a `taskSkipped` naming the view it came from (a view's `skip`, or the view that started the task's guidance), and exit the task's active Run. A task that was reopened loses its hold. No-op unless todo. |
+| `toggle(id)` on a view | Todo: as `markDone`. Done or skipped: as `markTodo`, with `taskUnskipped` naming the view. |
 | `markTodo(id)` | Done: back to todo, with a `taskReopened`, recorded as `reopened` if the task has a condition. Skipped: back to todo, with a `taskUnskipped`. No-op if already todo. |
 | `update(context)` | Evaluate eligible conditions once in task order; commit all resulting completions together. A reopened task stays todo while its condition holds; once it is false, the task drops `reopened` and the condition counts again. |
 | `clear()` | Replace progress with `{}`, including unknown task ids. Notify changed views and call `onChange` once; emit no transition events. Keep the active Run and context; do not re-check conditions. No-op if already empty. |
