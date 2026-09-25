@@ -674,20 +674,6 @@ describe("subscribeActive", () => {
 
     owner.start("tour");
     expect(runEvents).toEqual(["start"]);
-    expect(listener).toHaveBeenCalled();
-
-    listener.mockClear();
-    owner.getSnapshot().active!.run.act("advance");
-    expect(owner.getSnapshot().active!.run.getSnapshot()).toMatchObject({ stepIndex: 1 });
-    expect(listener).toHaveBeenCalled();
-  });
-
-  it("hands the listener the active Task and its step together", () => {
-    const { owner } = setupRuns();
-    const listener = vi.fn();
-    owner.subscribeActive(listener);
-
-    owner.start("tour");
     const { active } = owner.getSnapshot();
     expect(listener).toHaveBeenLastCalledWith({ active, step: active!.run.getSnapshot() });
 

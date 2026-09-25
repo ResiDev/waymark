@@ -6,6 +6,7 @@ import { sameRecord, unique } from "./record";
 import type { Stored } from "./record";
 import { followActive, listen } from "./subscribe";
 import type {
+  ActiveTask,
   Checklist,
   ChecklistSelections,
   Checklists,
@@ -13,7 +14,7 @@ import type {
   ChecklistsEvent,
   ChecklistsSnapshot,
   DefaultChecklists,
-  Task,
+  NamedTask,
   TaskMap,
 } from "./types";
 import { DEFAULT_CHECKLIST } from "./types";
@@ -47,29 +48,6 @@ const isSteps = <TStep extends Step>(
   walkthrough: Walkthrough<TStep> | readonly TStep[],
 ): walkthrough is readonly TStep[] => Array.isArray(walkthrough);
 
-type AnyTask = Task<any, any>;
-type Named = Readonly<AnyTask & { id: string }>;
-type Active = Readonly<{
-  task: Named;
-  run: Run<any>;
-  checklists: readonly string[];
-}>;
-type Event = ChecklistsEvent<
-  Record<string, AnyTask>,
-  ChecklistSelections<Record<string, AnyTask>>
->;
-
-/** What one command may do besides changing state, gathered until the change is committed. */
-type Change = {
-  events: Event[];
-  /** Run after every notification of this change, still inside the drain. */
-  effects: (() => void)[];
-  /** `load` and `clear` emit no transition events. */
-  silent: boolean;
-  /** `load` never calls `onChange`. */
-  persist: boolean;
-};
-
 /**
  * Infers the context type from its initial values only, so `false` widens to
  * `boolean`. Tasks written inline are typed from that context; tasks in other
@@ -84,7 +62,26 @@ export function createChecklists<
 >(
   config: ChecklistsConfig<TContext, TTasks, TSelections>,
 ): Checklists<TContext, TTasks, TSelections> {
-  const tasks: TaskMap<TContext> = config.tasks;
+  // Inside, the owner sees its tasks only as a map of `Task<TContext>`; the
+  // exact TTasks and TSelections are restored by the cast at the end.
+  type Tasks = TaskMap<TContext>;
+  type Selections = ChecklistSelections<Tasks>;
+  type Named = NamedTask<Tasks>;
+  type Active = ActiveTask<Named>;
+  type Event = ChecklistsEvent<Tasks, Selections>;
+
+  /** What one command may do besides changing state, gathered until the change is committed. */
+  type Change = {
+    events: Event[];
+    /** Run after every notification of this change, still inside the drain. */
+    effects: (() => void)[];
+    /** `load` and `clear` emit no transition events. */
+    silent: boolean;
+    /** `load` never calls `onChange`. */
+    persist: boolean;
+  };
+
+  const tasks: Tasks = config.tasks;
   const selections: Readonly<Record<string, readonly string[]>> =
     config.checklists ?? {
       [DEFAULT_CHECKLIST]: Object.keys(tasks),
@@ -92,12 +89,17 @@ export function createChecklists<
   validate(tasks, selections);
   const { onChange, onEvent, run: runOptions, storage } = config;
   const emit = onEvent as ((event: Event) => void) | undefined;
+  // Every Run's steps come from these tasks, so its events carry the steps
+  // the application's handler is typed for.
+  const onRunEventOption = runOptions?.onEvent as
+    | ((event: RunEvent) => void)
+    | undefined;
 
   const taskIds = Object.keys(tasks);
   const named: Record<string, Named> = Object.create(null);
   for (const id of taskIds) named[id] = { ...tasks[id]!, id };
   // Snapshots keep each Task as written; Runs need a checked Walkthrough.
-  const walkthroughs: Record<string, Walkthrough<any>> = Object.create(null);
+  const walkthroughs: Record<string, Walkthrough> = Object.create(null);
   for (const id of taskIds) {
     const walkthrough = tasks[id]!.walkthrough;
     if (walkthrough === undefined) continue;
@@ -115,11 +117,11 @@ export function createChecklists<
     storage?.load() ?? config.stored,
   );
   let active: Active | null = null;
-  let ownerSnapshot: ChecklistsSnapshot<Record<string, AnyTask>> = {
+  let ownerSnapshot: ChecklistsSnapshot<Tasks> = {
     active: null,
   };
   const ownerListeners = new Set<
-    (snapshot: ChecklistsSnapshot<Record<string, AnyTask>>) => void
+    (snapshot: ChecklistsSnapshot<Tasks>) => void
   >();
   let boundUi: (() => UiElements) | undefined;
 
@@ -219,7 +221,7 @@ export function createChecklists<
    * subscribing switches on page watching. A Run the owner has already let go
    * of is not its concern any more.
    */
-  const onRunEvent = (run: Run<any>, event: RunEvent<any>) => {
+  const onRunEvent = (run: Run, event: RunEvent) => {
     if (event.type !== "finish" && event.type !== "exit") return;
     send((change) => {
       if (active?.run !== run) return;
@@ -240,12 +242,12 @@ export function createChecklists<
         return;
       }
       release(change, "stopped");
-      const run: Run<any> = createRun(walkthrough, {
+      const run = createRun(walkthrough, {
         ...runOptions,
         ui: () => boundUi?.() ?? NO_UI,
         onEvent: (event) => {
           onRunEvent(run, event);
-          runOptions?.onEvent?.(event);
+          onRunEventOption?.(event);
         },
       });
       active = { task, run, checklists };
@@ -336,7 +338,7 @@ export function createChecklists<
    * throwing check changes nothing. A reopened Task is left todo while its
    * condition holds, and counts again once it has been false.
    */
-  const check = (change: Change, context: TContext) => {
+  const checkConditions = (change: Change, context: TContext) => {
     const complete: string[] = [];
     const settled: string[] = [];
     for (const id of taskIds) {
@@ -354,7 +356,7 @@ export function createChecklists<
   };
 
   const update = (context: TContext) =>
-    send((change) => check(change, context));
+    send((change) => checkConditions(change, context));
 
   const load = (stored: Stored) =>
     send(() => progress.replace(stored), { silent: true, persist: false });
@@ -364,7 +366,7 @@ export function createChecklists<
   // Creation checks the initial context like `update`, saving any change but
   // announcing nothing: the owner is not assigned yet, and a reload must not
   // repeat completion for a view storage already had complete.
-  send((change) => check(change, config.context ?? ({} as TContext)), {
+  send((change) => checkConditions(change, config.context ?? ({} as TContext)), {
     silent: true,
   });
 
@@ -380,11 +382,7 @@ export function createChecklists<
     };
   }
 
-  const owner: Checklists<
-    TContext,
-    Record<string, AnyTask>,
-    ChecklistSelections<Record<string, AnyTask>>
-  > = {
+  const owner: Checklists<TContext, Tasks, Selections> = {
     checklists,
     start: (id, names) => start(id, checklistsFor(id, names)),
     stop,
