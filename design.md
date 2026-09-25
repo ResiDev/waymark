@@ -70,11 +70,11 @@ work, errors, and any prevention of repeated invocation.
 
 Displaying a description or invoking an action does not mark a task done.
 Completion still comes from `isComplete(context)`, an explicit `markDone(id)`,
-or finishing a walkthrough that has no completion condition. A task without a
-walkthrough or condition offers manual completion, including when it has an action.
-For an information-only task, that control acknowledges the information. If text
-does not need acknowledgement, use it as another task's description rather than
-creating an extra task to tick off.
+ticking the task's box (`toggle(id)`), or finishing a walkthrough that has no
+completion condition. Every row's box ticks and unticks its task unless the task
+sets `toggleable: false`. For an information-only task, ticking acknowledges the
+information. If text does not need acknowledgement, use it as another task's
+description rather than creating an extra task to tick off.
 
 ## Caller interface
 
@@ -198,6 +198,9 @@ type TaskStatus = "todo" | "done" | "skipped";
 type Stored = Readonly<{
   done: readonly string[]; // task ids, treated as a set
   skipped: Readonly<Record<string, readonly string[]>>; // checklist name -> task ids
+  // Tasks with a condition taken back from done. Their condition does not
+  // complete them again until it has been false. Omitted when empty.
+  reopened?: readonly string[];
 }>;
 
 // Current display data for one checklist, not a separate completion record.
@@ -219,6 +222,9 @@ type TaskCommands<TId extends string> = Readonly<{
   start: (id: TId) => void; // starts/replays guidance counting for this checklist; exits any previous shared Run
   markDone: (id: TId) => void; // records done everywhere; guidance can continue
   skip: (id: TId) => void; // todo -> skipped in this checklist; exits this task's active Run
+  // Ticking the task's box: todo -> done everywhere, done -> todo everywhere,
+  // skipped -> todo in this checklist only.
+  toggle: (id: TId) => void;
 }>;
 
 // Framework-neutral live view. Does not own storage or application context.
@@ -244,6 +250,7 @@ type Checklist<TTask extends { readonly id: string }> =
 type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
   | Readonly<{ type: "taskStarted"; task: NamedTask<TTasks> }>
   | Readonly<{ type: "taskComplete"; task: NamedTask<TTasks> }>
+  | Readonly<{ type: "taskReopened"; task: NamedTask<TTasks> }> // taken back from done
   | Readonly<{
       type: "taskStopped";
       task: NamedTask<TTasks>;
@@ -253,6 +260,11 @@ type ChecklistsEvent<TTasks, TSelections extends ChecklistSelections<TTasks>> =
     }>
   | Readonly<{
       type: "taskSkipped";
+      task: NamedTask<TTasks>;
+      checklist: keyof TSelections & string;
+    }>
+  | Readonly<{
+      type: "taskUnskipped";
       task: NamedTask<TTasks>;
       checklist: keyof TSelections & string;
     }>
@@ -301,6 +313,7 @@ type Checklists<
   ) => void; // starts/replays guidance; exits previous Run
   stop: () => void; // exits the active Run; no-op when nothing is active
   markDone: (id: TaskId<TTasks>) => void; // records done across all views
+  markTodo: (id: TaskId<TTasks>) => void; // back to todo: from done, and from skipped in every checklist
   // For the guidance renderer: skips the active task in `active.checklists`
   // as one change, so it never names them; with none, it offers no skip.
   // `run` is the Run it drew; no-op unless that is still the active Run, so a
@@ -395,7 +408,9 @@ unsubscribe on unmount.
 | Run exits | Clear active; retain completion. |
 | `markDone(id)` | Record done, remove skipped. No-op if already done. |
 | `skip(id)` on a view for its own, or `skipActive(run)` for the active task's while `run` is still active | Record skipped in each of those checklists as one change, with a `taskSkipped` per checklist, and exit the task's active Run. No-op if done or already skipped in all of them. |
-| `update(context)` | Evaluate eligible conditions once in task order; commit all resulting completions together. |
+| `toggle(id)` on a view | Todo: as `markDone`. Done: as `markTodo`. Skipped: remove this checklist's skip, with a `taskUnskipped`. |
+| `markTodo(id)` | Remove done, with a `taskReopened`, adding the task to `reopened` if it has a condition; remove skipped in every checklist, with a `taskUnskipped` per checklist. No-op if already todo everywhere. |
+| `update(context)` | Evaluate eligible conditions once in task order; commit all resulting completions together. A reopened task stays todo while its condition holds; once it is false, the task leaves `reopened` and the condition counts again. |
 | `clear()` | Replace progress with `{ done: [], skipped: {} }`, including unknown task ids and checklist names. Notify changed views and call `onChange` once; emit no transition events. Keep the active Run and context; do not re-check conditions. No-op if already empty. |
 
 - Shared task ids couple completion; sharing only a Walkthrough object does not.
@@ -478,6 +493,7 @@ type ReactTask<TContext> = Task<TContext, WalkthroughStep> & Readonly<{
     label: ReactNode;
     onSelect: () => void; // invoked directly by the UI on selection
   }>;
+  toggleable?: boolean; // the row's box ticks and unticks the task; default true
 }>;
 
 // The existing Walkthrough component gains a second prop shape. With
@@ -543,7 +559,7 @@ declare function useChecklist<TTask extends ReactTask<any> & { readonly id: stri
 // Default UI subscribes to the same view as custom UI. Styled with inline
 // defaults like the popover; style props override, renderRow replaces a row,
 // labels replace the English button text. Full custom rendering uses useChecklist.
-type ChecklistLabels = Readonly<{ start: ReactNode; replay: ReactNode; markDone: ReactNode; skip: ReactNode }>;
+type ChecklistLabels = Readonly<{ start: ReactNode; replay: ReactNode; skip: ReactNode }>;
 type ChecklistRowProps<TTask extends ReactTask<any> & { readonly id: string }> =
   TaskCommands<TTask["id"]> & Readonly<{ task: TTask; status: TaskStatus; active: boolean }>;
 type ChecklistProps<TTask extends ReactTask<any> & { readonly id: string }> = Readonly<{
@@ -641,7 +657,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 | Completion, active Run, storage callbacks | Shared Checklists object, outside React. |
 | Guidance rendering | One `Walkthrough checklists={...}` mounted at a time. Views never render it. |
 | UI subscription | `useSyncExternalStore`; views have stable identities. |
-| Default UI | Titles, inline descriptions, statuses, active task, finished count, action buttons or guidance/replay according to the precedence above, skip, and manual completion for todo tasks without a walkthrough or a condition. |
+| Default UI | Titles, inline descriptions, statuses, active task, finished count, action buttons or guidance/replay according to the precedence above, skip, and a box per row that toggles the task unless it sets `toggleable: false`. |
 | Application actions | The UI invokes `action.onSelect` on selection. The application owns navigation, dialogs, asynchronous work, and any calls to start or stop guidance. |
 | Unmount | Hooks disconnect their subscriptions. Removing the guidance component releases its UI binding and stops its active Run, retaining progress. Temporary cleanup and reattachment do not stop guidance. |
 
@@ -652,7 +668,8 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Descriptions and labelled application actions are optional adapter content. Actions take precedence over walkthrough buttons in the default UI; `start(id)` remains walkthrough-only.
 - Descriptions and actions do not imply completion or create an active task. Actions and walkthroughs may coexist, with sequencing owned by the application.
 - Skip is per checklist. Done is shared and wins over skipped everywhere.
-- `clear()` empties all progress and persists through `onChange`; `load()` receives progress without saving it back. Un-doing a single task has no use case yet.
+- `clear()` empties all progress and persists through `onChange`; `load()` receives progress without saving it back.
+- A task is taken back with `toggle` or `markTodo`. A task with a condition is then held in `reopened`, so its condition cannot re-tick it at once; the user has to undo the thing (condition false) before doing it again counts. `taskComplete` can repeat after a reopen.
 - Local storage is opt-in. Its adapter removes the key when saving an empty record; custom persistence decides how to handle that record.
 - `storage: { load, save }` wires persistence in one option, so neither half can be forgotten. It excludes `stored`; `onChange` still fires, after `save`.
 - `stop()` on the owner ends active guidance.
@@ -687,6 +704,6 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 
 - Server-rendered checklist content and transfer of initial state for hydration.
 - Context syncing helper for framework-owned state. Each framework brings its own effect-style sync that calls `update`.
-- Un-doing a task or clearing part of the record through the API.
+- Clearing part of the record through the API.
 - Dependencies/locked tasks, polling, automatic starts, and stored walkthrough history.
 - Cross-device merging; application-owned conflict policy first.

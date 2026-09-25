@@ -39,16 +39,21 @@ const parse = (text: string | null): Stored => {
   if (!isRecord(record) || !isStringList(record.done) || !isRecord(record.skipped)) {
     return EMPTY;
   }
+  if (record.reopened !== undefined && !isStringList(record.reopened)) return EMPTY;
   const skipped: Record<string, readonly string[]> = Object.create(null);
   for (const [name, ids] of Object.entries(record.skipped)) {
     if (!isStringList(ids)) return EMPTY;
     skipped[name] = [...ids];
   }
-  return { done: [...record.done], skipped };
+  return record.reopened === undefined
+    ? { done: [...record.done], skipped }
+    : { done: [...record.done], skipped, reopened: [...record.reopened] };
 };
 
 const isEmpty = (stored: Stored): boolean =>
-  stored.done.length === 0 && Object.values(stored.skipped).every((ids) => ids.length === 0);
+  stored.done.length === 0 &&
+  Object.values(stored.skipped).every((ids) => ids.length === 0) &&
+  (stored.reopened ?? []).length === 0;
 
 export function createLocalStorageRecord(key: string): StoredRecord {
   return {

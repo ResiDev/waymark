@@ -66,6 +66,7 @@ describe("createLocalStorageRecord", () => {
       '{"version":1,"record":{"done":"a","skipped":{}}}',
       '{"version":1,"record":{"done":[],"skipped":{"home":"b"}}}',
       '{"version":1,"record":{"done":[1],"skipped":{}}}',
+      '{"version":1,"record":{"done":[],"skipped":{},"reopened":"a"}}',
     ]) {
       localStorage.setItem("setup", text);
       expect(record.load()).toEqual(empty);
@@ -78,6 +79,14 @@ describe("createLocalStorageRecord", () => {
     create().checklists.main.markDone("hello");
     const reloaded = create().checklists.main.getSnapshot();
     expect(reloaded.tasks.map((row) => row.status)).toEqual(["done", "todo"]);
+  });
+
+  it("keeps reopened tasks, and writes none when there are none", () => {
+    const record = createLocalStorageRecord("setup");
+    record.save({ done: [], skipped: {}, reopened: ["photo"] });
+    expect(record.load()).toEqual({ done: [], skipped: {}, reopened: ["photo"] });
+    record.save({ done: [], skipped: {}, reopened: [] });
+    expect(localStorage.getItem("setup")).toBeNull();
   });
 
   it("swallows storage errors", () => {

@@ -261,8 +261,10 @@ describe("createChecklists types", () => {
         expectTypeOf(event.type).toEqualTypeOf<
           | "taskStarted"
           | "taskComplete"
+          | "taskReopened"
           | "taskStopped"
           | "taskSkipped"
+          | "taskUnskipped"
           | "checklistComplete"
         >();
         if (event.type === "taskSkipped") {

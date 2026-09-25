@@ -69,7 +69,8 @@ content that core keeps and ignores.
 _Avoid_: item, milestone, step.
 
 **Checklist** — A named, ordered view of Tasks with their shared completion:
-`getSnapshot`, `subscribe`, and the commands `start`, `markDone`, `skip`.
+`getSnapshot`, `subscribe`, and the commands `start`, `markDone`, `skip`,
+`toggle`.
 Done is the same in every view; skipped is the view's own.
 _Avoid_: progress, session.
 
@@ -77,8 +78,10 @@ _Avoid_: progress, session.
 non-done Task's condition. Conditions run only then.
 _Avoid_: facts, state.
 
-**Stored** — The persisted record: done ids, and skipped ids per checklist
-name. No version field; a storage adapter wraps it.
+**Stored** — The persisted record: done ids, skipped ids per checklist name,
+and reopened ids: Tasks taken back from done that their condition may not
+re-complete until it has been false. No version field; a storage adapter
+wraps it.
 
 ## Machinery terms
 

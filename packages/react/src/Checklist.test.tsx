@@ -53,11 +53,14 @@ const setup = () => {
 
 const rows = () => Array.from(host.querySelectorAll("li"));
 const row = (title: string) => rows().find((li) => li.textContent?.includes(title))!;
+const BUTTON = "button:not([role=checkbox])";
 const buttons = (li: HTMLElement) =>
-  Array.from(li.querySelectorAll("button")).map((button) => button.textContent);
+  Array.from(li.querySelectorAll(BUTTON)).map((button) => button.textContent);
+const box = (li: HTMLElement) => li.querySelector<HTMLButtonElement>('[role="checkbox"]');
+const tick = (li: HTMLElement) => act(async () => box(li)!.click());
 const click = (li: HTMLElement, label: string) =>
   act(async () => {
-    Array.from(li.querySelectorAll("button"))
+    Array.from(li.querySelectorAll<HTMLButtonElement>(BUTTON))
       .find((button) => button.textContent === label)!
       .click();
   });
@@ -81,14 +84,13 @@ describe("Checklist", () => {
     const { owner, openPicker } = setup();
     await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
 
-    // Walkthrough only: start, then replay once done. Never manual completion.
+    // Walkthrough only: start, then replay once done.
     expect(buttons(row("Read the tips"))).toEqual(["Show me", "Skip"]);
-    // Action wins over the walkthrough button; a condition means no manual completion.
+    // Action wins over the walkthrough button.
     expect(buttons(row("Add a profile photo"))).toEqual(["Choose photo", "Skip"]);
-    // Neither: manual completion acknowledges the information.
-    expect(buttons(row("Understand sharing"))).toEqual(["Mark as done", "Skip"]);
-    // Action without walkthrough or condition still offers manual completion.
-    expect(buttons(row("Say hello"))).toEqual(["Wave", "Mark as done", "Skip"]);
+    // Neither: the box is the only way to complete it.
+    expect(buttons(row("Understand sharing"))).toEqual(["Skip"]);
+    expect(buttons(row("Say hello"))).toEqual(["Wave", "Skip"]);
 
     await click(row("Add a profile photo"), "Choose photo");
     expect(openPicker).toHaveBeenCalledOnce();
@@ -99,24 +101,51 @@ describe("Checklist", () => {
     expect(buttons(row("Read the tips"))).toEqual(["Show me again"]);
   });
 
-  it("starts, skips, and marks done through the view's commands", async () => {
+  it("starts, skips, and ticks through the view's commands", async () => {
     const { owner } = setup();
     await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
 
     await click(row("Read the tips"), "Show me");
     expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
     expect(row("Read the tips")).toHaveAttribute("aria-current", "step");
-    expect(row("Read the tips").querySelector("button")).toBeDisabled();
+    expect(row("Read the tips").querySelector(BUTTON)).toBeDisabled();
     // Views never draw guidance.
     expect(document.querySelector('[role="dialog"]')).toBeNull();
 
-    await click(row("Understand sharing"), "Mark as done");
+    await tick(row("Understand sharing"));
     expect(row("Understand sharing")).toHaveTextContent("Done");
 
     await click(row("Say hello"), "Skip");
     expect(row("Say hello")).toHaveTextContent("Skipped");
     expect(buttons(row("Say hello"))).toEqual(["Wave"]);
     expect(host.querySelector('[role="group"]')).toHaveTextContent("2 of 5 done");
+  });
+
+  it("toggles a task with its box, unless the task opts out", async () => {
+    const owner = createChecklists({
+      tasks: {
+        hello: { title: "Say hello" },
+        verify: { title: "Verify your email", toggleable: false },
+      },
+    });
+    await act(async () => root.render(<Checklist checklist={owner.checklists.main} />));
+    const hello = box(row("Say hello"))!;
+    expect(hello).toHaveAccessibleName("Say hello");
+    expect(hello).toHaveAttribute("aria-checked", "false");
+
+    await tick(row("Say hello"));
+    expect(hello).toHaveAttribute("aria-checked", "true");
+    expect(row("Say hello")).toHaveTextContent("Done");
+
+    await tick(row("Say hello"));
+    expect(row("Say hello")).toHaveTextContent("To do");
+
+    await click(row("Say hello"), "Skip");
+    expect(hello).toHaveAccessibleDescription("Skipped");
+    await tick(row("Say hello"));
+    expect(row("Say hello")).toHaveTextContent("To do");
+
+    expect(box(row("Verify your email"))).toBeNull();
   });
 
   it("takes labels, styles, and a row renderer", async () => {

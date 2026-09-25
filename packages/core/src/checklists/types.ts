@@ -142,6 +142,13 @@ export type TaskCommands<TId extends string> = Readonly<{
   markDone: (id: TId) => void;
   /** Todo to skipped in this checklist only; exits this Task's active Run. */
   skip: (id: TId) => void;
+  /**
+   * What ticking the Task's box means: todo to done in every view, done back
+   * to todo in every view, skipped back to todo in this checklist only. A
+   * Task with a condition, taken back from done, is not completed by the
+   * condition again until it has been false.
+   */
+  toggle: (id: TId) => void;
 }>;
 
 /** A framework-neutral live view. Owns neither storage nor application context. */
@@ -167,6 +174,8 @@ export type ChecklistsEvent<
 > =
   | Readonly<{ type: "taskStarted"; task: NamedTask<TTasks> }>
   | Readonly<{ type: "taskComplete"; task: NamedTask<TTasks> }>
+  /** Taken back from done, in every view. */
+  | Readonly<{ type: "taskReopened"; task: NamedTask<TTasks> }>
   | Readonly<{
       type: "taskStopped";
       task: NamedTask<TTasks>;
@@ -175,6 +184,11 @@ export type ChecklistsEvent<
     }>
   | Readonly<{
       type: "taskSkipped";
+      task: NamedTask<TTasks>;
+      checklist: keyof TSelections & string;
+    }>
+  | Readonly<{
+      type: "taskUnskipped";
       task: NamedTask<TTasks>;
       checklist: keyof TSelections & string;
     }>
@@ -276,6 +290,12 @@ export type Checklists<
   stop: () => void;
   /** Records done across every view. */
   markDone: (id: TaskId<TTasks>) => void;
+  /**
+   * Back to todo in every view: from done, and from skipped in every
+   * checklist. A Task with a condition, taken back from done, is not
+   * completed by the condition again until it has been false.
+   */
+  markTodo: (id: TaskId<TTasks>) => void;
   /**
    * For the guidance renderer: skips the active Task in the checklists its
    * Run counts for, as one change, and exits the Run. `run` is the Run the

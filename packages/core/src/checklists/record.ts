@@ -11,6 +11,11 @@
 export type Stored = Readonly<{
   done: readonly string[];
   skipped: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Tasks with a condition taken back from done, which the condition does not
+   * complete again until it has been false. Omitted when empty.
+   */
+  reopened?: readonly string[];
 }>;
 
 export const EMPTY: Stored = { done: [], skipped: {} };
@@ -22,6 +27,7 @@ const sameList = (a: readonly string[], b: readonly string[]): boolean =>
 
 export const sameRecord = (a: Stored, b: Stored): boolean => {
   if (!sameList(a.done, b.done)) return false;
+  if (!sameList(a.reopened ?? [], b.reopened ?? [])) return false;
   const names = Object.keys(a.skipped);
   return (
     sameList(names, Object.keys(b.skipped)) &&
@@ -30,12 +36,15 @@ export const sameRecord = (a: Stored, b: Stored): boolean => {
 };
 
 export const isEmpty = (record: Stored): boolean =>
-  record.done.length === 0 && Object.keys(record.skipped).length === 0;
+  record.done.length === 0 &&
+  Object.keys(record.skipped).length === 0 &&
+  (record.reopened ?? []).length === 0;
 
 /**
- * Deduplicate; done removes a Task from every skipped list; known ids come
- * first in task map order and known names first in declaration order, with
- * unknown ones after in input order. Empty skipped lists are dropped.
+ * Deduplicate; done removes a Task from every skipped list and from
+ * reopened; known ids come first in task map order and known names first in
+ * declaration order, with unknown ones after in input order. Empty lists are
+ * dropped.
  */
 export function normalise(
   stored: Stored,
@@ -64,5 +73,6 @@ export function normalise(
     );
     if (ids.length > 0) skipped[name] = ids;
   }
-  return { done, skipped };
+  const reopened = orderIds(stored.reopened ?? []).filter((id) => !doneSet.has(id));
+  return reopened.length > 0 ? { done, skipped, reopened } : { done, skipped };
 }

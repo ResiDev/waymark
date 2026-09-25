@@ -797,6 +797,99 @@ describe("markDone and skip", () => {
   });
 });
 
+describe("toggle and markTodo", () => {
+  it("ticks a todo task and takes a done one back, in every view", () => {
+    const onEvent = vi.fn();
+    const onChange = vi.fn();
+    const owner = setup({ onEvent, onChange });
+
+    owner.checklists.home.toggle("say-hello");
+    expect(statuses(owner.checklists.home)["say-hello"]).toBe("done");
+
+    owner.checklists.home.toggle("say-hello");
+    expect(statuses(owner.checklists.home)["say-hello"]).toBe("todo");
+    expect(types(onEvent)).toEqual(["taskComplete:say-hello", "taskReopened:say-hello"]);
+    // No condition, so nothing to hold back: the record is simply empty again.
+    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: {} });
+  });
+
+  it("takes a skipped task back in its own checklist only", () => {
+    const onEvent = vi.fn();
+    const owner = setup({ onEvent });
+    owner.checklists.home.skip("create-deck");
+    owner.checklists.decks.skip("create-deck");
+    onEvent.mockClear();
+
+    owner.checklists.home.toggle("create-deck");
+
+    expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
+    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
+    expect(types(onEvent)).toEqual(["taskUnskipped:create-deck"]);
+    expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "home" });
+  });
+
+  it("keeps a reopened task todo until its condition has been false", () => {
+    const onEvent = vi.fn();
+    const onChange = vi.fn();
+    const owner = setup({ context: { ...context, hasPhoto: true }, onEvent, onChange });
+    expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
+
+    owner.checklists.home.toggle("add-photo");
+    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: {}, reopened: ["add-photo"] });
+
+    owner.update({ ...context, hasPhoto: true });
+    expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
+
+    owner.update({ ...context, hasPhoto: false });
+    expect(onChange).toHaveBeenLastCalledWith({ done: [], skipped: {} });
+
+    onEvent.mockClear();
+    owner.update({ ...context, hasPhoto: true });
+    expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
+    expect(types(onEvent)).toEqual(["taskComplete:add-photo"]);
+  });
+
+  it("forgets the hold when the task is ticked again by hand", () => {
+    const onChange = vi.fn();
+    const owner = setup({ context: { ...context, hasPhoto: true }, onChange });
+    owner.checklists.home.toggle("add-photo");
+    owner.checklists.home.toggle("add-photo");
+    expect(onChange).toHaveBeenLastCalledWith({ done: ["add-photo"], skipped: {} });
+  });
+
+  it("holds a reopened task back across a reload", () => {
+    const owner = setup({
+      context: { ...context, hasPhoto: true },
+      stored: { done: [], skipped: {}, reopened: ["add-photo"] },
+    });
+    expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
+  });
+
+  it("markTodo takes a task back from done, and from skipped in every checklist", () => {
+    const onEvent = vi.fn();
+    const owner = setup({ onEvent });
+    owner.markDone("read-tips");
+    owner.checklists.home.skip("create-deck");
+    owner.checklists.decks.skip("create-deck");
+    onEvent.mockClear();
+
+    owner.markTodo("read-tips");
+    owner.markTodo("create-deck");
+
+    expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "todo", "create-deck": "todo" });
+    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "todo" });
+    expect(types(onEvent)).toEqual([
+      "taskReopened:read-tips",
+      "taskUnskipped:create-deck",
+      "taskUnskipped:create-deck",
+    ]);
+
+    onEvent.mockClear();
+    owner.markTodo("read-tips");
+    expect(onEvent).not.toHaveBeenCalled();
+  });
+});
+
 describe("storage", () => {
   const storageOf = (saved: Stored) => {
     const calls: string[] = [];

@@ -100,6 +100,8 @@ export type ReactTask<TContext> = Task<TContext, WalkthroughStep> &
       label: ReactNode;
       onSelect: () => void;
     }>;
+    /** The row's box ticks and unticks the task. Defaults to true. */
+    toggleable?: boolean;
   }>;
 
 export type AnyReactTask = ReactTask<any> & { readonly id: string };
@@ -112,7 +114,6 @@ export type UseChecklistResult<TTask extends AnyReactTask> = TaskCommands<TTask[
 export type ChecklistLabels = Readonly<{
   start: ReactNode;
   replay: ReactNode;
-  markDone: ReactNode;
   skip: ReactNode;
 }>;
 

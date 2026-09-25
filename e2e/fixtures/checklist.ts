@@ -124,9 +124,8 @@ function renderView(name: string, view: AnyView) {
     item.append(title);
     if (task.walkthrough) {
       item.append(button(status === "done" ? "replay" : "start", () => view.start(task.id), active));
-    } else if (status === "todo" && !task.isComplete) {
-      item.append(button("done", () => view.markDone(task.id)));
     }
+    item.append(button(status === "todo" ? "tick" : "untick", () => view.toggle(task.id)));
     if (status === "todo") item.append(button("skip", () => view.skip(task.id)));
     list.append(item);
   }

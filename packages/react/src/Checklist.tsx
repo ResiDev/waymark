@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useId, useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import type {
   AnyReactTask,
   ChecklistLabels,
@@ -23,6 +23,7 @@ export function useChecklist<TTask extends AnyReactTask>(
       start: checklist.start,
       markDone: checklist.markDone,
       skip: checklist.skip,
+      toggle: checklist.toggle,
     }),
     [checklist, snapshot],
   );
@@ -31,7 +32,6 @@ export function useChecklist<TTask extends AnyReactTask>(
 const DEFAULT_LABELS: ChecklistLabels = {
   start: "Show me",
   replay: "Show me again",
-  markDone: "Mark as done",
   skip: "Skip",
 };
 
@@ -90,6 +90,17 @@ const secondaryButton: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const boxStyle: CSSProperties = {
+  flex: "none",
+  width: 20,
+  padding: 0,
+  border: 0,
+  font: "inherit",
+  textAlign: "center",
+  color: "#3b82f6",
+  background: "transparent",
+};
+
 const hidden: CSSProperties = {
   position: "absolute",
   width: 1,
@@ -103,22 +114,23 @@ const hidden: CSSProperties = {
 };
 
 /**
- * The default row. One primary button: an application action if the task has
- * one, else guidance (start, or replay once done), else none. A todo task with
- * neither guidance nor a condition offers manual completion. Todo tasks can
- * be skipped.
+ * The default row. Its box ticks and unticks the task, unless the task sets
+ * `toggleable: false`. One primary button: an application action if the task
+ * has one, else guidance (start, or replay once done), else none. Todo tasks
+ * can be skipped.
  */
 function DefaultRow<TTask extends AnyReactTask>({
   task,
   status,
   active,
   start,
-  markDone,
   skip,
+  toggle,
   labels,
 }: ChecklistRowProps<TTask> & { labels: ChecklistLabels }) {
+  const titleId = useId();
+  const statusId = useId();
   const glyph = status === "done" ? "✓" : status === "skipped" ? "–" : "○";
-  const manual = status === "todo" && task.walkthrough === undefined && task.isComplete === undefined;
 
   let primary: ReactNode = null;
   if (task.action !== undefined) {
@@ -142,12 +154,31 @@ function DefaultRow<TTask extends AnyReactTask>({
 
   return (
     <>
-      <span aria-hidden="true" style={{ width: 20, textAlign: "center", color: "#3b82f6" }}>
-        {glyph}
+      {task.toggleable === false ? (
+        <span aria-hidden="true" style={boxStyle}>
+          {glyph}
+        </span>
+      ) : (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={status === "done"}
+          aria-labelledby={titleId}
+          aria-describedby={statusId}
+          onClick={() => toggle(task.id)}
+          style={{ ...boxStyle, cursor: "pointer" }}
+        >
+          <span aria-hidden="true">{glyph}</span>
+        </button>
+      )}
+      <span id={statusId} style={hidden}>
+        {STATUS_TEXT[status]}
       </span>
-      <span style={hidden}>{STATUS_TEXT[status]}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, textDecoration: status === "done" ? "line-through" : "none" }}>
+        <div
+          id={titleId}
+          style={{ fontWeight: 600, textDecoration: status === "done" ? "line-through" : "none" }}
+        >
           {task.title}
         </div>
         {task.description !== undefined && (
@@ -156,11 +187,6 @@ function DefaultRow<TTask extends AnyReactTask>({
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {primary}
-        {manual && (
-          <button type="button" onClick={() => markDone(task.id)} style={primaryButton}>
-            {labels.markDone}
-          </button>
-        )}
         {status === "todo" && (
           <button type="button" onClick={() => skip(task.id)} style={secondaryButton}>
             {labels.skip}
@@ -183,7 +209,7 @@ export function Checklist<TTask extends AnyReactTask>({
   labels,
   renderRow,
 }: ChecklistProps<TTask>) {
-  const { snapshot, start, markDone, skip } = useChecklist(checklist);
+  const { snapshot, start, markDone, skip, toggle } = useChecklist(checklist);
   const text = { ...DEFAULT_LABELS, ...labels };
 
   return (
@@ -194,7 +220,7 @@ export function Checklist<TTask extends AnyReactTask>({
       <ol style={listStyle}>
         {snapshot.tasks.map(({ task, status }) => {
           const active = snapshot.active?.task.id === task.id;
-          const props: ChecklistRowProps<TTask> = { task, status, active, start, markDone, skip };
+          const props: ChecklistRowProps<TTask> = { task, status, active, start, markDone, skip, toggle };
           return (
             <li
               key={task.id}

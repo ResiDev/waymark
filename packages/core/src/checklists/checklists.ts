@@ -285,6 +285,30 @@ export function createChecklists<
     if (active?.task.id === id) release(change, "skipped");
   };
 
+  /** Back to todo: from done in every view, and from skipped in each checklist. */
+  const recordTodo = (
+    change: Change,
+    id: string,
+    checklists: readonly string[],
+  ) => {
+    const task = named[id];
+    if (task === undefined) return;
+    if (progress.removeDone(id, task.isComplete !== undefined))
+      change.events.push({ type: "taskReopened", task });
+    for (const name of progress.removeSkipped(id, checklists))
+      change.events.push({ type: "taskUnskipped", task, checklist: name });
+  };
+
+  const markTodo = (id: string) =>
+    send((change) => recordTodo(change, id, viewNames));
+
+  const toggle = (id: string, name: string) =>
+    send((change) => {
+      if (!Object.hasOwn(named, id)) return;
+      if (progress.status(name, id) === "todo") recordDone(change, id);
+      else recordTodo(change, id, [name]);
+    });
+
   const skipActive = (run: Run) =>
     send((change) => {
       if (active?.run !== run) return;
@@ -307,16 +331,25 @@ export function createChecklists<
     return list;
   };
 
-  /** Every eligible condition is checked before anything is recorded, so a throwing check changes nothing. */
+  /**
+   * Every eligible condition is checked before anything is recorded, so a
+   * throwing check changes nothing. A reopened Task is left todo while its
+   * condition holds, and counts again once it has been false.
+   */
   const check = (change: Change, context: TContext) => {
-    const complete = taskIds.filter((id) => {
-      const task = named[id]!;
-      return (
-        !progress.isDone(id) &&
-        task.isComplete !== undefined &&
-        task.isComplete(context) === true
-      );
-    });
+    const complete: string[] = [];
+    const settled: string[] = [];
+    for (const id of taskIds) {
+      const { isComplete } = named[id]!;
+      if (isComplete === undefined || progress.isDone(id)) continue;
+      const met = isComplete(context) === true;
+      if (!progress.isReopened(id)) {
+        if (met) complete.push(id);
+      } else if (!met) {
+        settled.push(id);
+      }
+    }
+    progress.forgetReopened(settled);
     recordDone(change, ...complete);
   };
 
@@ -341,6 +374,7 @@ export function createChecklists<
       start: (id) => start(id, [view.name]),
       markDone,
       skip: (id) => send((change) => recordSkipped(change, id, [view.name])),
+      toggle: (id) => toggle(id, view.name),
       getSnapshot: () => view.snapshot,
       subscribe: listen(view.listeners),
     };
@@ -355,6 +389,7 @@ export function createChecklists<
     start: (id, names) => start(id, checklistsFor(id, names)),
     stop,
     markDone,
+    markTodo,
     skipActive,
     bindUi: (ui) => {
       boundUi = ui;
