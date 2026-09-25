@@ -634,6 +634,21 @@ describe("guidance", () => {
   });
 });
 
+describe("subscribe", () => {
+  it("hands view and owner listeners their new snapshot", () => {
+    const owner = setup();
+    const view = vi.fn();
+    const own = vi.fn();
+    owner.checklists.home.subscribe(view);
+    owner.subscribe(own);
+
+    owner.start("read-tips");
+    expect(view).toHaveBeenLastCalledWith(owner.checklists.home.getSnapshot());
+    expect(own).toHaveBeenLastCalledWith(owner.getSnapshot());
+    expect(own.mock.lastCall![0].active.task.id).toBe("read-tips");
+  });
+});
+
 describe("subscribeActive", () => {
   const setupRuns = () => {
     const runEvents: string[] = [];
@@ -665,6 +680,22 @@ describe("subscribeActive", () => {
     owner.getSnapshot().active!.run.act("advance");
     expect(owner.getSnapshot().active!.run.getSnapshot()).toMatchObject({ stepIndex: 1 });
     expect(listener).toHaveBeenCalled();
+  });
+
+  it("hands the listener the active Task and its step together", () => {
+    const { owner } = setupRuns();
+    const listener = vi.fn();
+    owner.subscribeActive(listener);
+
+    owner.start("tour");
+    const { active } = owner.getSnapshot();
+    expect(listener).toHaveBeenLastCalledWith({ active, step: active!.run.getSnapshot() });
+
+    active!.run.act("advance");
+    expect(listener.mock.lastCall![0].step).toMatchObject({ stepIndex: 1 });
+
+    owner.stop();
+    expect(listener).toHaveBeenLastCalledWith({ active: null, step: null });
   });
 
   it("wakes a Run already active when it subscribes", () => {

@@ -92,7 +92,7 @@ export function createRun<TStep extends Step>(
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;
 
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(snapshot: Snapshot<TStep>) => void>();
   let state: State<TStep> = enter(walkthrough, options.startAt ?? 0);
 
   // ---- the one place the State changes --------------------------------------
@@ -115,7 +115,7 @@ export function createRun<TStep extends Step>(
     reconcile();
 
     const after = state.snapshot;
-    if (after !== before.snapshot) queue.notify(listeners);
+    if (after !== before.snapshot) queue.notify(listeners, after);
     for (const type of outcome.events) {
       queue.invoke(() =>
         options.onEvent?.({

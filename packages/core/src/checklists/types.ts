@@ -1,5 +1,5 @@
 import type { Exactly } from "../exact";
-import type { Run, RunOptions, UiElements } from "../run/types";
+import type { Run, RunOptions, Snapshot, UiElements } from "../run/types";
 import type { ExactStep, Step, Walkthrough } from "../walkthrough/types";
 import type { Stored } from "./record";
 import type { StoredRecord } from "./storage";
@@ -150,7 +150,7 @@ export type Checklist<TTask extends { readonly id: string }> = TaskCommands<
 > &
   Readonly<{
     getSnapshot: () => ChecklistSnapshot<TTask>;
-    subscribe: (listener: () => void) => () => void;
+    subscribe: (listener: (snapshot: ChecklistSnapshot<TTask>) => void) => () => void;
   }>;
 
 // ---- Shared owner ----------------------------------------------------------
@@ -239,6 +239,19 @@ export type ChecklistsSnapshot<
   }> | null;
 }>;
 
+/**
+ * What `subscribeActive` hands its listener: the active Task, and the step
+ * its Run is on. A new object whenever either changes.
+ */
+export type ActiveSnapshot<
+  TTasks,
+  TSelections extends ChecklistSelections<TTasks> = ChecklistSelections<TTasks>,
+> = Readonly<{
+  active: ChecklistsSnapshot<TTasks, TSelections>["active"];
+  /** The active Run's Snapshot; null when nothing is active. */
+  step: Snapshot<any> | null;
+}>;
+
 export type Checklists<
   TContext,
   TTasks,
@@ -281,7 +294,9 @@ export type Checklists<
 
   /** Changes identity only when the active Task changes. */
   getSnapshot: () => ChecklistsSnapshot<TTasks, TSelections>;
-  subscribe: (listener: () => void) => () => void;
+  subscribe: (
+    listener: (snapshot: ChecklistsSnapshot<TTasks, TSelections>) => void,
+  ) => () => void;
   /**
    * For a renderer drawing guidance itself. Like `subscribe`, but also
    * subscribes to whichever Run is active, swapping as it changes, so the
@@ -289,7 +304,9 @@ export type Checklists<
    * subscribed: reading the active Run through `subscribe` alone leaves its
    * Waymark searching and its clicks unheard. Unsubscribing lets go of both.
    */
-  subscribeActive: (listener: () => void) => () => void;
+  subscribeActive: (
+    listener: (snapshot: ActiveSnapshot<TTasks, TSelections>) => void,
+  ) => () => void;
 
   /**
    * Checks every non-done Task's condition once, in task map order, and

@@ -8,7 +8,7 @@ export type View<TTask extends { readonly id: string }> = {
   readonly name: string;
   readonly ids: readonly string[];
   snapshot: ChecklistSnapshot<TTask>;
-  readonly listeners: Set<() => void>;
+  readonly listeners: Set<(snapshot: ChecklistSnapshot<TTask>) => void>;
 };
 
 /** Where a view's snapshot is read from: the owner's current state. */

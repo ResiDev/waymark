@@ -95,6 +95,17 @@ describe("createRun", () => {
     expect(target).not.toHaveAttribute("aria-haspopup");
   });
 
+  it("hands subscribers each new Snapshot", () => {
+    const run = createRun(defineWalkthrough([{}, {}]));
+    const listener = vi.fn();
+    run.subscribe(listener);
+    listener.mockClear();
+
+    run.act("advance");
+    expect(listener).toHaveBeenCalledWith(run.getSnapshot());
+    expect(listener.mock.lastCall![0]).toMatchObject({ stepIndex: 1 });
+  });
+
   it.each(["unsubscribe", "exit", "advance"])("restores authored ARIA attributes on %s", (cleanup) => {
     const target = addTarget("save");
     target.setAttribute("aria-haspopup", "menu");

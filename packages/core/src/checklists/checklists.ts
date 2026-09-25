@@ -118,7 +118,9 @@ export function createChecklists<
   let ownerSnapshot: ChecklistsSnapshot<Record<string, AnyTask>> = {
     active: null,
   };
-  const ownerListeners = new Set<() => void>();
+  const ownerListeners = new Set<
+    (snapshot: ChecklistsSnapshot<Record<string, AnyTask>>) => void
+  >();
   let boundUi: (() => UiElements) | undefined;
 
   // ---- views ----------------------------------------------------------------
@@ -155,8 +157,8 @@ export function createChecklists<
     const record = progress.record();
     const recordChanged = !sameRecord(recordBefore, record);
 
-    for (const view of changed) queue.notify(view.listeners);
-    if (activeChanged) queue.notify(ownerListeners);
+    for (const view of changed) queue.notify(view.listeners, view.snapshot);
+    if (activeChanged) queue.notify(ownerListeners, ownerSnapshot);
     if (recordChanged && change.persist) {
       queue.invoke(() => storage?.save(record));
       queue.invoke(() => onChange?.(record));
@@ -366,7 +368,7 @@ export function createChecklists<
     subscribeActive: (listener) =>
       followActive(
         listen(ownerListeners),
-        () => ownerSnapshot.active?.run,
+        () => ownerSnapshot.active,
         listener,
       ),
     update,

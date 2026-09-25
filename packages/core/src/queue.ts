@@ -13,7 +13,8 @@
 export type Queue = Readonly<{
   run: (...work: (() => void)[]) => void;
   invoke: (callback: () => void) => void;
-  notify: (listeners: ReadonlySet<() => void>) => void;
+  /** Calls each listener with the store's new snapshot. */
+  notify: <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => void;
   /** Report an error with those of the next drain, ahead of them. */
   fail: (error: unknown) => void;
 }>;
@@ -31,11 +32,11 @@ export function createQueue(failure: string): Queue {
     }
   };
 
-  const notify = (listeners: ReadonlySet<() => void>) => {
+  const notify = <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => {
     // Copied on purpose: a listener may subscribe or unsubscribe others mid-notify.
     // oxlint-disable-next-line unicorn/no-useless-spread
     for (const listener of [...listeners]) {
-      if (listeners.has(listener)) invoke(listener);
+      if (listeners.has(listener)) invoke(() => listener(snapshot));
     }
   };
 

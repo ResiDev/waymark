@@ -118,5 +118,6 @@ export type Run<TStep extends Step = Step> = Readonly<{
    */
   act: (action: Action) => void;
   getSnapshot: () => Snapshot<TStep>;
-  subscribe: (listener: () => void) => () => void;
+  /** The listener is handed each new Snapshot; it may also read `getSnapshot`. */
+  subscribe: (listener: (snapshot: Snapshot<TStep>) => void) => () => void;
 }>;

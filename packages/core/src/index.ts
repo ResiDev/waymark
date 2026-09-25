@@ -26,6 +26,7 @@ export type {
   UiElements,
 } from "./run/types";
 export type {
+  ActiveSnapshot,
   ActiveTask,
   Checklist,
   ChecklistRow,

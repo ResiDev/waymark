@@ -225,7 +225,8 @@ type TaskCommands<TId extends string> = Readonly<{
 type Checklist<TTask extends { readonly id: string }> =
   TaskCommands<TTask["id"]> & Readonly<{
     getSnapshot: () => ChecklistSnapshot<TTask>; // stable until observable change
-    subscribe: (listener: () => void) => () => void; // returns unsubscribe
+    // The listener is handed the new snapshot; returns unsubscribe.
+    subscribe: (listener: (snapshot: ChecklistSnapshot<TTask>) => void) => () => void;
   }>;
 ```
 
@@ -322,12 +323,13 @@ type Checklists<
       checklists: readonly (keyof TSelections & string)[]; // as every `start` of it named them
     }> | null;
   }>;
-  subscribe: (listener: () => void) => () => void; // fires when active changes
+  subscribe: (listener: (snapshot) => void) => () => void; // fires when active changes
   // For a renderer drawing guidance itself: subscribe, plus a subscription to
   // whichever Run is active, swapped as it changes. A Run watches the page only
   // while subscribed, so reading active.run through `subscribe` alone leaves its
-  // waymark searching. Unsubscribing releases both.
-  subscribeActive: (listener: () => void) => () => void;
+  // waymark searching. Unsubscribing releases both. Its listener is handed the
+  // two together, { active, step }, step being the active Run's Snapshot or null.
+  subscribeActive: (listener: (snapshot: ActiveSnapshot) => void) => () => void;
 
   // Check each non-done task once, even if it appears in several views.
   // True overrides skipped in every checklist. Done stays recorded until load/clear. No polling.
@@ -667,6 +669,7 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Checklist and guidance rendering are browser-only. Server-rendered applications mount them after a matching empty region or placeholder; no server checklist snapshot is provided.
 - Custom popovers infer their step union from the supplied owner's tasks. Callers need no explicit generic; fields present on only some steps require narrowing.
 - Core observes the Run through `onEvent`, never `subscribe`.
+- Every store hands its listeners the new snapshot, and `getSnapshot` still returns it; React ignores the argument. `subscribeActive` has two sources, so it hands `{ active, step }`, a new object whenever either changes. Svelte's store contract would also need a call on subscribe; not provided.
 - One guidance renderer per owner; views only render lists and commands.
 - A root-mounted renderer keeps guidance across route changes. A page-mounted renderer stops guidance when removed; the app can also call `stop()` explicitly.
 - Versioning lives in the storage adapter's envelope, not in `Stored`.
@@ -687,4 +690,3 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - Un-doing a task or clearing part of the record through the API.
 - Dependencies/locked tasks, polling, automatic starts, and stored walkthrough history.
 - Cross-device merging; application-owned conflict policy first.
-- Svelte-style subscriptions that pass snapshots to listeners.
