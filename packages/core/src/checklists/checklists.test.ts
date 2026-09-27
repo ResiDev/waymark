@@ -623,13 +623,14 @@ describe("markDone and skip", () => {
     expect(owner.getSnapshot().active).toBeNull();
     expect(run.getSnapshot().phase).toBe("exited");
     expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "skipped" });
+    // The Run it let go of first, then the status change.
     expect(types(onEvent)).toEqual([
-      "taskSkipped:create-deck",
       "taskStopped:create-deck",
+      "taskSkipped:create-deck",
       "checklistComplete:decks",
     ]);
-    expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "home" });
-    expect(onEvent.mock.calls[1]![0]).toMatchObject({ reason: "skipped" });
+    expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "skipped" });
+    expect(onEvent.mock.calls[1]![0]).toMatchObject({ checklist: "home" });
 
     owner.skip("create-deck");
     expect(onChange).toHaveBeenCalledOnce();

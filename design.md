@@ -237,8 +237,11 @@ type Checklist<TTask extends { readonly id: string }> =
 // taskStarted/taskStopped describe walkthrough Runs, not application actions.
 // Checklist completion names the view it happened in; a skip or unskip names
 // the view it came from, when it came from one.
-// Order within one change: task events first, then checklistComplete for each
-// view that went from incomplete to complete, in declaration order.
+// Order within one change: taskStopped for the Run let go of, then each task
+// whose status changed, in task map order, then taskStarted, then
+// checklistComplete for each view that went from incomplete to complete, in
+// declaration order. Events are read from the state before and after the
+// change, so the order is fixed rather than following the command's steps.
 // checklistComplete carries that view's committed snapshot, so a handler such
 // as a celebration reads counts from the event instead of the owner.
 // Creation emits no events (see Transition contract).
@@ -671,7 +674,8 @@ const { snapshot, start } = useChecklist(collection.checklists.decks);
 - A root-mounted renderer keeps guidance across route changes. A page-mounted renderer stops guidance when removed; the app can also call `stop()` explicitly.
 - Versioning lives in the storage adapter's envelope, not in `Stored`.
 - `taskStopped` carries `reason: "finished" | "skipped" | "stopped"`.
-- Event order per change: task events, then `checklistComplete` for each newly complete view in declaration order.
+- Event order per change: `taskStopped`, status events in task map order, `taskStarted`, then `checklistComplete` for each newly complete view in declaration order.
+- Commands only change state. `commit` reads every event from the state before and after, so no command can forget one or announce one that did not happen.
 - Conditions run only in `update`; finishing a walkthrough does not re-check them.
 - Tasks in separate files are written `{ ... } satisfies Task<AppContext>` (or `ReactTask`); inline tasks need nothing. The curried `defineTask<AppContext>()` helper was dropped: `satisfies` gives the same inference with the compiler's own excess-property error.
 - A task's `walkthrough` may be its steps written inline. Snapshots keep the task as written; the owner checks the steps at creation and builds the Walkthrough itself.

@@ -1,4 +1,4 @@
-import { copy, EMPTY, isEmpty } from "./record";
+import { copy, EMPTY, isEmpty, statusIn } from "./record";
 import type { Stored, StoredStatus } from "./record";
 import type { TaskStatus } from "./types";
 
@@ -24,10 +24,7 @@ export function createProgress(initial: Stored = EMPTY): Progress {
 
   return {
     record: () => record,
-    status: (id) => {
-      const status = record[id];
-      return status === "done" || status === "skipped" ? status : "todo";
-    },
+    status: (id) => statusIn(record, id),
     isReopened: (id) => record[id] === "reopened",
     set: (id, status) => {
       if (record[id] === status) return;

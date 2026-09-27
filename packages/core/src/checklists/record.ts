@@ -1,3 +1,5 @@
+import type { TaskStatus } from "./types";
+
 /**
  * The persisted record: one entry per Task that is not plain todo, the same
  * in every view. The active Run is not stored. No version field: storage
@@ -18,3 +20,9 @@ export const EMPTY: Stored = Object.freeze(copy({}));
 
 export const isEmpty = (record: Stored): boolean =>
   Object.keys(record).length === 0;
+
+/** A Task's status in a record. No entry, or `reopened`, is todo. */
+export const statusIn = (record: Stored, id: string): TaskStatus => {
+  const status = record[id];
+  return status === "done" || status === "skipped" ? status : "todo";
+};

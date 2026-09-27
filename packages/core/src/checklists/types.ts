@@ -148,9 +148,10 @@ export type Checklist<TTask extends { readonly id: string }> = TaskCommands<
 
 /**
  * Once per shared transition, not once per view. `taskStarted` and
- * `taskStopped` describe Runs, never application actions. Within one change,
- * task events come first, then `checklistComplete` for each view that just
- * became complete, in declaration order.
+ * `taskStopped` describe Runs, never application actions. Within one change:
+ * `taskStopped` for the Run let go of, then each Task whose status changed,
+ * in task map order, then `taskStarted`, then `checklistComplete` for each
+ * view that just became complete, in declaration order.
  */
 export type ChecklistsEvent<
   TTasks,
