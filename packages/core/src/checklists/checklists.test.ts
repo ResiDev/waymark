@@ -85,6 +85,17 @@ describe("createChecklists", () => {
     expect(owner.checklists.home.getSnapshot().complete).toBe(true);
   });
 
+  it("checks no condition at creation when given no context", () => {
+    // Typed for a context it was not given, so a condition must not see a made-up one.
+    const owner = createChecklists<{ user: { plan: string } }>({
+      tasks: { upgrade: { isComplete: (c) => c.user.plan === "pro" } },
+    });
+    expect(statuses(owner.checklists.main)).toEqual({ upgrade: "todo" });
+
+    owner.update({ user: { plan: "pro" } });
+    expect(statuses(owner.checklists.main)).toEqual({ upgrade: "done" });
+  });
+
   it("has one checklist, main, of every task in order when it names none", () => {
     const onChange = vi.fn();
     const owner = createChecklists({

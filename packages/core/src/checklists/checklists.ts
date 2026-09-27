@@ -381,10 +381,12 @@ export function createChecklists<
 
   // Creation checks the initial context like `update`, saving any change but
   // announcing nothing: the owner is not assigned yet, and a reload must not
-  // repeat completion for a view storage already had complete.
-  send(() => checkConditions(config.context ?? ({} as TContext)), {
-    silent: true,
-  });
+  // repeat completion for a view storage already had complete. Without a
+  // context there is nothing to check a condition against.
+  const initial = config.context;
+  if (initial !== undefined) {
+    send(() => checkConditions(initial), { silent: true });
+  }
 
   const checklists: Record<string, Checklist<Named>> = Object.create(null);
   for (const view of views) {
