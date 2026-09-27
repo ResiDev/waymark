@@ -53,7 +53,8 @@ export function createQueue(failure: string): Queue {
 
     let thrown: unknown[];
     try {
-      for (let cursor = 0; cursor < queue.length; cursor++) queue[cursor]!();
+      // An array's iterator also reaches work pushed while it runs.
+      for (const next of queue) next();
     } finally {
       queue.length = 0;
       draining = false;
@@ -67,5 +68,9 @@ export function createQueue(failure: string): Queue {
 
   const now = (work: () => void) => (draining ? work() : run(work));
 
-  return { run, invoke, notify, now, fail: (error) => errors.push(error) };
+  const fail = (error: unknown) => {
+    errors.push(error);
+  };
+
+  return { run, invoke, notify, now, fail };
 }

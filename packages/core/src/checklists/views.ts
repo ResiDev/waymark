@@ -6,27 +6,26 @@ import type { ActiveTask, ChecklistSnapshot, TaskStatus } from "./types";
  */
 export type View<TTask extends { readonly id: string }> = {
   readonly name: string;
-  readonly ids: readonly string[];
+  readonly tasks: readonly TTask[];
   snapshot: ChecklistSnapshot<TTask>;
   readonly listeners: Set<(snapshot: ChecklistSnapshot<TTask>) => void>;
 };
 
 /** Where a view's snapshot is read from: the owner's current state. */
 export type ViewSource<TTask extends { readonly id: string }> = Readonly<{
-  task: (id: string) => TTask;
   status: (id: string) => TaskStatus;
   active: () => ActiveTask<TTask> | null;
 }>;
 
 export function createView<TTask extends { readonly id: string }>(
   name: string,
-  ids: readonly string[],
+  tasks: readonly TTask[],
   source: ViewSource<TTask>,
 ): View<TTask> {
   return {
     name,
-    ids,
-    snapshot: snapshotOf(ids, source),
+    tasks,
+    snapshot: snapshotOf(tasks, source),
     listeners: new Set(),
   };
 }
@@ -43,7 +42,7 @@ export function refresh<TTask extends { readonly id: string }>(
   const changed: View<TTask>[] = [];
   const completed: View<TTask>[] = [];
   for (const view of views) {
-    const next = snapshotOf(view.ids, source);
+    const next = snapshotOf(view.tasks, source);
     if (sameSnapshot(view.snapshot, next)) continue;
     if (!view.snapshot.complete && next.complete) completed.push(view);
     view.snapshot = next;
@@ -53,12 +52,12 @@ export function refresh<TTask extends { readonly id: string }>(
 }
 
 function snapshotOf<TTask extends { readonly id: string }>(
-  ids: readonly string[],
+  tasks: readonly TTask[],
   source: ViewSource<TTask>,
 ): ChecklistSnapshot<TTask> {
-  const rows = ids.map((id) => ({
-    task: source.task(id),
-    status: source.status(id),
+  const rows = tasks.map((task) => ({
+    task,
+    status: source.status(task.id),
   }));
   const finishedCount = rows.filter((row) => row.status !== "todo").length;
   const active = source.active();
@@ -67,7 +66,10 @@ function snapshotOf<TTask extends { readonly id: string }>(
     finishedCount,
     taskCount: rows.length,
     complete: finishedCount === rows.length,
-    active: active !== null && ids.includes(active.task.id) ? active : null,
+    active:
+      active !== null && tasks.some((task) => task.id === active.task.id)
+        ? active
+        : null,
   };
 }
 
@@ -76,4 +78,4 @@ const sameSnapshot = <TTask extends { readonly id: string }>(
   b: ChecklistSnapshot<TTask>,
 ): boolean =>
   a.active === b.active &&
-  a.tasks.every((row, index) => row.status === b.tasks[index]!.status);
+  a.tasks.every((row, index) => row.status === b.tasks[index]?.status);

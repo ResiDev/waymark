@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { createRun } from "./run";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
-import type { Run, Running } from "./types";
+import type { Run } from "./types";
 import type { ExactStep, Step } from "../walkthrough/types";
 
 /**
@@ -15,7 +15,7 @@ let stop: (() => void) | undefined;
 const running = <TStep extends Step>(run: Run<TStep>) => {
   const snapshot = run.getSnapshot();
   if (snapshot.phase !== "running") throw new Error(`Run is ${snapshot.phase}.`);
-  return snapshot as Running<TStep>;
+  return snapshot;
 };
 
 const foundRect = (run: Run) => {
@@ -30,7 +30,7 @@ const domRect = (element: Element) => {
 };
 
 /** Start a Run and keep it watching until the test ends. */
-const start = <const TStep extends Step>(steps: readonly TStep[], waymarkPadding?: number) => {
+const start = <const TStep extends Step>(steps: readonly TStep[], waymarkPadding?: number): Run<TStep> => {
   const run = createRun(
     defineWalkthrough<TStep>(steps as readonly TStep[] & readonly ExactStep<TStep, Step>[]),
     waymarkPadding === undefined ? {} : { waymarkPadding },

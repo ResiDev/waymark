@@ -70,6 +70,16 @@ export const ABSENT: Location = { status: "absent" };
 export const SEARCHING: Location = { status: "searching" };
 export const LOST: Location = { status: "lost" };
 
+/** The Step at `index`. Throws for one the Walkthrough does not have, such as a bad `startAt`. */
+export function stepAt<TStep extends Step>(
+  walkthrough: Walkthrough<TStep>,
+  index: number,
+): TStep {
+  const step = walkthrough.steps[index];
+  if (step === undefined) throw new RangeError(`No step at index ${index}.`);
+  return step;
+}
+
 /**
  * A fresh State for a Step. With a `previous` State the Run-wide facts carry
  * over and the step generation moves on; without one, this is the Run's first.
@@ -79,8 +89,7 @@ export function enter<TStep extends Step>(
   index: number,
   previous?: State<TStep>,
 ): State<TStep> {
-  const step = walkthrough.steps[index];
-  if (step === undefined) throw new RangeError(`No step at index ${index}.`);
+  const step = stepAt(walkthrough, index);
   return {
     snapshot: {
       phase: "running",

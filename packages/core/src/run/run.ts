@@ -2,9 +2,9 @@ import { keyAction, whereClicked } from "./input";
 import { createQueue } from "../queue";
 import { apply, liveWatchers, needsAdvanceRead, sameWaymarkAria, sameWaymarkEvents } from "./rules";
 import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
-import { enter } from "./state";
+import { enter, stepAt } from "./state";
 import type { State } from "./state";
-import { checkOf, hasWaymark, selectorOf } from "../walkthrough/walkthrough";
+import { checkOf, selectorOf } from "../walkthrough/walkthrough";
 import type { Action, Rect, Run, RunOptions, Snapshot, UiElements } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
@@ -102,8 +102,7 @@ export function createRun<TStep extends Step>(
   /** Obey one Message in full; see `send`. */
   const obey = (message: Message) => {
     const outcome = apply(state, message, walkthrough);
-    // `scrollIntoView` is optional only because jsdom does not implement it.
-    outcome.scrollTo?.scrollIntoView?.({
+    outcome.scrollTo?.scrollIntoView({
       behavior: "smooth",
       block: "center",
     });
@@ -120,7 +119,7 @@ export function createRun<TStep extends Step>(
       queue.invoke(() =>
         options.onEvent?.({
           type,
-          step: walkthrough.steps[before.snapshot.stepIndex]!,
+          step: stepAt(walkthrough, before.snapshot.stepIndex),
           stepIndex: before.snapshot.stepIndex,
           snapshot: after,
         }),
@@ -149,23 +148,16 @@ export function createRun<TStep extends Step>(
 
   // ---- one look --------------------------------------------------------------
 
-  /** Find the step's waymark and measure its position and viewport overlap. */
-  const measureWaymark = (step: TStep): WaymarkRead => {
-    const selector = hasWaymark(step) ? selectorOf(step) : undefined;
-
+  /** Find the waymark `selector` matches and measure its position and viewport overlap. */
+  const measureWaymark = (selector: string): WaymarkRead => {
     const cached = state.element;
     const canReuseTarget =
-      cached?.isConnected &&
+      cached !== null &&
+      cached.isConnected &&
       root.contains(cached) &&
-      selector !== undefined &&
       cached.matches(selector);
 
-    const element =
-      selector === undefined
-        ? null
-        : canReuseTarget
-          ? cached
-          : root.querySelector(selector);
+    const element = canReuseTarget ? cached : root.querySelector(selector);
     const rect = element ? element.getBoundingClientRect() : null;
     return {
       element,
@@ -191,7 +183,8 @@ export function createRun<TStep extends Step>(
     const step = snapshot.step;
     // Stamped before the check runs: the check is the author's code and may act on the Run.
     const stepGeneration = state.stepGeneration;
-    const waymark = hasWaymark(step) ? measureWaymark(step) : undefined;
+    const selector = selectorOf(step);
+    const waymark = selector === undefined ? undefined : measureWaymark(selector);
 
     let advance: AdvanceRead | undefined;
     if (needsAdvanceRead(state)) {
@@ -236,7 +229,7 @@ export function createRun<TStep extends Step>(
 
   const onKeyDown = (event: KeyboardEvent) => {
     const action = keyAction(event, getInputContext());
-    if (action) send({ kind: "act", action });
+    if (action !== undefined) send({ kind: "act", action });
   };
 
   // ---- the live watchers, reconciled with the State after every Message ------

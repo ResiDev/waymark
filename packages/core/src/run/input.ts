@@ -35,10 +35,10 @@ export function whereClicked(event: MouseEvent, ctx: InputContext): ClickHit {
 
   // Walkthrough UI takes precedence over the target and its padding.
   const { dialog, beacon } = ctx.ui;
-  if (dialog?.contains(node) || beacon?.contains(node)) return "ui";
+  if (dialog?.contains(node) === true || beacon?.contains(node) === true) return "ui";
   if (node.closest("[data-waymark-ui]")) return "ui";
 
-  if (ctx.element?.contains(node)) return "waymark";
+  if (ctx.element?.contains(node) === true) return "waymark";
   // Keyboard activation has no pointer position; its default 0,0 is not a hit.
   if (event.detail > 0 && ctx.rect && within(ctx.rect, ctx.padding, event.clientX, event.clientY)) {
     return "waymark";
@@ -75,7 +75,7 @@ function cycleFocus(event: KeyboardEvent, ctx: InputContext): void {
   if (focusable.length === 0) return;
 
   event.preventDefault();
-  const current = focusable.indexOf(document.activeElement as HTMLElement);
+  const current = focusable.findIndex((element) => element === document.activeElement);
   const step = event.shiftKey ? -1 : 1;
   const next = (current + step + focusable.length) % focusable.length;
   focusable[current === -1 && event.shiftKey ? focusable.length - 1 : next]?.focus();

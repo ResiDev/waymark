@@ -1,3 +1,4 @@
+import { dictionary } from "../dictionary";
 import { createQueue } from "../queue";
 import { createRun } from "../run/run";
 import { checkedWalkthrough } from "../walkthrough/walkthrough";
@@ -18,7 +19,7 @@ import type {
   TaskMap,
 } from "./types";
 import { DEFAULT_CHECKLIST } from "./types";
-import { validate } from "./validate";
+import { select } from "./validate";
 import { createView, refresh } from "./views";
 import type { ViewSource } from "./views";
 import type { Run, RunEvent, UiElements } from "../run/types";
@@ -92,26 +93,25 @@ export function createChecklists<
   }>;
 
   const tasks: Tasks = config.tasks;
-  const selections: Readonly<Record<string, readonly string[]>> =
-    config.checklists ?? {
-      [DEFAULT_CHECKLIST]: Object.keys(tasks),
-    };
-  validate(tasks, selections);
+  const named = dictionary<Named>();
+  for (const [id, task] of Object.entries(tasks)) named[id] = { ...task, id };
+  /** Every Task, in task map order. */
+  const taskList = Object.values(named);
+  const selected = select(
+    named,
+    config.checklists ?? { [DEFAULT_CHECKLIST]: Object.keys(tasks) },
+  );
   const { onChange, onEvent, run: runOptions, storage } = config;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every event carries one of these Tasks, so it is the event the handler is typed for.
   const emit = onEvent as ((event: Event) => void) | undefined;
-  // Every Run's steps come from these tasks, so its events carry the steps
-  // the application's handler is typed for.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every Run's steps come from these Tasks, so its events carry the steps the handler is typed for.
   const onRunEventOption = runOptions?.onEvent as
     | ((event: RunEvent) => void)
     | undefined;
 
-  const taskIds = Object.keys(tasks);
-  const named: Record<string, Named> = Object.create(null);
-  for (const id of taskIds) named[id] = { ...tasks[id]!, id };
   // Snapshots keep each Task as written; Runs need a checked Walkthrough.
-  const walkthroughs: Record<string, Walkthrough> = Object.create(null);
-  for (const id of taskIds) {
-    const walkthrough = tasks[id]!.walkthrough;
+  const walkthroughs = dictionary<Walkthrough>();
+  for (const [id, { walkthrough }] of Object.entries(tasks)) {
     if (walkthrough === undefined) continue;
     walkthroughs[id] = isSteps(walkthrough)
       ? checkedWalkthrough(walkthrough, `Task "${id}": `)
@@ -135,12 +135,11 @@ export function createChecklists<
   // ---- views ----------------------------------------------------------------
 
   const source: ViewSource<Named> = {
-    task: (id) => named[id]!,
     status: progress.status,
     active: () => active,
   };
-  const views = Object.keys(selections).map((name) =>
-    createView(name, selections[name]!, source),
+  const views = selected.map(([name, viewTasks]) =>
+    createView(name, viewTasks, source),
   );
 
   // ---- the one place state changes -------------------------------------------
@@ -170,7 +169,7 @@ export function createChecklists<
       queue.invoke(() => storage?.save(after.record));
       queue.invoke(() => onChange?.(after.record));
     }
-    if (!flags.silent) {
+    if (flags.silent !== true) {
       for (const event of eventsBetween(before, after, flags.from))
         queue.invoke(() => emit?.(event));
       for (const view of completed) {
@@ -230,16 +229,15 @@ export function createChecklists<
       const reason = stopReason(before.active, before, after);
       events.push({ type: "taskStopped", task: before.active.task, reason });
     }
-    for (const id of taskIds) {
-      const was = statusIn(before.record, id);
-      const now = statusIn(after.record, id);
+    for (const task of taskList) {
+      const was = statusIn(before.record, task.id);
+      const now = statusIn(after.record, task.id);
       if (was === now) continue;
-      const task = named[id]!;
       if (now === "done") {
         events.push({ type: "taskComplete", task });
       } else if (now === "skipped") {
         // Skipped from guidance: from the view that started it.
-        const guided = before.active?.task.id === id;
+        const guided = before.active?.task.id === task.id;
         const view = from ?? (guided ? before.startedFrom : undefined);
         events.push({ type: "taskSkipped", task, ...fromView(view) });
       } else if (was === "done") {
@@ -358,10 +356,9 @@ export function createChecklists<
   const checkConditions = (context: TContext) => {
     const complete: string[] = [];
     const settled: string[] = [];
-    for (const id of taskIds) {
-      const { isComplete } = named[id]!;
+    for (const { id, isComplete } of taskList) {
       if (isComplete === undefined || progress.status(id) === "done") continue;
-      const met = isComplete(context) === true;
+      const met = isComplete(context);
       if (!progress.isReopened(id)) {
         if (met) complete.push(id);
       } else if (!met) {
@@ -388,7 +385,7 @@ export function createChecklists<
     send(() => checkConditions(initial), { silent: true });
   }
 
-  const checklists: Record<string, Checklist<Named>> = Object.create(null);
+  const checklists = dictionary<Checklist<Named>>();
   for (const view of views) {
     checklists[view.name] = {
       start: (id) => start(id, view.name),
@@ -423,5 +420,6 @@ export function createChecklists<
     load,
     clear,
   };
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- restores the exact Tasks and selections the owner was built from; see the top of this function.
   return owner as unknown as Checklists<TContext, TTasks, TSelections>;
 }

@@ -55,10 +55,10 @@ export function checkedWalkthrough<TStep extends Step>(
 export const hasWaymark = (step: Step): boolean =>
   step.waymark !== undefined || step.selector !== undefined;
 
-/** How to find the Step's Waymark. Only meaningful when `hasWaymark`. */
-export const selectorOf = (step: Step): string =>
+/** How to find the Step's Waymark; undefined for a Step that has none. */
+export const selectorOf = (step: Step): string | undefined =>
   step.waymark === undefined
-    ? step.selector!
+    ? step.selector
     : `[data-waymark="${step.waymark}"]`;
 
 /** Which of `click`, `event` and `state` the Step's `advance` object names. */

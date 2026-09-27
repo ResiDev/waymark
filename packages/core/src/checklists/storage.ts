@@ -25,6 +25,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isStatus = (value: unknown): value is StoredStatus =>
   value === "done" || value === "skipped" || value === "reopened";
 
+const isStored = (value: unknown): value is Stored =>
+  isRecord(value) && Object.values(value).every(isStatus);
+
 /** A Stored value with exactly the shape core writes, and nothing else believed. */
 const parse = (text: string | null): Stored => {
   if (text === null) return EMPTY;
@@ -34,10 +37,9 @@ const parse = (text: string | null): Stored => {
   } catch {
     return EMPTY;
   }
-  if (!isRecord(envelope) || envelope.version !== VERSION) return EMPTY;
-  const record = envelope.record;
-  if (!isRecord(record) || !Object.values(record).every(isStatus)) return EMPTY;
-  return copy(record as Stored);
+  if (!isRecord(envelope) || envelope["version"] !== VERSION) return EMPTY;
+  const record = envelope["record"];
+  return isStored(record) ? copy(record) : EMPTY;
 };
 
 export function createLocalStorageRecord(key: string): StoredRecord {

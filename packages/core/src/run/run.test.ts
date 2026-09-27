@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRun } from "./run";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { actions, type RunEvent, type Running } from "./types";
-import type { Step } from "../walkthrough/types";
 
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame: number;
@@ -17,7 +16,7 @@ const flush = (ms = 16) => {
 
 const addTarget = (waymark: string, rect: Partial<DOMRect> = {}) => {
   const element = document.createElement("button");
-  element.dataset.waymark = waymark;
+  element.dataset["waymark"] = waymark;
   const box = {
     x: 20,
     y: 20,
@@ -51,7 +50,7 @@ const press = (key: string) =>
   window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
 
 /** Subscribes so the Run starts watching, and reports the latest snapshot. */
-const watch = <TStep extends Step>(run: {
+const watch = (run: {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => unknown;
 }) => {
@@ -59,7 +58,7 @@ const watch = <TStep extends Step>(run: {
   return {
     stop,
     get snapshot() {
-      return run.getSnapshot() as Running<TStep>;
+      return run.getSnapshot() as Running;
     },
   };
 };
@@ -102,7 +101,7 @@ describe("createRun", () => {
     const view = watch(run);
     expect(view.snapshot.waymark).toEqual({
       status: "found",
-      rect: expect.objectContaining({ top: 20, width: 100 }),
+      rect: expect.objectContaining({ top: 20, width: 100 }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
     });
     expect(target).toHaveAttribute("aria-haspopup", "dialog");
     expect(frames.size).toBe(1);
@@ -285,7 +284,7 @@ describe("createRun", () => {
     const view = watch(createRun(defineWalkthrough([{ waymark: "save" }]), { root }));
 
     if (change === "moved outside root") document.body.append(target);
-    else target.dataset.waymark = "other";
+    else target.dataset["waymark"] = "other";
     flush();
 
     expect(view.snapshot.waymark.status).toBe("lost");
@@ -664,7 +663,7 @@ describe("createRun", () => {
     const target = addTarget("save");
     const button = document.createElement("button");
     if (kind === "marked") {
-      button.dataset.waymarkUi = "";
+      button.dataset["waymarkUi"] = "";
       target.append(button);
     } else document.body.append(button);
     const run = createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]), {
@@ -797,7 +796,7 @@ describe("createRun", () => {
 
     expect(seen).toEqual([
       expect.objectContaining({
-        waymark: { status: "found", rect: expect.objectContaining({ top: 20 }) },
+        waymark: { status: "found", rect: expect.objectContaining({ top: 20 }) }, // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
       }),
     ]);
   });

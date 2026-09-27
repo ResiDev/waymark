@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChecklists } from "./checklists";
 import type { Stored } from "./record";
-import type { ChecklistsEvent, Task } from "./types";
+import type { ChecklistSelections, ChecklistsEvent, Task, TaskMap } from "./types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 
 const guide = defineWalkthrough([{ waymark: "save" }, {}]);
@@ -10,10 +10,13 @@ const single = defineWalkthrough([{}]);
 const context = { hasDeck: false, hasPhoto: false };
 type Context = typeof context;
 
+/** An event from any owner in this file: `Task<never>` accepts a condition on any context. */
+type AnyEvent = ChecklistsEvent<TaskMap<never>, ChecklistSelections<TaskMap<never>>>;
+
 type Options = {
   stored?: Stored;
   onChange?: (stored: Stored) => void;
-  onEvent?: (event: ChecklistsEvent<any, any>) => void;
+  onEvent?: (event: AnyEvent) => void;
 };
 
 const setup = ({ context: initial = context, ...options }: Options & { context?: Context } = {}) =>
@@ -38,7 +41,7 @@ const statuses = (view: { getSnapshot: () => { tasks: readonly { task: { id: str
 
 const types = (calls: { mock: { calls: unknown[][] } }) =>
   calls.mock.calls.map(([event]) => {
-    const e = event as ChecklistsEvent<any, any>;
+    const e = event as AnyEvent;
     return "task" in e ? `${e.type}:${e.task.id}` : `${e.type}:${e.checklist}`;
   });
 
@@ -50,7 +53,7 @@ describe("createChecklists", () => {
   it.each(["constructor", "toString", "__proto__"])(
     "supports %s as both a task id and checklist name",
     (name) => {
-      const onChange = vi.fn();
+      const onChange = vi.fn<(stored: Stored) => void>();
       const owner = createChecklists({
         context: {},
         tasks: { [name]: { walkthrough: single } },
@@ -70,7 +73,7 @@ describe("createChecklists", () => {
       expect(stored[name]).toBe("skipped");
 
       owner.clear();
-      owner.load(JSON.parse(JSON.stringify(stored)));
+      owner.load(JSON.parse(JSON.stringify(stored)) as Stored);
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       view.markDone(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("done");
@@ -203,7 +206,7 @@ describe("update", () => {
     expect(decks).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "done" });
     expect(types(onEvent)).toEqual(["taskComplete:create-deck", "checklistComplete:decks"]);
-    const complete = onEvent.mock.calls[1]![0] as Extract<ChecklistsEvent<any, any>, { type: "checklistComplete" }>;
+    const complete = onEvent.mock.calls[1]![0] as Extract<AnyEvent, { type: "checklistComplete" }>;
     expect(complete.snapshot).toBe(owner.checklists.decks.getSnapshot());
     expect(complete.snapshot.finishedCount).toBe(1);
   });
@@ -448,7 +451,7 @@ describe("guidance", () => {
         waymarkPadding: 12,
         onEvent: (event) => {
           seen.push(`run:${event.type}`);
-          if (event.type === "finish") seen.push(`active:${String(owner.getSnapshot().active)}`);
+          if (event.type === "finish") seen.push(`active:${owner.getSnapshot().active?.task.id ?? "none"}`);
         },
       },
     });
@@ -475,7 +478,7 @@ describe("guidance", () => {
       "owner:taskComplete",
       "owner:checklistComplete",
       "run:finish",
-      "active:null",
+      "active:none",
     ]);
   });
 
@@ -501,7 +504,7 @@ describe("subscribe", () => {
   it("calls view and owner listeners at once with the current snapshot, then with each new one", () => {
     const owner = setup();
     const view = vi.fn();
-    const own = vi.fn();
+    const own = vi.fn<Parameters<typeof owner.subscribe>[0]>();
     owner.checklists.home.subscribe(view);
     owner.subscribe(own);
     expect(view).toHaveBeenCalledExactlyOnceWith(owner.checklists.home.getSnapshot());
@@ -510,7 +513,7 @@ describe("subscribe", () => {
     owner.start("read-tips");
     expect(view).toHaveBeenLastCalledWith(owner.checklists.home.getSnapshot());
     expect(own).toHaveBeenLastCalledWith(owner.getSnapshot());
-    expect(own.mock.lastCall![0].active.task.id).toBe("read-tips");
+    expect(own.mock.lastCall![0].active?.task.id).toBe("read-tips");
   });
 
   it("throws from subscribe if the listener throws when first called, and drops it", () => {
@@ -547,7 +550,7 @@ describe("subscribeActive", () => {
 
   it("wakes the active Run, and hears the owner and every step", () => {
     const { owner, runEvents } = setupRuns();
-    const listener = vi.fn();
+    const listener = vi.fn<Parameters<typeof owner.subscribeActive>[0]>();
     owner.subscribeActive(listener);
     expect(listener).toHaveBeenCalledExactlyOnceWith({ active: null, step: null });
 
@@ -648,7 +651,7 @@ describe("markDone and skip", () => {
   });
 
   it("names the view a skip came from, or the view that started the guidance skipped", () => {
-    const onEvent = vi.fn();
+    const onEvent = vi.fn<(event: AnyEvent) => void>();
     const owner = setup({ onEvent });
     const skippedFrom = () =>
       onEvent.mock.calls
@@ -946,7 +949,7 @@ describe("re-entrancy and errors", () => {
   it.each(["start", "stop", "skip"] as const)(
     "records completion when a Run subscriber calls %s before the finish event",
     (command) => {
-      const onEvent = vi.fn();
+      const onEvent = vi.fn<(event: AnyEvent) => void>();
       const onChange = vi.fn();
       const owner = createChecklists({
         context: {},
@@ -967,8 +970,8 @@ describe("re-entrancy and errors", () => {
 
       try {
         run.act("advance");
-        expect(statuses(owner.checklists.all).a).toBe("done");
-        expect(statuses(owner.checklists.first).a).toBe("done");
+        expect(statuses(owner.checklists.all)["a"]).toBe("done");
+        expect(statuses(owner.checklists.first)["a"]).toBe("done");
         expect(owner.getSnapshot().active?.task.id ?? null).toBe(command === "start" ? "b" : null);
         expect(run.getSnapshot().phase).toBe("completed");
         expect(onChange).toHaveBeenCalledExactlyOnceWith({ a: "done" });
@@ -1007,13 +1010,13 @@ describe("re-entrancy and errors", () => {
 
     try {
       run.act("advance");
-      expect(statuses(owner.checklists.all).a).toBe("todo");
+      expect(statuses(owner.checklists.all)["a"]).toBe("todo");
       expect(owner.getSnapshot().active?.task.id).toBe("b");
       expect(types(onEvent)).toEqual(["taskStopped:a", "taskStarted:b"]);
       expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
 
       owner.update({ ready: true });
-      expect(statuses(owner.checklists.all).a).toBe("done");
+      expect(statuses(owner.checklists.all)["a"]).toBe("done");
       expect(owner.getSnapshot().active?.task.id).toBe("b");
     } finally {
       unsubscribe();
@@ -1037,7 +1040,7 @@ describe("re-entrancy and errors", () => {
 
     try {
       run.act("advance");
-      expect(statuses(owner.checklists.all).a).toBe("skipped");
+      expect(statuses(owner.checklists.all)["a"]).toBe("skipped");
       expect(types(onEvent)).toEqual(["taskStopped:a", "taskSkipped:a", "checklistComplete:all"]);
       expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
     } finally {

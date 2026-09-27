@@ -1,3 +1,4 @@
+import { dictionary } from "../dictionary";
 import type { TaskStatus } from "./types";
 
 /**
@@ -14,7 +15,7 @@ export type StoredStatus = Stored[string];
 
 /** A copy with a null prototype, so ids such as `toString` or `__proto__` are ordinary keys. */
 export const copy = (record: Stored): Record<string, StoredStatus> =>
-  Object.assign(Object.create(null), record);
+  Object.assign(dictionary<StoredStatus>(), record);
 
 export const EMPTY: Stored = Object.freeze(copy({}));
 

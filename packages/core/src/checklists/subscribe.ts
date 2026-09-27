@@ -22,7 +22,7 @@ export const listen =
 
 type Following<TActive> = Readonly<{
   active: TActive | null;
-  step: Snapshot<any> | null;
+  step: Snapshot | null;
 }>;
 
 /**
@@ -30,7 +30,7 @@ type Following<TActive> = Readonly<{
  * owner changes, so the listener hears both. It is handed the active Task and
  * its Run's step together. Unsubscribing lets go of both.
  */
-export function followActive<TActive extends Readonly<{ run: Run<any> }>>(
+export function followActive<TActive extends Readonly<{ run: Run }>>(
   subscribe: (listener: () => void) => () => void,
   getActive: () => TActive | null,
   listener: (snapshot: Following<TActive>) => void,
@@ -46,7 +46,7 @@ export function followActive<TActive extends Readonly<{ run: Run<any> }>>(
     last = { active, step };
     listener(last);
   };
-  let followed: { run: Run<any>; unsubscribe: () => void } | undefined;
+  let followed: { run: Run; unsubscribe: () => void } | undefined;
   const follow = () => {
     const run = getActive()?.run;
     if (followed?.run === run) return;

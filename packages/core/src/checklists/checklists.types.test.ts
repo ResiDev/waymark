@@ -169,7 +169,7 @@ describe("createChecklists types", () => {
     const create = () =>
       createChecklists({
         // @ts-expect-error without a context, a condition has no fields to read
-        tasks: { deck: { isComplete: (c) => c.hasDeck } },
+        tasks: { deck: { isComplete: (c) => c.hasDeck } }, // oxlint-disable-line typescript/no-unsafe-return -- a deliberate type error, so its value has no type.
         checklists: { home: ["deck"] },
       });
     expectTypeOf(create).toBeFunction();
@@ -185,7 +185,7 @@ describe("createChecklists types", () => {
       .toEqualTypeOf<"tour" | "hello">();
     const mistakes = () => {
       // @ts-expect-error the one checklist is main
-      owner.checklists.home.start("tour");
+      owner.checklists.home.start("tour"); // oxlint-disable-line typescript/no-unsafe-call, typescript/no-unsafe-member-access -- a deliberate type error, so its value has no type.
     };
     expectTypeOf(mistakes).toBeFunction();
   });

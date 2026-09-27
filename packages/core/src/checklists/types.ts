@@ -229,7 +229,7 @@ export type ChecklistViews<
 };
 
 export type ChecklistsSnapshot<TTasks> = Readonly<{
-  active: Readonly<{ task: NamedTask<TTasks>; run: Run<any> }> | null;
+  active: ActiveTask<NamedTask<TTasks>> | null;
 }>;
 
 /**
@@ -239,7 +239,7 @@ export type ChecklistsSnapshot<TTasks> = Readonly<{
 export type ActiveSnapshot<TTasks> = Readonly<{
   active: ChecklistsSnapshot<TTasks>["active"];
   /** The active Run's Snapshot; null when nothing is active. */
-  step: Snapshot<any> | null;
+  step: Snapshot<StepOf<TTasks[keyof TTasks]>> | null;
 }>;
 
 export type Checklists<
