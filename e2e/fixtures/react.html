@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Waymark React fixture</title>
+    <link rel="icon" href="data:," />
+    <style>
+      body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+      button { font: inherit; cursor: pointer; }
+      button:disabled { cursor: default; }
+      kbd { padding: 0 4px; border: 1px solid currentColor; border-radius: 3px; font-size: 12px; }
+
+      /* ---- the app ---- */
+      .app { display: grid; grid-template-columns: 170px minmax(0, 1fr); grid-template-rows: 52px 1fr; min-height: 100vh; margin-left: var(--lab-width, 0); }
+      .app[data-theme="dark"] { color: #e2e8f0; background: #0f172a; }
+      .app[data-theme="sepia"] { background: #f4ecd8; }
+      .topbar {
+        grid-column: 1 / -1; position: sticky; top: 0; z-index: 10;
+        display: flex; align-items: center; gap: 10px; padding: 0 12px;
+        color: #fff; background: #1e293b;
+      }
+      .topbar button { flex: none; padding: 5px 10px; border: 1px solid #475569; border-radius: 6px; color: #fff; background: #334155; white-space: nowrap; }
+      .brand { font-weight: 700; font-size: 16px; }
+      .search { flex: 0 1 220px; min-width: 60px; padding: 5px 8px; border: 0; border-radius: 6px; }
+      .grow { flex: 1; }
+      .avatar { width: 32px; height: 32px; padding: 0 !important; border-radius: 50% !important; }
+      .avatar.big { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 8px; border-radius: 50%; background: #e2e8f0; font-size: 24px; }
+      .sidebar { position: sticky; top: 52px; align-self: start; display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; }
+      .sidebar button { padding: 8px 10px; border: 0; border-radius: 6px; text-align: left; color: inherit; background: transparent; }
+      .sidebar button[aria-current="page"] { background: #dbeafe; color: #1e3a8a; }
+      .view { padding: 20px 28px 80px; max-width: 720px; }
+      .view h1 { margin: 0 0 16px; font-size: 22px; }
+      .view > button, .deck-form button { padding: 6px 12px; }
+      .stats { display: flex; gap: 12px; margin-bottom: 16px; }
+      .stat { padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #0f172a; }
+      .spacer { height: 1400px; }
+      .guide { padding: 12px; border: 1px dashed #94a3b8; border-radius: 8px; }
+      .loading, .empty { color: #64748b; }
+      .banner { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 10px 12px; border-radius: 8px; background: #fef9c3; color: #713f12; }
+      .deck-form { display: flex; gap: 8px; margin: 12px 0; }
+      .deck-form input { padding: 6px 8px; }
+      .decks { padding-left: 20px; }
+      .card { margin-bottom: 12px; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #0f172a; }
+      .card h2 { margin: 0 0 8px; font-size: 15px; }
+      .card button { margin-right: 6px; padding: 5px 10px; }
+      .feedback { position: fixed; right: 12px; bottom: 12px; z-index: 5; padding: 8px 14px; border: 0; border-radius: 999px; color: #fff; background: #7c3aed; }
+      .backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgb(15 23 42 / 0.4); }
+      .modal { display: flex; flex-direction: column; gap: 10px; width: 300px; padding: 20px; border-radius: 10px; background: #fff; color: #0f172a; }
+      .modal h2 { margin: 0; font-size: 16px; }
+      .modal input { padding: 6px 8px; }
+      .modal button { margin-right: 6px; padding: 5px 10px; }
+
+      /* ---- checklist variants ---- */
+      .compact-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+      .compact-row button { padding: 2px 8px; font-size: 12px; }
+      .compact-title { flex: 1; font-weight: 600; }
+      .pill { min-width: 52px; padding: 1px 6px; border-radius: 999px; font-size: 11px; text-align: center; background: #e2e8f0; }
+      .pill[data-status="done"] { background: #bbf7d0; }
+      .pill[data-status="skipped"] { background: #fed7aa; }
+      .headless header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+      .headless progress { flex: 1; }
+      .headless .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+      .headless article { display: flex; flex-direction: column; padding: 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #0f172a; }
+      .headless article[data-status="done"] { opacity: 0.6; }
+      .headless article[data-status="skipped"] { opacity: 0.45; }
+      .headless article[data-active="true"] { border-color: #3b82f6; box-shadow: 0 0 0 2px #bfdbfe; }
+      .headless h4 { margin: 0 0 4px; }
+      .headless p { flex: 1; margin: 0 0 8px; color: #475569; font-size: 13px; }
+      .headless footer { display: flex; gap: 6px; }
+
+      /* ---- the custom popover ---- */
+      .custom-popover {
+        box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; width: 300px; max-width: calc(100vw - 16px);
+        padding: 14px; border: 2px solid #7c3aed; border-radius: 4px; color: #1e1b4b; background: #faf5ff;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+      }
+      .custom-popover-meta { display: flex; justify-content: space-between; font-size: 11px; color: #6d28d9; text-transform: uppercase; }
+      .dots { display: flex; gap: 4px; align-items: center; }
+      .dots i { width: 6px; height: 6px; border-radius: 50%; background: #ddd6fe; }
+      .dots i[data-current="true"] { background: #7c3aed; }
+      .locked { font-size: 12px; color: #b45309; }
+      .custom-popover-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+      .custom-popover-actions button { padding: 3px 8px; border: 1px solid #c4b5fd; border-radius: 4px; background: #fff; }
+      .custom-popover-actions .primary { margin-left: auto; color: #fff; background: #7c3aed; border-color: #7c3aed; }
+      .custom-popover-actions button:disabled { opacity: 0.45; }
+
+      /* ---- the lab: above the library's shade (z-index 50) and popover (51), so it stays usable ---- */
+      body:has(.lab) { --lab-width: 300px; }
+      .lab {
+        position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; box-sizing: border-box; width: 300px; overflow: auto;
+        padding: 10px 12px; border-right: 1px solid #cbd5e1; background: #fff; color: #0f172a; font-size: 12px;
+      }
+      .lab-head { display: flex; align-items: center; gap: 8px; }
+      .lab-head b { flex: 1; }
+      .lab h2 { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; color: #64748b; }
+      .lab button { margin: 0 4px 4px 0; padding: 2px 7px; font-size: 12px; }
+      .lab label { display: inline-block; margin: 0 8px 2px 0; }
+      .lab input[type="number"] { width: 48px; }
+      .choice span { display: inline-block; width: 58px; color: #475569; }
+      .lab-status { margin: 4px 0 6px; font-weight: 600; }
+      .lab pre { margin: 0 0 4px; white-space: pre-wrap; word-break: break-all; font-size: 11px; }
+      .log { max-height: 34vh; overflow: auto; font: 11px/1.45 ui-monospace, monospace; }
+      .log div { padding-left: 4ch; text-indent: -4ch; }
+      .log b { font-weight: 600; }
+      .log [data-source="owner"] b { color: #7c3aed; }
+      .log [data-source="run"] b { color: #2563eb; }
+      .log [data-source="waymark"] b { color: #64748b; }
+      .log [data-source="whats-new"] b { color: #c2410c; }
+      .lab-show { position: fixed; bottom: 8px; left: 8px; z-index: 60; padding: 2px 8px; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./react/main.tsx"></script>
+  </body>
+</html>

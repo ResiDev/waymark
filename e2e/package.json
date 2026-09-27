@@ -4,15 +4,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite --open",
+    "dev:react": "vite --open /react.html",
     "shot": "node --experimental-strip-types scripts/shot.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "playwright": "^1.63.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-waymark": "workspace:*",
     "typescript": "^5.9.3",
     "vite": "^8.3.0",
     "waymark": "workspace:*"
   },
-  "description": "Vanilla fixture page for core: a dev playground for people and agents, and a screenshot script."
+  "description": "Fixture pages for core, checklists and the React package: dev playgrounds for people and agents, and a screenshot script."
 }
