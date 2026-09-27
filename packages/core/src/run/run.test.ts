@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRun } from "./run";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
-import type { RunEvent, Running } from "./types";
+import { actions, type RunEvent, type Running } from "./types";
 import type { Step } from "../walkthrough/types";
 
 let frames: Map<number, FrameRequestCallback>;
@@ -32,6 +32,14 @@ const addTarget = (waymark: string, rect: Partial<DOMRect> = {}) => {
   element.getBoundingClientRect = () => box;
   document.body.append(element);
   return element;
+};
+
+/** A target below jsdom's 768px viewport, with a stand-in for the scroll jsdom lacks. */
+const addFarTarget = (waymark: string) => {
+  const element = addTarget(waymark, { y: 2000, top: 2000, bottom: 2040 });
+  const scroll = vi.fn();
+  element.scrollIntoView = scroll;
+  return { element, scroll };
 };
 
 const clickAt = (node: Element, x: number, y: number) =>
@@ -128,6 +136,26 @@ describe("createRun", () => {
     expect(calledBeforeReturn).toBe(true);
     expect(inner).toHaveBeenCalledExactlyOnceWith(run.getSnapshot());
     expect(inner.mock.lastCall![0]).toMatchObject({ stepIndex: 1 });
+  });
+
+  it("does not notify on a look that changes nothing a renderer shows", () => {
+    addTarget("save");
+    let ready = false;
+    const run = createRun(defineWalkthrough([
+      { waymark: "save", advance: { state: () => ready, delayMs: 50 } }, {},
+    ]));
+    const listener = vi.fn();
+    const stop = run.subscribe(listener);
+    listener.mockClear();
+
+    flush(); // the waymark has not moved
+    ready = true;
+    flush(); // the delay starts
+    expect(listener).not.toHaveBeenCalled();
+
+    flush(50);
+    expect(listener).toHaveBeenCalledOnce();
+    stop();
   });
 
   it.each(["unsubscribe", "exit", "advance"])("restores authored ARIA attributes on %s", (cleanup) => {
@@ -234,14 +262,19 @@ describe("createRun", () => {
     expect(target).not.toHaveAttribute("aria-expanded");
   });
 
-  it("reports a waymark as lost once it leaves the page", () => {
-    const target = addTarget("save");
+  it("searches for a waymark until it first appears, and reports it lost once it leaves", () => {
     const view = watch(createRun(defineWalkthrough([{ waymark: "save" }])));
+    flush();
+    expect(view.snapshot.waymark).toEqual({ status: "searching" });
+
+    const target = addTarget("save");
+    flush();
+    expect(view.snapshot.waymark.status).toBe("found");
 
     target.remove();
     flush();
-
     expect(view.snapshot.waymark).toEqual({ status: "lost" });
+    view.stop();
   });
 
   it.each(["moved outside root", "renamed"])("replaces a cached target that was %s", (change) => {
@@ -279,6 +312,60 @@ describe("createRun", () => {
 
     expect(query).toHaveBeenCalledTimes(1);
     expect(view.snapshot.waymark.status).toBe("found");
+    view.stop();
+  });
+
+  it.each([["once", 1], ["always", 3], ["never", 0]] as const)(
+    "scrolls to an off-screen waymark %s",
+    (scroll, times) => {
+      const far = addFarTarget("far");
+      const view = watch(createRun(defineWalkthrough([{ waymark: "far", scroll }])));
+
+      flush();
+      flush();
+
+      expect(far.scroll).toHaveBeenCalledTimes(times);
+      view.stop();
+    },
+  );
+
+  it("scrolls to each step's off-screen waymark, not only the first step's", () => {
+    const first = addFarTarget("first");
+    const second = addFarTarget("second");
+    const run = createRun(defineWalkthrough([{ waymark: "first" }, { waymark: "second" }]));
+    const view = watch(run);
+
+    run.act("advance");
+    flush();
+
+    expect(first.scroll).toHaveBeenCalledOnce();
+    expect(second.scroll).toHaveBeenCalledOnce();
+    view.stop();
+  });
+
+  it("scrolls to a waymark found on the look that starts its step's delay", () => {
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "far", advance: { state: (element) => element !== null, delayMs: 50 } }, {},
+    ])));
+    const far = addFarTarget("far");
+
+    flush();
+
+    expect(view.snapshot.stepIndex).toBe(0);
+    expect(far.scroll).toHaveBeenCalledOnce();
+    view.stop();
+  });
+
+  it("does not scroll to a waymark whose step it has just left", () => {
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "far", advance: { state: (element) => element !== null } }, {},
+    ])));
+    const far = addFarTarget("far");
+
+    flush();
+
+    expect(view.snapshot.stepIndex).toBe(1);
+    expect(far.scroll).not.toHaveBeenCalled();
     view.stop();
   });
 
@@ -320,6 +407,50 @@ describe("createRun", () => {
     target.dispatchEvent(new Event("change"));
 
     expect(view.snapshot).toMatchObject({ stepIndex: 0, canAdvance: true });
+  });
+
+  it("will not be moved past a shut gate, by command or by key", () => {
+    addTarget("save");
+    const run = createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]));
+    const view = watch(run);
+
+    run.act("advance");
+    press("ArrowRight");
+
+    expect(view.snapshot).toMatchObject({ stepIndex: 0, canAdvance: false });
+    view.stop();
+  });
+
+  it("does not take a click on the waymark for the event its step waits for", () => {
+    const target = addTarget("name");
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "name", advance: { event: "change" } }, {},
+    ])));
+
+    clickAt(target, 50, 40);
+    expect(view.snapshot).toMatchObject({ stepIndex: 0, collapsed: false });
+
+    target.dispatchEvent(new Event("change"));
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("needs a click on each step that waits for one", () => {
+    const save = addTarget("save");
+    const publish = addTarget("publish", { x: 200, left: 200, right: 300 });
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "save", advance: "click" },
+      { waymark: "publish", advance: "click" },
+      {},
+    ])));
+
+    clickAt(save, 50, 40);
+    flush();
+    expect(view.snapshot.stepIndex).toBe(1);
+
+    clickAt(publish, 250, 40);
+    expect(view.snapshot.stepIndex).toBe(2);
+    view.stop();
   });
 
   it("checks a step without a waymark without querying the DOM", () => {
@@ -428,6 +559,76 @@ describe("createRun", () => {
 
     flush(60);
     expect(view.snapshot.stepIndex).toBe(1);
+  });
+
+  it("starts the delay again if the condition stops holding before it is due", () => {
+    let ready = true;
+    const view = watch(createRun(defineWalkthrough([
+      { advance: { state: () => ready, delayMs: 50 } }, {},
+    ])));
+
+    flush(); // holding
+    ready = false;
+    flush(20);
+    ready = true;
+    flush(20); // holding again, from here
+    flush(40);
+    expect(view.snapshot.stepIndex).toBe(0);
+
+    flush(10);
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("times each step's delay from its own condition, not the step before's", () => {
+    const save = addTarget("save");
+    const view = watch(createRun(defineWalkthrough([
+      { waymark: "save", advance: { click: true, delayMs: 50 } },
+      { advance: { state: () => true, delayMs: 50 } },
+      {},
+    ])));
+
+    clickAt(save, 50, 40);
+    flush(50);
+    expect(view.snapshot.stepIndex).toBe(1);
+
+    flush(); // step 1's condition holds from here
+    flush(49);
+    expect(view.snapshot.stepIndex).toBe(1);
+    flush(1);
+    expect(view.snapshot.stepIndex).toBe(2);
+    view.stop();
+  });
+
+  it("restarts a state check's delay after a spell with no subscribers", () => {
+    const run = createRun(defineWalkthrough([
+      { advance: { state: () => true, delayMs: 50 } }, {},
+    ]));
+    let view = watch(run);
+    flush(); // holding
+    view.stop();
+
+    flush(100); // no one watched it hold
+    view = watch(run);
+    expect(view.snapshot.stepIndex).toBe(0);
+    flush(50);
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("keeps a click's delay through a spell with no subscribers", () => {
+    const save = addTarget("save");
+    const run = createRun(defineWalkthrough([
+      { waymark: "save", advance: { click: true, delayMs: 50 } }, {},
+    ]));
+    let view = watch(run);
+    clickAt(save, 50, 40);
+    view.stop();
+
+    flush(100); // the click still happened
+    view = watch(run);
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
   });
 
   it("counts a click in the halo around a waymark as a click on it", () => {
@@ -566,6 +767,23 @@ describe("createRun", () => {
       stepIndex: 0,
       stepCount: 1,
     });
+  });
+
+  it("ignores everything but reset once it has ended", () => {
+    const events: string[] = [];
+    const run = createRun(defineWalkthrough([{}, {}]), {
+      startAt: 1,
+      onEvent: (event: RunEvent) => events.push(event.type),
+    });
+    run.act("exit");
+    const ended = run.getSnapshot();
+
+    for (const action of actions) if (action !== "reset") run.act(action);
+    expect(run.getSnapshot()).toBe(ended);
+
+    run.act("reset");
+    expect(run.getSnapshot()).toMatchObject({ phase: "running", stepIndex: 0 });
+    expect(events).toEqual(["exit", "reset"]);
   });
 
   it("has already found the waymark by the time it announces the start", () => {

@@ -91,7 +91,7 @@ function advanceStep<TStep extends Step>(
 }
 
 /** Apply an action if the current state permits it; otherwise preserve the state. */
-export function act<TStep extends Step>(
+function act<TStep extends Step>(
   state: State<TStep>,
   action: Action,
   walkthrough: Walkthrough<TStep>,
@@ -220,7 +220,7 @@ function whenDue<TStep extends Step>(
 }
 
 /** Update the waymark's location and request scrolling without changing advancement. */
-export function observeWaymark<TStep extends Step>(
+function observeWaymark<TStep extends Step>(
   state: State<TStep>,
   read: WaymarkRead,
 ): Outcome<TStep> {
@@ -246,7 +246,7 @@ export function observeWaymark<TStep extends Step>(
  * A false check resets the delay; a satisfied click or event keeps holding.
  * Waymark measurements do not affect this timer.
  */
-export function observeAdvance<TStep extends Step>(
+function observeAdvance<TStep extends Step>(
   state: State<TStep>,
   read: AdvanceRead,
   walkthrough: Walkthrough<TStep>,
@@ -265,7 +265,7 @@ export function observeAdvance<TStep extends Step>(
  * The scroll request survives arming the clock or unlocking, but not
  * leaving the step: there is no point scrolling to a waymark just left.
  */
-export function observe<TStep extends Step>(
+function observe<TStep extends Step>(
   state: State<TStep>,
   read: StepRead,
   walkthrough: Walkthrough<TStep>,
@@ -280,7 +280,7 @@ export function observe<TStep extends Step>(
 }
 
 /** Announce startup once, after any initial waymark measurement has been applied. */
-export function start<TStep extends Step>(state: State<TStep>): Outcome<TStep> {
+function start<TStep extends Step>(state: State<TStep>): Outcome<TStep> {
   return state.started || state.snapshot.phase !== "running"
     ? noChange(state)
     : { state: { ...state, started: true }, events: ["start"] };
@@ -292,7 +292,7 @@ export function start<TStep extends Step>(state: State<TStep>): Outcome<TStep> {
  * immediately; otherwise `observeAdvance` checks the delay on subsequent frames.
  * Ignore inputs before startup has emitted `start`.
  */
-export function satisfy<TStep extends Step>(
+function satisfy<TStep extends Step>(
   state: State<TStep>,
   now: number,
   walkthrough: Walkthrough<TStep>,
@@ -313,7 +313,7 @@ export function satisfy<TStep extends Step>(
  * Checks stop without subscribers, so continuous truth cannot be verified.
  * A satisfied click or event keeps its start time across unmounting.
  */
-export function mount<TStep extends Step>(
+function mount<TStep extends Step>(
   state: State<TStep>,
   mounted: boolean,
 ): Outcome<TStep> {
