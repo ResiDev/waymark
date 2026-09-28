@@ -1,7 +1,3 @@
-/**
- * Each selection's Tasks, looked up by id in `named`, a dictionary of every
- * Task. Throws for a task map or selection `createChecklists` cannot own.
- */
 export function select<TTask>(
   named: Readonly<Record<string, TTask>>,
   selections: Readonly<Record<string, readonly string[]>>,

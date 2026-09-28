@@ -2,10 +2,7 @@ import type { Placement, WalkthroughRenderProps } from "react-waymark";
 
 const arrows: Record<Placement, string> = { above: "▼", below: "▲", left: "▶", right: "◀" };
 
-/**
- * A popover passed as `renderPopover`. It uses every render prop the default
- * leaves out: placement, `hasWaymark`, collapse and reset.
- */
+// Uses every render prop the default popover leaves out, so the lab exercises them.
 export function CustomPopover({
   snapshot,
   currentStep,

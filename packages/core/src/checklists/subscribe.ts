@@ -1,10 +1,6 @@
 import type { Queue } from "../queue";
 import type { Run, Snapshot } from "../run/types";
 
-/**
- * A `subscribe` that adds to this set and calls the listener at once with
- * the current snapshot; unsubscribing removes.
- */
 export const listen =
   <T>(queue: Queue, listeners: Set<(snapshot: T) => void>, getSnapshot: () => T) =>
   (listener: (snapshot: T) => void): (() => void) => {
@@ -25,11 +21,6 @@ type Following<TActive> = Readonly<{
   step: Snapshot | null;
 }>;
 
-/**
- * Subscribes to the owner and to whichever Run it holds, swapping Runs as the
- * owner changes, so the listener hears both. It is handed the active Task and
- * its Run's step together. Unsubscribing lets go of both.
- */
 export function followActive<TActive extends Readonly<{ run: Run }>>(
   subscribe: (listener: () => void) => () => void,
   getActive: () => TActive | null,

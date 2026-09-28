@@ -1,17 +1,6 @@
 import type { ExactStep, Step, Walkthrough } from "./types";
 
-/**
- * Builds a Walkthrough, and is the only place that knows how a Step is written.
- *
- * `defineWalkthrough` checks the Steps once, up front. The readers below are how
- * everything else looks at a Step: they take the sugar off `advance` on the
- * spot, so no other module has to know that `advance: "click"` and
- * `advance: { click: true }` mean the same thing, and nothing needs to be
- * precomputed or cached.
- *
- * TShape names the fields a Step may carry. Core's own is `Step`; an adapter
- * that adds display fields passes its wider Step type. It is never inferred.
- */
+/** `TShape` lets an adapter allow its own Step fields, such as `content`. */
 export function defineWalkthrough<
   const TStep extends TShape,
   TShape extends Step = Step,
@@ -21,10 +10,6 @@ export function defineWalkthrough<
   return checkedWalkthrough<TStep>(steps, "");
 }
 
-/**
- * `defineWalkthrough` without the typing, for Steps written somewhere else,
- * such as inline on a Task. `where` prefixes every error, to say which.
- */
 export function checkedWalkthrough<TStep extends Step>(
   steps: readonly TStep[],
   where: string,
@@ -56,31 +41,28 @@ export function checkedWalkthrough<TStep extends Step>(
   return { steps };
 }
 
-// ---- reading a Step ---------------------------------------------------------
+// Only these readers know that `advance: "click"` and `{ click: true }` are the
+// same, so nothing else has to.
 
 export const hasWaymark = (step: Step): boolean =>
   step.waymark !== undefined || step.selector !== undefined;
 
-/** How to find the Step's Waymark; undefined for a Step that has none. */
 export const selectorOf = (step: Step): string | undefined =>
   step.waymark === undefined
     ? step.selector
     : `[data-waymark="${step.waymark}"]`;
 
-/** Which of `click`, `event` and `state` the Step's `advance` object names. */
 const conditionKinds = (step: Step): readonly string[] => {
   const advance = step.advance;
   if (typeof advance !== "object") return [];
   return (["click", "event", "state"] as const).filter((kind) => kind in advance);
 };
 
-/** The condition is a click on the Waymark, written either way. */
 export const isClick = (step: Step): boolean => {
   const advance = step.advance;
   return advance === "click" || (typeof advance === "object" && "click" in advance);
 };
 
-/** The `state` predicate of a check-based condition, if the Step has one. */
 export const checkOf = (
   step: Step,
 ): ((waymark: Element | null) => boolean) | undefined => {
@@ -88,14 +70,12 @@ export const checkOf = (
   return typeof advance === "object" && "state" in advance ? advance.state : undefined;
 };
 
-/** The DOM events of an event-based condition. Empty for any other kind. */
 export const eventsOf = (step: Step): readonly string[] => {
   const advance = step.advance;
   if (typeof advance !== "object" || !("event" in advance)) return [];
   return typeof advance.event === "string" ? [advance.event] : advance.event;
 };
 
-/** Meeting the condition moves the Run on, rather than only opening the gate. */
 export const isAuto = (step: Step): boolean => {
   const advance = step.advance;
   return !(typeof advance === "object" && advance.then === "unlock");

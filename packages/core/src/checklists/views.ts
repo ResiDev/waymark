@@ -1,9 +1,5 @@
 import type { ActiveTask, ChecklistSnapshot, TaskStatus } from "./types";
 
-/**
- * One named selection as the owner holds it: the snapshot its subscribers
- * last saw, and who they are.
- */
 export type View<TTask extends { readonly id: string }> = {
   readonly name: string;
   readonly tasks: readonly TTask[];
@@ -11,7 +7,6 @@ export type View<TTask extends { readonly id: string }> = {
   readonly listeners: Set<(snapshot: ChecklistSnapshot<TTask>) => void>;
 };
 
-/** Where a view's snapshot is read from: the owner's current state. */
 export type ViewSource<TTask extends { readonly id: string }> = Readonly<{
   status: (id: string) => TaskStatus;
   active: () => ActiveTask<TTask> | null;
@@ -30,11 +25,7 @@ export function createView<TTask extends { readonly id: string }>(
   };
 }
 
-/**
- * Gives every view whose statuses or active Task changed a new snapshot, and
- * says which changed and which of those just became complete, in view order.
- * Any other view keeps its snapshot, so identity means "nothing to redraw".
- */
+// A view that did not change keeps its snapshot, so identity means "nothing to redraw".
 export function refresh<TTask extends { readonly id: string }>(
   views: readonly View<TTask>[],
   source: ViewSource<TTask>,

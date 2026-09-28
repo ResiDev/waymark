@@ -63,7 +63,6 @@ const watch = (run: {
   };
 };
 
-/** Leaves out the call `subscribe` makes at once, keeping only changes. */
 const skipFirstCall = (listener: () => void) => {
   let called = false;
   return () => {
@@ -1024,7 +1023,6 @@ describe("createRun", () => {
       onEvent: (event) => { if (source === "start handler" && event.type === "start") fail(); },
     });
 
-    // The subscriber throws on its first call, made inside subscribe.
     const subscriber = source === "subscriber" ? vi.fn().mockImplementationOnce(fail) : () => {};
     expect(() => run.subscribe(subscriber)).toThrow("startup failed");
     expect(frames.size).toBe(0);

@@ -6,17 +6,12 @@ import {
 import { Checklist, createChecklists, defineWalkthrough, useChecklist, Walkthrough } from "./index";
 import type { ReactTask, WalkthroughStep } from "./types";
 
-/**
- * The adapter's inference claims, checked by `tsc`. Nothing here runs a
- * component; the elements are built and discarded.
- */
 
 const initialContext = { hasDeck: false, hasPhoto: false };
 type AppContext = typeof initialContext;
 
 const deckSteps = defineWalkthrough([{ content: "Open decks", meta: { helpUrl: "/help" } }, { content: "Press new" }]);
 const photoSteps = defineWalkthrough([{ content: "Pick a photo", waymark: "avatar" }]);
-/** A task written in its own file: `satisfies` supplies the context type and keeps the step type. */
 const addPhoto = { title: "Add a photo", walkthrough: photoSteps } satisfies ReactTask<AppContext>;
 
 const owner = createChecklists({
@@ -191,7 +186,7 @@ describe("Checklist and useChecklist", () => {
     };
     expect(Object.keys(elements)).toHaveLength(3);
 
-    // Never called: hooks need a component. The types are what matter here.
+    // Never called: hooks need a component.
     const Headless = () => {
       const { start } = useChecklist(owner.checklists.decks);
       expectTypeOf(start).parameter(0).toEqualTypeOf<"create-deck">();

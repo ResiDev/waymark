@@ -46,7 +46,6 @@ afterEach(async () => {
     .IS_REACT_ACT_ENVIRONMENT;
 });
 
-/** The dialog's button with this label, if any. */
 const buttonNamed = (label: string) =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
     (button) => button.textContent === label,

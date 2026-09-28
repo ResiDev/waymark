@@ -5,11 +5,6 @@ import type { ChecklistsEvent, StepOf, Task } from "./types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Run } from "../run/types";
 
-/**
- * The inference claims of the design, checked by `tsc` on this file. The
- * runtime assertions are no-ops; `@ts-expect-error` lines fail typecheck if
- * the mistake they mark stops being one.
- */
 
 const initialContext = { hasDeck: false, hasPhoto: false };
 type AppContext = typeof initialContext;
@@ -79,7 +74,6 @@ describe("createChecklists types", () => {
       }>
     >();
 
-    // A guidance renderer skips the Task it drew, from the owner's snapshot or a view's.
     const ownerActive = owner.getSnapshot().active;
     if (ownerActive) owner.skip(ownerActive.task.id);
     const deckActive = owner.checklists.decks.getSnapshot().active;
@@ -88,7 +82,6 @@ describe("createChecklists types", () => {
     const home = owner.checklists.home.getSnapshot();
     for (const row of home.tasks) {
       if (row.task.id === "create-deck") {
-        // The row keeps the relationship between id and definition.
         expectTypeOf(row.task.walkthrough).toEqualTypeOf<typeof deckSteps>();
       }
       if (row.task.id === "say-hello") {
@@ -251,7 +244,6 @@ describe("createChecklists types", () => {
             "finished" | "skipped" | "stopped"
           >();
         }
-        // Each event narrows to its own literal.
         if (event.type === "taskStarted") {
           expectTypeOf(event.type).toEqualTypeOf<"taskStarted">();
         }

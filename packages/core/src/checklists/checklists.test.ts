@@ -316,7 +316,6 @@ describe("guidance", () => {
     expect(owner.checklists.decks.getSnapshot().active).toBe(active);
     expect(types(onEvent)).toEqual(["taskStarted:create-deck"]);
 
-    // Starting the active task again changes nothing.
     owner.start("create-deck");
     expect(owner.getSnapshot().active).toBe(active);
     expect(ownerListener).toHaveBeenCalledOnce();
@@ -461,7 +460,6 @@ describe("guidance", () => {
     owner.start("tips");
     const { run } = owner.getSnapshot().active!;
     const stop = run.subscribe(() => {});
-    // A click on the bound dialog is a click on the walkthrough's UI, not away.
     dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(run.getSnapshot()).toMatchObject({ collapsed: false });
     release();
@@ -629,7 +627,6 @@ describe("markDone and skip", () => {
     const { run } = owner.getSnapshot().active!;
     onEvent.mockClear();
 
-    // From any view, or the owner as a guidance renderer does.
     owner.checklists.home.skip("create-deck");
 
     expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
@@ -637,7 +634,6 @@ describe("markDone and skip", () => {
     expect(owner.getSnapshot().active).toBeNull();
     expect(run.getSnapshot().phase).toBe("exited");
     expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "skipped" });
-    // The Run it let go of first, then the status change.
     expect(types(onEvent)).toEqual([
       "taskStopped:create-deck",
       "taskSkipped:create-deck",
@@ -713,7 +709,7 @@ describe("toggle and markTodo", () => {
     owner.checklists.home.toggle("say-hello");
     expect(statuses(owner.checklists.home)["say-hello"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskComplete:say-hello", "taskReopened:say-hello"]);
-    // No condition, so nothing to hold back: the record is simply empty again.
+    // No condition, so nothing to hold back: the record is empty again.
     expect(onChange).toHaveBeenLastCalledWith({});
   });
 
@@ -856,7 +852,6 @@ describe("load and clear", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(onEvent).not.toHaveBeenCalled();
 
-    // The loaded unknown id survives the next local change.
     owner.markDone("read-tips");
     expect(onChange).toHaveBeenCalledExactlyOnceWith({
       ghost: "done",

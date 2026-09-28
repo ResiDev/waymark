@@ -15,11 +15,7 @@ import {
   type Setup,
 } from "./state";
 
-/**
- * The panel beside the app. Its clicks never count as clicking away
- * (`data-waymark-ui`), and it sits outside the StrictMode switch, so turning
- * StrictMode on or off remounts the app and not the panel.
- */
+// Outside the StrictMode switch, so toggling StrictMode remounts the app and not the panel.
 export function Lab() {
   const current = useStore(setup);
   if (!current.lab) {

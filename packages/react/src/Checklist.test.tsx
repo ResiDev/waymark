@@ -84,7 +84,6 @@ describe("Checklist", () => {
     const { owner, openPicker } = setup();
     await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
 
-    // Walkthrough only: start, then replay once done.
     expect(buttons(row("Read the tips"))).toEqual(["Show me", "Skip"]);
     // Action wins over the walkthrough button.
     expect(buttons(row("Add a profile photo"))).toEqual(["Choose photo", "Skip"]);
@@ -210,7 +209,7 @@ describe("useChecklist", () => {
     await act(async () => host.querySelector("button")!.click());
     expect(host).toHaveTextContent("1 finished");
 
-    // A change that alters nothing visible does not re-render: the snapshot identity is unchanged.
+    // Alters nothing visible, so the snapshot keeps its identity and nothing re-renders.
     seen.length = 0;
     await act(async () => owner.update({ hasDeck: false, hasPhoto: false }));
     expect(seen).toEqual([]);

@@ -2,17 +2,10 @@ import { actions, createRun, defineWalkthrough } from "waymark";
 import type { Action, Run, RunEvent, RunOptions, Snapshot, Step, Walkthrough } from "waymark";
 
 /**
- * A lab for core. The page can be put into situations, a walkthrough can be
- * written as JSON, and the run's snapshot and events are shown as they happen.
- *
  * The whole starting state lives in the URL, so a link is a reproduction:
  *
  *   /?situations=sticky,late&steps=[{"waymark":"save"}]&padding=12&startAt=0
- *
- * The same API is on `window.waymark` for scripts and the console.
  */
-
-// ---- situations: what the page is like ---------------------------------------
 
 type Situation = Readonly<{ describe: string; apply: () => void }>;
 
@@ -39,7 +32,7 @@ const situations: Record<string, Situation> = {
   shift: { describe: "layout shifts down 200px after 500ms", apply: () => setTimeout(() => document.body.classList.add("shifted"), 500) },
 };
 
-/** Things to do to the page while a run is going. Not part of the URL: they are a script. */
+/** Not part of the URL: they happen while a run is going. */
 const pageActions: Record<string, () => void> = {
   "remove save": removeTarget,
   "restore save": restoreTarget,
@@ -47,15 +40,12 @@ const pageActions: Record<string, () => void> = {
   "scroll top": () => (document.body.classList.contains("panel") ? document.querySelector("#content")! : window).scrollTo({ top: 0 }),
 };
 
-// ---- walkthroughs as JSON ----------------------------------------------------
-
 /** State predicates by name, since a function cannot live in a URL. */
 const predicates: Record<string, (el: Element | null) => boolean> = {
   nameFilled: (el) => el instanceof HTMLInputElement && el.value.length >= 3,
   never: () => false,
 };
 
-/** Replace `advance: { state: "<name>" }` with the named predicate. */
 const hydrate = (step: Step): Step => {
   const advance = step.advance as unknown;
   if (typeof advance !== "object" || advance === null || !("state" in advance)) return step;
@@ -71,8 +61,6 @@ const DEFAULT_STEPS: readonly Step[] = [
   { waymark: "footer" },
   {},
 ];
-
-// ---- the run -----------------------------------------------------------------
 
 type StartOptions = Readonly<{ waymarkPadding?: number; startAt?: number }>;
 
@@ -95,8 +83,6 @@ const start = (steps: readonly Step[], options: StartOptions = {}) => {
   stop = run.subscribe(render);
   return run;
 };
-
-// ---- the URL: the whole starting state ---------------------------------------
 
 type PageState = Readonly<{ situations: readonly string[]; steps: readonly Step[]; options: StartOptions }>;
 
@@ -134,8 +120,6 @@ const apply = (state: PageState) => {
   }
   return start(state.steps, state.options);
 };
-
-// ---- what a person sees --------------------------------------------------------
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 const ui = {
@@ -212,7 +196,6 @@ ui.steps.value = JSON.stringify(initial.steps);
 ui.padding.value = String(initial.options.waymarkPadding ?? 0);
 ui.startAt.value = String(initial.options.startAt ?? 0);
 
-/** Start from the panel: the URL is rewritten, then the page reloads into that state. */
 ui.start.addEventListener("click", () => {
   const situationsChecked = [...ui.situations.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
   const padding = Number(ui.padding.value);
@@ -225,16 +208,13 @@ ui.start.addEventListener("click", () => {
   location.reload();
 });
 
-// ---- what a script drives ------------------------------------------------------
-
 declare global {
   interface Window {
     waymark: {
       createRun: typeof createRun;
       defineWalkthrough: typeof defineWalkthrough;
-      /** Start a run on the page as it is. Steps may name predicates by string. */
+      /** Steps may name predicates by string. */
       start: typeof start;
-      /** Put the page into situations, then start. Same as loading a URL. */
       apply: typeof apply;
       page: typeof pageActions;
       snapshot: () => Snapshot;

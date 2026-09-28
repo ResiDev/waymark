@@ -35,11 +35,10 @@ export type WalkthroughRenderProps<
   collapse: () => void;
   reset: () => void;
   exit: () => void;
-  /** Skips the Task being guided. Only when drawn for a Checklists owner. */
+  /** Only when guiding a Checklists Task. */
   skipTask?: () => void;
 }>;
 
-/** The self-owned shape: the component creates and owns one Run of this walkthrough. */
 export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
   Readonly<{
     walkthrough: Walkthrough<TStep>;
@@ -50,11 +49,7 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
   }>;
 
-/**
- * Tasks whose walkthroughs, if any, carry React display content. This reads
- * Tasks an owner already holds, so it admits any other field: a Task with a
- * title and nothing else still belongs.
- */
+/** Admits any other field: it reads Tasks an owner already holds, whatever else they carry. */
 export type ReactGuidanceTasks = Readonly<
   Record<
     string,
@@ -65,14 +60,9 @@ export type ReactGuidanceTasks = Readonly<
   >
 >;
 
-/** The step type of an owner's active Run, as its popover sees it. */
 export type GuidanceStep<TTasks> = Extract<StepOf<NamedTask<TTasks>>, WalkthroughStep>;
 
-/**
- * The owner-driven shape: draws whichever Run the Checklists owner started,
- * binds its elements through `bindUi` on mount, and stops the Run when the
- * renderer is removed. Padding and Run events are owner options here.
- */
+/** Stops the owner's active Run when removed. */
 export type ChecklistWalkthroughProps<
   TContext,
   TTasks extends ReactGuidanceTasks,
@@ -86,11 +76,7 @@ export type ChecklistWalkthroughProps<
   renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
 }>;
 
-/**
- * A Task with what the React checklist shows for it. The description sits
- * beneath the title with no Run needed; the action is invoked by the UI
- * directly and creates no Run.
- */
+/** A Task written away from `createChecklists` gets its context from `satisfies ReactTask<AppContext>`. */
 export type ReactTask<TContext> = Task<TContext, WalkthroughStep> &
   Readonly<{
     title: ReactNode;
@@ -99,11 +85,11 @@ export type ReactTask<TContext> = Task<TContext, WalkthroughStep> &
       label: ReactNode;
       onSelect: () => void;
     }>;
-    /** The row's box ticks and unticks the task. Defaults to true. */
+    /** Defaults to true. */
     toggleable?: boolean;
   }>;
 
-/** A named ReactTask of any context: the context only types a condition's argument, so every context fits `never`. */
+/** `never`: the context only types a condition's argument, so a ReactTask of any context fits. */
 export type AnyReactTask = ReactTask<never> & { readonly id: string };
 
 export type UseChecklistResult<TTask extends AnyReactTask> = TaskCommands<TTask["id"]> &

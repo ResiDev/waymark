@@ -8,7 +8,6 @@ import type {
   UseChecklistResult,
 } from "./types";
 
-/** The headless route: a view's live snapshot and its commands, for custom rendering. */
 export function useChecklist<TTask extends AnyReactTask>(
   checklist: CoreChecklist<TTask>,
 ): UseChecklistResult<TTask> {
@@ -113,12 +112,6 @@ const hidden: CSSProperties = {
   border: 0,
 };
 
-/**
- * The default row. Its box ticks and unticks the task, unless the task sets
- * `toggleable: false`. One primary button: an application action if the task
- * has one, else guidance (start, or replay once done), else none. Todo tasks
- * can be skipped.
- */
 function DefaultRow<TTask extends AnyReactTask>({
   task,
   status,
@@ -197,11 +190,6 @@ function DefaultRow<TTask extends AnyReactTask>({
   );
 }
 
-/**
- * The default checklist UI, subscribed to the same view as custom UI would
- * be. Inline defaults like the popover; `style` and `rowStyle` override,
- * `renderRow` replaces a row's content, `labels` replace the button text.
- */
 export function Checklist<TTask extends AnyReactTask>({
   checklist,
   style,

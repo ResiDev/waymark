@@ -3,21 +3,15 @@ import { createRun } from "./run";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 
 /**
- * What one frame of a Run costs, and how much of it is the browser.
- *
- * requestAnimationFrame is stubbed so the frame callback can be called in a
- * tight loop. Each figure is the median of several timed batches, per
- * iteration, in nanoseconds. Run with `pnpm test:perf`; this never gates a check.
+ * requestAnimationFrame is stubbed so a frame can be run in a tight loop.
+ * Figures are medians per iteration, in ns. Never gates `pnpm check`.
  */
 
 const BATCH_MS = 100;
 const MAX_BATCH = 200_000;
 const REPS = 7;
 
-/**
- * Median per-iteration cost of `fn`, in ns. The batch size is calibrated so
- * one batch takes about BATCH_MS, which also serves as the warm-up.
- */
+// Batches are sized to take about BATCH_MS, which also serves as the warm-up.
 const measure = (fn: (i: number) => void): number => {
   let batch = 1_000;
   for (;;) {
@@ -59,7 +53,6 @@ afterAll(() => {
   globalThis.cancelAnimationFrame = realCancel;
 });
 
-/** Starts a Run under the stubbed rAF and returns a function that runs one frame. */
 const frameOf = (steps: Parameters<typeof defineWalkthrough>[0]) => {
   const run = createRun(defineWalkthrough(steps));
   const stop = run.subscribe(() => {});
@@ -80,7 +73,6 @@ it("measures a frame against the browser primitives", () => {
   const el = document.querySelector<HTMLElement>('[data-waymark="save"]')!;
   let sink = 0;
 
-  // ---- primitives ----------------------------------------------------------
   const gbcr = measure(() => { sink += el.getBoundingClientRect().top; });
   const viewport = measure(() => { sink += innerHeight + innerWidth; });
   const now = measure(() => { sink += performance.now(); });
@@ -97,7 +89,6 @@ it("measures a frame against the browser primitives", () => {
   });
   el.style.paddingLeft = "";
 
-  // ---- the Run -------------------------------------------------------------
   const still = frameOf([{ waymark: "save" }]);
   const stillFrame = measure(still.frame);
   still.stop();

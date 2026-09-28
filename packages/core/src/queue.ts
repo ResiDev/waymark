@@ -1,27 +1,17 @@
 /**
- * One store's changes, obeyed one at a time.
- *
- * `run` queues work and, unless a drain is already under way, drains the
- * queue. Work queued from inside a drain (a listener or handler calling back
- * into the store) waits until the work before it has finished, so every
- * callback of a change sees the state that change produced.
- *
- * Callbacks go through `invoke` or `notify`: one that throws does not stop
- * the others, nor the rest of the queue. Its error, and any handed to `fail`,
- * is thrown once the drain is over. Between drains the queue is empty.
+ * Work queued from a callback waits until the current work has finished, so
+ * every callback of a change sees the state that change produced. A throwing
+ * callback does not stop the others; errors are thrown once the drain is over.
  */
 export type Queue = Readonly<{
   run: (...work: (() => void)[]) => void;
   invoke: (callback: () => void) => void;
-  /** Calls each listener with the store's new snapshot. */
   notify: <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => void;
   /**
-   * Runs work at once: in place inside a drain, else as a drain of its own.
-   * For a new subscriber's first call, which Svelte's store contract wants
-   * before `subscribe` returns. Whatever the work queues still waits its turn.
+   * Runs work in place, even inside a drain: Svelte's store contract wants a
+   * new subscriber's first call before `subscribe` returns.
    */
   now: (work: () => void) => void;
-  /** Report an error with those of the next drain, ahead of them. */
   fail: (error: unknown) => void;
 }>;
 

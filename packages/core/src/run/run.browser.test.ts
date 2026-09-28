@@ -5,10 +5,6 @@ import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Run } from "./types";
 import type { ExactStep, Step } from "../walkthrough/types";
 
-/**
- * Real-browser checks on the Run: real layout, real scrolling, real pointer
- * coordinates and real time. Everything else lives in run.test.ts under jsdom.
- */
 
 let stop: (() => void) | undefined;
 
@@ -29,7 +25,6 @@ const domRect = (element: Element) => {
   return { x, y, top, right, bottom, left, width, height };
 };
 
-/** Start a Run and keep it watching until the test ends. */
 const start = <const TStep extends Step>(steps: readonly TStep[], waymarkPadding?: number): Run<TStep> => {
   const run = createRun(
     defineWalkthrough<TStep>(steps as readonly TStep[] & readonly ExactStep<TStep, Step>[]),

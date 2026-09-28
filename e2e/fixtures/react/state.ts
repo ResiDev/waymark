@@ -1,11 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-/**
- * Everything the page holds outside React: the lab's setup, the app's route
- * and data, and the event log. A remount (StrictMode switched, a renderer
- * moved) loses none of it, and `window.playground` reads and drives the same
- * stores the components do.
- */
+// Held outside React, so a remount (StrictMode switched, a renderer moved)
+// loses none of it and `window.playground` drives the same stores.
 
 export type Store<T> = Readonly<{
   get: () => T;
@@ -43,14 +39,10 @@ export const patch = <T extends object>(store: Store<T>, changes: Partial<T>) =>
 const oneOf = <T extends string>(allowed: readonly T[], value: string | null): T =>
   allowed.find((option) => option === value) ?? allowed[0]!;
 
-// ---- the lab's setup: how the React package is used on this page -------------------
-
 export const setupOptions = {
-  /** The owner's guidance renderer: the library's popover, or one passed as `renderPopover`. */
   popover: ["default", "custom"],
-  /** How the home checklist is drawn: `<Checklist>`, restyled, with `renderRow`, or `useChecklist`. */
   list: ["default", "styled", "rows", "headless"],
-  /** Where `<Walkthrough checklists>` is mounted. `home` unmounts it whenever you leave Home. */
+  /** `home` unmounts the renderer, and so stops guidance, whenever you leave Home. */
   renderer: ["root", "home", "none"],
 } as const;
 
@@ -61,9 +53,8 @@ export type Setup = Readonly<{
   renderer: (typeof setupOptions.renderer)[number];
   /** The decks page loads for 1.5s first, so its Waymarks mount late. */
   slow: boolean;
-  /** The halo, in px. The owner reads it once, at creation: changing it reloads. */
+  /** The owner reads it once, at creation. */
   padding: number;
-  /** The lab panel; off leaves only the app, for screenshots. */
   lab: boolean;
 }>;
 
@@ -97,10 +88,7 @@ const writeSetup = (setup: Setup) => {
   history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
 };
 
-/** Live, and mirrored into the URL, so a link is a reproduction. */
 export const setup = createStore(readSetup(), writeSetup);
-
-// ---- the app: its route and its own data ---------------------------------------------
 
 export const routes = ["home", "decks", "settings"] as const;
 export type Route = (typeof routes)[number];
@@ -142,22 +130,16 @@ const loadData = (): AppData => {
   }
 };
 
-/** What a real app would keep on its server. Kept across reloads, like checklist progress. */
 export const data = createStore(loadData(), (next) => localStorage.setItem(DATA_KEY, JSON.stringify(next)));
 
-/** The app's invite dialog, which the invite Task's action opens. */
 export const inviteOpen = createStore(false);
 
-/** The self-owned "What's new" walkthrough, outside the checklists. */
 export const whatsNewOpen = createStore(false);
-
-// ---- what happened ---------------------------------------------------------------------
 
 export type Entry = Readonly<{
   id: number;
   /** ms since the page loaded. */
   at: number;
-  /** owner: checklists events. run: the owner's Run events. waymark: where the active step's Waymark is. */
   source: "owner" | "run" | "waymark" | "whats-new";
   text: string;
 }>;
@@ -169,8 +151,5 @@ let nextId = 0;
 export const record = (source: Entry["source"], text: string) =>
   log.set([...log.get(), { id: nextId++, at: Math.round(performance.now()), source, text }]);
 
-/**
- * The active Run as the mounted guidance renderer sees it, or null while no
- * renderer is mounted. Only a watched Run finds Waymarks and hears clicks.
- */
+/** Null while no renderer is mounted: only a watched Run finds Waymarks and hears clicks. */
 export const watched = createStore<string | null>(null);

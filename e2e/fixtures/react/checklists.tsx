@@ -2,11 +2,6 @@ import { Checklist, useChecklist, type ChecklistRowProps, type CoreChecklist } f
 import { owner, type AnyTask } from "./guidance";
 import { setup, useStore } from "./state";
 
-/**
- * The home checklist, drawn each way the package offers. The lab switches
- * between them live; all four read the same view, so progress and the active
- * task carry across.
- */
 export function HomeChecklist() {
   const { list } = useStore(setup);
   const home = owner.checklists.home;
@@ -25,7 +20,6 @@ export function HomeChecklist() {
   return <Checklist checklist={home} />;
 }
 
-/** A `renderRow` row. Unlike the default it offers `markDone`, and shows the status as text. */
 function CompactRow<TTask extends AnyTask>({ task, status, active, start, markDone, skip, toggle }: ChecklistRowProps<TTask>) {
   return (
     <div className="compact-row">
@@ -62,7 +56,6 @@ function CompactRow<TTask extends AnyTask>({ task, status, active, start, markDo
   );
 }
 
-/** `useChecklist`: the view's snapshot and commands, and nothing drawn for you. */
 function HeadlessChecklist<TTask extends AnyTask>({ checklist }: { checklist: CoreChecklist<TTask> }) {
   const { snapshot, start, skip, toggle } = useChecklist(checklist);
   return (
@@ -106,10 +99,6 @@ function HeadlessChecklist<TTask extends AnyTask>({ checklist }: { checklist: Co
   );
 }
 
-/**
- * The decks view: one task, drawn as a banner with `useChecklist`. Dismissing
- * skips it from this view; the skip shows in every view.
- */
 export function DecksBanner() {
   const { snapshot, start, skip } = useChecklist(owner.checklists.decks);
   const row = snapshot.tasks[0];

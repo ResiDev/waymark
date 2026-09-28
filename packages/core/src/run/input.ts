@@ -1,26 +1,13 @@
 import type { Action, Rect, UiElements } from "./types";
 
-/**
- * What the user's clicks and keystrokes mean to a Run.
- *
- * These functions read the page and answer a question; they never change the
- * Run. Moving focus is the one exception, because tab order is a property of
- * the document and of nothing else.
- */
 export type InputContext = Readonly<{
   collapsed: boolean;
-  /** The current Step's Waymark element, if it has been found. */
   element: Element | null;
   rect: Rect | null;
   padding: number;
   ui: UiElements;
 }>;
 
-/**
- * - `waymark` — on the Waymark, or within the halo drawn around it.
- * - `ui` — on the walkthrough's own UI, or on something that opted out.
- * - `away` — the user has turned their attention elsewhere.
- */
 export type ClickHit = "waymark" | "ui" | "away";
 
 const within = (rect: Rect, padding: number, x: number, y: number) =>
@@ -33,7 +20,8 @@ export function whereClicked(event: MouseEvent, ctx: InputContext): ClickHit {
   const node = event.target;
   if (!(node instanceof Element) || !node.isConnected) return "ui";
 
-  // Walkthrough UI takes precedence over the target and its padding.
+  // UI first: the beacon can sit inside the Waymark's halo, and so can a
+  // popover clamped into the viewport.
   const { dialog, beacon } = ctx.ui;
   if (dialog?.contains(node) === true || beacon?.contains(node) === true) return "ui";
   if (node.closest("[data-waymark-ui]")) return "ui";
@@ -60,7 +48,6 @@ const isTyping = () => {
   );
 };
 
-/** Tab and Shift+Tab cycle between the popover's controls and the Waymark's. */
 function cycleFocus(event: KeyboardEvent, ctx: InputContext): void {
   const { dialog } = ctx.ui;
   if (!dialog) return;

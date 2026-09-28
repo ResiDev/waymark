@@ -15,10 +15,6 @@ import {
   type Theme,
 } from "./state";
 
-/**
- * A small study app: the page the guidance runs over. Its own state lives in
- * stores (state.ts); the checklists owner hears about it through `update`.
- */
 export function App() {
   const { renderer } = useStore(setup);
   const current = useStore(route);
@@ -107,7 +103,6 @@ function Home() {
       <p className="guide" data-waymark="guide">
         The study guide lives down here, well below the fold.
       </p>
-      {/* Mounted here, guidance stops whenever you leave Home: removing the renderer stops its Run. */}
       {renderer === "home" && <Guidance />}
     </>
   );
@@ -220,7 +215,6 @@ function Settings() {
   );
 }
 
-/** The app's own modal, opened by the invite Task's action. */
 function InviteDialog() {
   const open = useStore(inviteOpen);
   const [email, setEmail] = useState("");

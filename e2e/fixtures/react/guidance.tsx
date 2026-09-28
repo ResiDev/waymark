@@ -12,14 +12,7 @@ import {
 import { CustomPopover } from "./popover";
 import { createStore, data, inviteOpen, record, setup, useStore, watched, whatsNewOpen, type AppData } from "./state";
 
-/**
- * The guidance this app offers: one Checklists owner with its tasks and
- * walkthroughs, and a "What's new" walkthrough that runs on its own. Between
- * them every step shape is used: waymark and selector, no waymark, click,
- * event and state conditions, unlock and delay, and placement preferences.
- */
-
-// ---- walkthroughs ------------------------------------------------------------------
+// Between them these walkthroughs use every step shape, so the lab exercises each.
 
 const nameLongEnough = (waymark: Element | null) =>
   waymark instanceof HTMLInputElement && waymark.value.trim().length >= 3;
@@ -90,7 +83,6 @@ const tour = defineWalkthrough([
   { content: "That's the tour.", popoverStyle: { background: "#14532d" } },
 ]);
 
-/** Not a Task: drawn by its own `<Walkthrough walkthrough>`, outside the owner. */
 const whatsNew = defineWalkthrough([
   {
     waymark: "whats-new",
@@ -105,8 +97,6 @@ const whatsNew = defineWalkthrough([
   { waymark: "nav-decks", preferredPlacement: "right", content: "Share a deck from the decks page." },
 ]);
 
-// ---- the owner -----------------------------------------------------------------------
-
 const contextOf = (app: AppData) => ({
   hasDeck: app.decks.length > 0,
   hasPhoto: app.hasPhoto,
@@ -116,7 +106,6 @@ const contextOf = (app: AppData) => ({
 
 const storage = createLocalStorageRecord("waymark-react-checklists");
 
-/** The record as last saved, for the lab. */
 export const stored = createStore(storage.load());
 
 const describeEvent = (event: ChecklistsEvent<any, any>): string => {
@@ -207,10 +196,7 @@ export const owner = createChecklists({
 
 data.subscribe(() => owner.update(contextOf(data.get())));
 
-/** A row's task in any of the owner's views, for components that draw rows themselves. */
 export type AnyTask = ReactTask<any> & { readonly id: string };
-
-// ---- renderers -------------------------------------------------------------------------
 
 export const describeRun = (snapshot: Snapshot): string => {
   if (snapshot.phase !== "running") return snapshot.phase;
@@ -220,11 +206,8 @@ export const describeRun = (snapshot: Snapshot): string => {
   return parts.join(" · ");
 };
 
-/**
- * Logs the active Run's step and Waymark as they change. Mounted beside the
- * renderer and only there: subscribing is what makes a Run watch the page, so
- * a logger that outlived the renderer would keep an unrendered Run working.
- */
+// Mounted only beside the renderer: subscribing makes a Run watch the page, so
+// a logger that outlived the renderer would keep an unrendered Run working.
 function WatchLog() {
   useEffect(() => {
     let last: string | null = null;
@@ -248,7 +231,6 @@ const customPopover = {
   renderPopover: (props: WalkthroughRenderProps) => <CustomPopover {...props} />,
 };
 
-/** The owner-driven shape: draws whichever Run the owner started. */
 export function Guidance() {
   const { popover } = useStore(setup);
   return (
@@ -259,7 +241,6 @@ export function Guidance() {
   );
 }
 
-/** The self-owned shape: this component creates and owns one Run, while `active`. */
 export function WhatsNew() {
   const active = useStore(whatsNewOpen);
   const { popover, padding } = useStore(setup);

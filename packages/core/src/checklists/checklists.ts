@@ -26,41 +26,12 @@ import type { ViewSource } from "./views";
 import type { Run, RunEvent, UiElements } from "../run/types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
-/**
- * Checklists: named, ordered views of Tasks that share one user's completion
- * record and at most one active Run.
- *
- * One `createChecklists` call is one owner. It defines the Tasks by id, hands
- * out a live view per named selection, keeps the shared record of what is
- * done and what is skipped, and holds the Run of whichever Task's
- * walkthrough is currently being followed. Views and the owner are stores on
- * the same terms as a Run: `getSnapshot` is stable until something observable
- * changes; `subscribe` calls the listener at once with the current snapshot,
- * then with each new one, and returns an unsubscribe. That is Svelte's store
- * contract, which React's `useSyncExternalStore` also accepts.
- *
- * Core keeps progress in memory only. Persistence is `stored` in and
- * `onChange` out, or a `storage` that does both, such as the local storage
- * adapter in storage.ts.
- */
-
 const NO_UI: UiElements = { dialog: null, beacon: null };
-
-// ---- Creation --------------------------------------------------------------
 
 const isSteps = <TStep extends Step>(
   walkthrough: Walkthrough<TStep> | readonly TStep[],
 ): walkthrough is readonly TStep[] => Array.isArray(walkthrough);
 
-/**
- * Infers the context type from its initial values only, so `false` widens to
- * `boolean`. Tasks written inline are typed from that context; tasks in other
- * files use `satisfies Task<AppContext>`. Without a context it is `{}`, so a condition
- * that reads a field does not compile.
- *
- * TShape and TStepShape are `ChecklistsConfig`'s: an adapter that adds display
- * fields passes its wider Task and Step types. They are never inferred.
- */
 export function createChecklists<
   TContext = {},
   const TTasks extends TaskMap<NoInfer<TContext>> = TaskMap<TContext>,
@@ -79,8 +50,6 @@ export function createChecklists<
     NoInfer<TStepShape>
   >,
 ): Checklists<TContext, TTasks, TSelections> {
-  // Inside, the owner sees its tasks only as a map of `Task<TContext>`; the
-  // exact TTasks and TSelections are restored by the cast at the end.
   type Tasks = TaskMap<TContext>;
   type Selections = ChecklistSelections<Tasks>;
   type Named = NamedTask<Tasks>;
@@ -89,27 +58,21 @@ export function createChecklists<
 
   type StopReason = Extract<Event, { type: "taskStopped" }>["reason"];
 
-  /** The owner's state on either side of a command, which its events are read from. */
   type State = Readonly<{
     record: Stored;
     active: Active | null;
     startedFrom: string | undefined;
   }>;
 
-  /** What a command says about itself; everything else is read from state. */
   type Flags = Readonly<{
-    /** The view the command came from, which skip and unskip events name. */
     from?: string | undefined;
-    /** `load`, `clear` and creation announce nothing. */
     silent?: boolean;
-    /** `load` never saves or calls `onChange`. */
     persist?: boolean;
   }>;
 
   const tasks: Tasks = config.tasks;
   const named = dictionary<Named>();
   for (const [id, task] of Object.entries(tasks)) named[id] = { ...task, id };
-  /** Every Task, in task map order. */
   const taskList = Object.values(named);
   const selected = select(
     named,
@@ -123,7 +86,7 @@ export function createChecklists<
     | ((event: RunEvent) => void)
     | undefined;
 
-  // Snapshots keep each Task as written; Runs need a checked Walkthrough.
+  // Snapshots hand back each Task as written, so checked Walkthroughs live apart.
   const walkthroughs = dictionary<Walkthrough>();
   for (const [id, { walkthrough }] of Object.entries(tasks)) {
     if (walkthrough === undefined) continue;
@@ -132,11 +95,8 @@ export function createChecklists<
       : walkthrough;
   }
 
-  // ---- state ----------------------------------------------------------------
-
   const progress = createProgress(storage?.load() ?? config.stored);
   let active: Active | null = null;
-  /** The view whose `start` began the active Run, if one did. */
   let startedFrom: string | undefined;
   let ownerSnapshot: ChecklistsSnapshot<Tasks> = {
     active: null,
@@ -146,8 +106,6 @@ export function createChecklists<
   >();
   let boundUi: (() => UiElements) | undefined;
 
-  // ---- views ----------------------------------------------------------------
-
   const source: ViewSource<Named> = {
     status: progress.status,
     active: () => active,
@@ -156,23 +114,22 @@ export function createChecklists<
     createView(name, viewTasks, source),
   );
 
-  // ---- the one place state changes -------------------------------------------
-
   const queue = createQueue("Checklist callbacks failed.");
 
   const current = (): State => ({ record: progress.record(), active, startedFrom });
 
-  /** Run one command and commit it in full; see `send`. */
   const commit = (run: () => void, flags: Flags) => {
     const before = current();
     run();
     const after = current();
 
-    // Commit every affected snapshot before any callback sees the change.
+    // Every snapshot is updated before any callback runs, so a callback that
+    // reads another view sees this change too.
     const { changed, completed } = refresh(views, source);
     const activeChanged = after.active !== before.active;
     if (activeChanged) ownerSnapshot = { active: after.active };
-    // A Run let go of before it finished is exited once the change is announced.
+    // Exited last, once `subscribeActive` listeners have moved off it, so they
+    // never see it exit.
     const stopped = activeChanged ? before.active : null;
     const exit =
       stopped !== null && stopped.run.getSnapshot().phase !== "completed";
@@ -199,23 +156,12 @@ export function createChecklists<
     if (exit) queue.invoke(() => stopped.run.act("exit"));
   };
 
-  /**
-   * Runs commands in order, one at a time, each committed in full before the
-   * next: state, then view and owner snapshots, then listeners, `onChange`,
-   * events, and finally exiting a Run the command let go of. A command sent
-   * from a listener or event handler joins the queue and runs once this one
-   * is over. See ../queue.ts for how callback errors are reported.
-   */
   const send = (run: () => void, flags: Flags = {}) =>
     queue.run(() => commit(run, flags));
 
-  // ---- events ----------------------------------------------------------------
-
-  /** The `checklist` of a skip event: the view it came from, if any. */
   const fromView = (checklist: string | undefined) =>
     checklist === undefined ? {} : { checklist };
 
-  /** Why the Run active in `before` is not active in `after`. */
   const stopReason = (
     { task, run }: Active,
     before: State,
@@ -228,11 +174,6 @@ export function createChecklists<
     return skipped ? "skipped" : "stopped";
   };
 
-  /**
-   * What a command did, read from the state on either side of it: the Run it
-   * let go of, each Task whose status changed in task map order, then the Run
-   * it started. Commands only change state and never announce anything.
-   */
   const eventsBetween = (
     before: State,
     after: State,
@@ -250,7 +191,6 @@ export function createChecklists<
       if (now === "done") {
         events.push({ type: "taskComplete", task });
       } else if (now === "skipped") {
-        // Skipped from guidance: from the view that started it.
         const guided = before.active?.task.id === task.id;
         const view = from ?? (guided ? before.startedFrom : undefined);
         events.push({ type: "taskSkipped", task, ...fromView(view) });
@@ -265,12 +205,6 @@ export function createChecklists<
     return events;
   };
 
-  // ---- commands --------------------------------------------------------------
-
-  /**
-   * Let go of the active Run. A finished one records its Task done unless the
-   * Task has a condition; any other is exited by `commit`.
-   */
   const release = () => {
     if (active === null) return;
     const { task, run } = active;
@@ -281,11 +215,7 @@ export function createChecklists<
     startedFrom = undefined;
   };
 
-  /**
-   * Finish and exit are observed here, never through `subscribe`, since
-   * subscribing switches on page watching. A Run the owner has already let go
-   * of is not its concern any more.
-   */
+  // Not through `subscribe`: subscribing switches on page watching.
   const onRunEvent = (run: Run, event: RunEvent) => {
     if (event.type !== "finish" && event.type !== "exit") return;
     send(() => {
@@ -319,7 +249,6 @@ export function createChecklists<
       if (Object.hasOwn(named, id)) progress.set(id, "done");
     });
 
-  /** Todo to skipped, letting go of the Task's active Run. */
   const skip = (id: string, from?: string) =>
     send(
       () => {
@@ -337,10 +266,6 @@ export function createChecklists<
       { from },
     );
 
-  /**
-   * Back to todo. A Task with a condition, taken back from done, is held
-   * until the condition has been false.
-   */
   const reopen = (id: string) => {
     const task = named[id];
     const status = progress.status(id);
@@ -362,11 +287,8 @@ export function createChecklists<
       { from },
     );
 
-  /**
-   * Every eligible condition is checked before anything is recorded, so a
-   * throwing check changes nothing. A reopened Task is left todo while its
-   * condition holds, and counts again once it has been false.
-   */
+  // Every condition is checked before anything is recorded, so a throwing
+  // check changes nothing.
   const checkConditions = (context: TContext) => {
     const complete: string[] = [];
     const settled: string[] = [];
@@ -390,10 +312,8 @@ export function createChecklists<
 
   const clear = () => send(() => progress.clear(), { silent: true });
 
-  // Creation checks the initial context like `update`, saving any change but
-  // announcing nothing: the owner is not assigned yet, and a reload must not
-  // repeat completion for a view storage already had complete. Without a
-  // context there is nothing to check a condition against.
+  // Silent: an `onEvent` handler cannot use the owner before this returns, and
+  // a reload must not announce completion that storage already had.
   const initial = config.context;
   if (initial !== undefined) {
     send(() => checkConditions(initial), { silent: true });
@@ -434,6 +354,6 @@ export function createChecklists<
     load,
     clear,
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- restores the exact Tasks and selections the owner was built from; see the top of this function.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the owner is built against its Tasks widened to `Task<TContext>`; these are the exact Tasks and selections it was given.
   return owner as unknown as Checklists<TContext, TTasks, TSelections>;
 }

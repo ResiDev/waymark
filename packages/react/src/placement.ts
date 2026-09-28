@@ -22,11 +22,8 @@ const unique = <T,>(values: readonly T[]): T[] => [...new Set(values)];
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), Math.max(min, max));
 
-/**
- * Chooses a side that fits on both axes, then clamps the last-resort position
- * into the viewport. Popover rendering does not need to know the fallback
- * order or repeat overflow arithmetic.
- */
+// Tested directly, not through index.ts: jsdom lays nothing out, so reaching
+// each fallback through a rendered Walkthrough would mean faking every size.
 export function placePopover({
   anchor,
   popover,

@@ -31,11 +31,6 @@ const centeredRect = (): Rect => {
   };
 };
 
-/**
- * Renders a Run. With `walkthrough` the component creates and owns the Run;
- * with `checklists` it draws whichever Run the owner started. Either way the
- * frame loop, browser events, and transition policy stay in core.
- */
 export function Walkthrough<TStep extends WalkthroughStep>(
   props: WalkthroughProps<TStep>,
 ): ReactElement | null;
@@ -91,11 +86,9 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
 const holders = new WeakMap<object, symbol>();
 
 /**
- * Draws the owner's active Run. Removing this renderer stops that Run, but
- * only once a microtask has passed without it, or another renderer, taking
- * the binding again: React may clean up and re-run the effect on the same
- * mounted component, and that must not stop guidance. A Run the owner has
- * since replaced is left alone too.
+ * Removing this renderer stops the active Run a microtask later, and only if
+ * no renderer has taken the binding back: React may clean up and re-run the
+ * effect on a component that stays mounted.
  */
 function ChecklistGuidance<
   TTasks extends ReactGuidanceTasks,

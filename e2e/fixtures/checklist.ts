@@ -1,24 +1,12 @@
 import { createChecklists, createLocalStorageRecord, defineWalkthrough } from "waymark";
 import type { Checklist, ChecklistsEvent, Snapshot, Stored } from "waymark";
 
-/**
- * A lab for checklists. The page is a small application; the panel is the
- * checklist UI that application would draw with core alone. Progress persists
- * in local storage under `waymark-checklist`, so a reload keeps it; `clear`
- * forgets it.
- *
- * The same API is on `window.checklists` for scripts and the console.
- */
-
-// ---- the application ------------------------------------------------------------
-
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 
 const context = { hasDeck: false, hasPhoto: false };
 const hasDeck = $<HTMLInputElement>("#has-deck");
 const hasPhoto = $<HTMLInputElement>("#has-photo");
 
-/** Steps carry this page's popover text in `meta`, which core keeps and ignores. */
 const createDeck = defineWalkthrough([
   { waymark: "new-deck", advance: "click", meta: { text: "Press New deck. The app then has a deck." } },
   { meta: { text: "Decks group the cards you study. That is the whole idea." } },
@@ -56,7 +44,6 @@ const owner = createChecklists({
   run: { waymarkPadding: 8 },
 });
 
-/** The application reacts to its own buttons, then tells the owner what is now true. */
 const update = () => owner.update({ hasDeck: hasDeck.checked, hasPhoto: hasPhoto.checked });
 $("#new-deck").addEventListener("click", () => {
   hasDeck.checked = true;
@@ -68,8 +55,6 @@ $("#avatar").addEventListener("click", () => {
 });
 hasDeck.addEventListener("change", update);
 hasPhoto.addEventListener("change", update);
-
-// ---- the checklist UI --------------------------------------------------------------
 
 const button = (label: string, onClick: () => void, disabled = false) => {
   const el = document.createElement("button");
@@ -89,7 +74,7 @@ const ui = {
   popover: $<HTMLDivElement>("#popover"),
 };
 
-/** A generic panel over every view. Each view's ids are typed per checklist; this panel takes any. */
+// Each view's ids are typed per checklist; this one panel draws them all.
 type AnyView = Checklist<{ readonly id: string; readonly [field: string]: unknown }>;
 const views = Object.entries(owner.checklists) as unknown as [string, AnyView][];
 const sections = new Map(
@@ -165,8 +150,6 @@ function renderLog() {
   ui.log.scrollTop = ui.log.scrollHeight;
 }
 
-// ---- guidance: drawing whichever Run the owner holds -------------------------------
-
 owner.bindUi(() => ({ dialog: ui.popover, beacon: null }));
 
 const describeRun = (snapshot: Snapshot): string => {
@@ -204,17 +187,12 @@ function drawRun() {
   }
 }
 
-/**
- * Follow the owner and whichever Run it holds; subscribing is what switches
- * page watching on, and draws at once.
- */
+// Not `subscribe`: only a subscribed Run watches the page.
 owner.subscribeActive(drawRun);
 
 $("#previous").addEventListener("click", () => owner.getSnapshot().active?.run.act("previous"));
 $("#advance").addEventListener("click", () => owner.getSnapshot().active?.run.act("advance"));
 $("#exit").addEventListener("click", () => owner.getSnapshot().active?.run.act("exit"));
-
-// ---- what a script drives ------------------------------------------------------------
 
 declare global {
   interface Window {

@@ -15,17 +15,13 @@ export type UiRefs = Readonly<{
   beaconRef: RefObject<HTMLButtonElement>;
 }>;
 
-/** Refs for the popover and beacon, and a getter the Run reads them through when it needs them. */
 export function useUiRefs(): UiRefs & { ui: () => UiElements } {
   const dialogRef = useRef<HTMLDivElement>(null);
   const beaconRef = useRef<HTMLButtonElement>(null);
-  // Read when the Run fires, not during render.
-  // oxlint-disable-next-line react/refs
   const ui = useCallback(() => ({ dialog: dialogRef.current, beacon: beaconRef.current }), []);
   return { dialogRef, beaconRef, ui };
 }
 
-/** Subscribes to a Run someone else owns and exposes its snapshot and actions. */
 export function useRunView<TStep extends WalkthroughStep>(run: Run<TStep>) {
   const snapshot = useSyncExternalStore(run.subscribe, run.getSnapshot, run.getSnapshot);
   const act = run.act;
@@ -40,7 +36,6 @@ export function useRunView<TStep extends WalkthroughStep>(run: Run<TStep>) {
   };
 }
 
-/** Creates and owns one Run of the walkthrough, replacing it only when the walkthrough or padding changes. */
 export function useOwnedRun<TStep extends WalkthroughStep>({
   walkthrough,
   waymarkPadding,

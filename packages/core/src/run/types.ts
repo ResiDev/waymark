@@ -1,12 +1,6 @@
 import type { Step } from "../walkthrough/types";
 
-/**
- * One live execution of a Walkthrough. A renderer reads a Snapshot and sends
- * Actions; that is the whole of the surface. See GLOSSARY.md for the terms in
- * prose.
- */
-
-/** A Waymark's position, in viewport coordinates. A plain copy of a DOMRect. */
+/** In viewport coordinates. */
 export type Rect = Readonly<{
   x: number;
   y: number;
@@ -18,7 +12,6 @@ export type Rect = Readonly<{
   height: number;
 }>;
 
-/** Everything a Run can be asked to do. */
 export const actions = [
   "advance",
   "previous",
@@ -30,13 +23,7 @@ export const actions = [
 
 export type Action = (typeof actions)[number];
 
-/**
- * Where the Run believes the current Step's Waymark is.
- *
- * `absent` is a Step with no Waymark at all; the other three are the life of
- * a Waymark the Run is looking for. Once found, a Waymark that leaves the
- * page is `lost`, never `searching` again.
- */
+/** `absent`: the Step has no Waymark. Once found, a Waymark that leaves the page is `lost`, not `searching`. */
 export type Location =
   | Readonly<{ status: "absent" }>
   | Readonly<{ status: "searching" }>
@@ -48,9 +35,7 @@ export type Running<TStep extends Step = Step> = Readonly<{
   step: TStep;
   stepIndex: number;
   stepCount: number;
-  /** False while the Advance gate is shut. */
   canAdvance: boolean;
-  /** A Collapsed run is hidden behind a beacon, and resumable. */
   collapsed: boolean;
   waymark: Location;
 }>;
@@ -61,20 +46,12 @@ export type Ended = Readonly<{
   stepCount: number;
 }>;
 
-/**
- * Everything a renderer needs, and nothing about how core found it out.
- * A new object only when something in it changed, so it is safe to compare
- * by identity (as `useSyncExternalStore` does).
- */
+/** A new object only when something in it changed. */
 export type Snapshot<TStep extends Step = Step> = Running<TStep> | Ended;
 
-/** Everything a Run announces: opening, each Action it takes, and finishing. */
 export type RunEventType = "start" | Action | "finish";
 
-/**
- * Something the Run did. `step`/`stepIndex` name the Step the event happened
- * *on*; `snapshot` is the Run as it stands *after* it.
- */
+/** `step` and `stepIndex` are the Step the event happened on; `snapshot` is the Run after it. */
 export type RunEvent<TStep extends Step = Step> = Readonly<{
   type: RunEventType;
   step: TStep;
@@ -83,9 +60,8 @@ export type RunEvent<TStep extends Step = Step> = Readonly<{
 }>;
 
 /**
- * The parts of the walkthrough's own UI, so that clicks on them are not mistaken
- * for the user clicking away. Elements carrying `data-waymark-ui` count too, no
- * registration needed.
+ * Clicks on these, or inside anything marked `data-waymark-ui`, are not taken
+ * as the user clicking away.
  */
 export type UiElements = Readonly<{
   dialog: Element | null;
@@ -93,34 +69,22 @@ export type UiElements = Readonly<{
 }>;
 
 export type RunOptions<TStep extends Step = Step> = Readonly<{
-  /** Where Waymarks are looked for. Defaults to `document`. */
   root?: Document | Element;
-  /** Halo around a Waymark, in px. Clicks inside it count as Waymark clicks. */
+  /** In px. Clicks this close to the Waymark count as clicks on it. */
   waymarkPadding?: number;
-  /** Step to open on. Defaults to 0. */
   startAt?: number;
   ui?: () => UiElements;
   onEvent?: (event: RunEvent<TStep>) => void;
 }>;
 
-/**
- * One live execution of a Walkthrough.
- *
- * The Run watches the page only while someone is subscribed and the Run is
- * still going: no subscribers, or a finished Run, means no frame loop and no
- * global listeners.
- */
+/** Watches the page only while it has a subscriber and has not ended. */
 export type Run<TStep extends Step = Step> = Readonly<{
   /**
-   * Completes before returning, except when called inside a subscriber or
-   * onEvent handler. Those calls enqueue the action and return immediately;
-   * it runs after the current change's notifications and events finish.
+   * Called from a subscriber or `onEvent` handler, it runs after the current
+   * change's notifications and events, not before returning.
    */
   act: (action: Action) => void;
   getSnapshot: () => Snapshot<TStep>;
-  /**
-   * The listener is handed the current Snapshot at once, then each new one;
-   * it may also read `getSnapshot`. Svelte's store contract.
-   */
+  /** Calls the listener at once, as Svelte's store contract requires, then on each change. */
   subscribe: (listener: (snapshot: Snapshot<TStep>) => void) => () => void;
 }>;
