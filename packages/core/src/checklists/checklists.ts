@@ -16,6 +16,7 @@ import type {
   ChecklistsSnapshot,
   DefaultChecklists,
   NamedTask,
+  Task,
   TaskMap,
 } from "./types";
 import { DEFAULT_CHECKLIST } from "./types";
@@ -56,14 +57,27 @@ const isSteps = <TStep extends Step>(
  * `boolean`. Tasks written inline are typed from that context; tasks in other
  * files use `satisfies Task<AppContext>`. Without a context it is `{}`, so a condition
  * that reads a field does not compile.
+ *
+ * TShape and TStepShape are `ChecklistsConfig`'s: an adapter that adds display
+ * fields passes its wider Task and Step types. They are never inferred.
  */
 export function createChecklists<
   TContext = {},
   const TTasks extends TaskMap<NoInfer<TContext>> = TaskMap<TContext>,
   const TSelections extends ChecklistSelections<TTasks> =
     DefaultChecklists<TTasks>,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- passed by an adapter, never inferred.
+  TShape = Task<TContext>,
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- passed by an adapter, never inferred.
+  TStepShape extends Step = Step,
 >(
-  config: ChecklistsConfig<TContext, TTasks, TSelections>,
+  config: ChecklistsConfig<
+    TContext,
+    TTasks,
+    TSelections,
+    NoInfer<TShape>,
+    NoInfer<TStepShape>
+  >,
 ): Checklists<TContext, TTasks, TSelections> {
   // Inside, the owner sees its tasks only as a map of `Task<TContext>`; the
   // exact TTasks and TSelections are restored by the cast at the end.

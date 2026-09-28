@@ -3,6 +3,7 @@ import type {
   ChecklistSelections,
   Checklists,
   ChecklistSnapshot,
+  NamedTask,
   RunEvent,
   Running,
   Step,
@@ -64,6 +65,9 @@ export type ReactGuidanceTasks = Readonly<
   >
 >;
 
+/** The step type of an owner's active Run, as its popover sees it. */
+export type GuidanceStep<TTasks> = Extract<StepOf<NamedTask<TTasks>>, WalkthroughStep>;
+
 /**
  * The owner-driven shape: draws whichever Run the Checklists owner started,
  * binds its elements through `bindUi` on mount, and stops the Run when the
@@ -79,9 +83,7 @@ export type ChecklistWalkthroughProps<
   active?: never;
   waymarkPadding?: never;
   onEvent?: never;
-  renderPopover?: (
-    props: WalkthroughRenderProps<NoInfer<Extract<StepOf<TTasks[keyof TTasks]>, WalkthroughStep>>>,
-  ) => ReactNode;
+  renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
 }>;
 
 /**
@@ -101,7 +103,8 @@ export type ReactTask<TContext> = Task<TContext, WalkthroughStep> &
     toggleable?: boolean;
   }>;
 
-export type AnyReactTask = ReactTask<any> & { readonly id: string };
+/** A named ReactTask of any context: the context only types a condition's argument, so every context fits `never`. */
+export type AnyReactTask = ReactTask<never> & { readonly id: string };
 
 export type UseChecklistResult<TTask extends AnyReactTask> = TaskCommands<TTask["id"]> &
   Readonly<{

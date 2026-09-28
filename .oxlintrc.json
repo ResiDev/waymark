@@ -31,7 +31,9 @@
   "overrides": [
     {
       "files": [
-        "packages/core/**/*.ts"
+        "packages/core/**/*.ts",
+        "packages/react/**/*.ts",
+        "packages/react/**/*.tsx"
       ],
       "rules": {
         "eqeqeq": "error",
@@ -130,7 +132,9 @@
     {
       "files": [
         "packages/core/**/*.test.ts",
-        "packages/core/**/*.perf.ts"
+        "packages/core/**/*.perf.ts",
+        "packages/react/**/*.test.ts",
+        "packages/react/**/*.test.tsx"
       ],
       "rules": {
         "no-restricted-globals": "off",
@@ -141,7 +145,6 @@
     },
     {
       "files": [
-        "packages/react/**",
         "e2e/**"
       ],
       "rules": {
@@ -155,6 +158,7 @@
     "**/dist/**",
     "**/node_modules/**",
     "**/playwright-report/**",
-    "**/test-results/**"
+    "**/test-results/**",
+    "scratch/**"
   ]
 }

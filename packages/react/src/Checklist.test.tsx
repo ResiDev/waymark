@@ -52,7 +52,7 @@ const setup = () => {
 };
 
 const rows = () => Array.from(host.querySelectorAll("li"));
-const row = (title: string) => rows().find((li) => li.textContent?.includes(title))!;
+const row = (title: string) => rows().find((li) => li.textContent.includes(title))!;
 const BUTTON = "button:not([role=checkbox])";
 const buttons = (li: HTMLElement) =>
   Array.from(li.querySelectorAll(BUTTON)).map((button) => button.textContent);

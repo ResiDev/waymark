@@ -8,7 +8,6 @@ import type {
   DefaultChecklists,
   ChecklistsConfig,
   ExactStep,
-  Step,
   Walkthrough,
 } from "waymark";
 import type { ReactTask, WalkthroughStep } from "./types";
@@ -22,8 +21,7 @@ import type { ReactTask, WalkthroughStep } from "./types";
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
   steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
 ): Walkthrough<NoInfer<TStep>> {
-  // Core checks against its own Step, which does not name React's fields.
-  return defineCoreWalkthrough<TStep>(steps as readonly TStep[] & readonly ExactStep<TStep, Step>[]);
+  return defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
 }
 
 /**
@@ -32,7 +30,7 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
  * Steps written inline on a Task are held to `WalkthroughStep`. A Task in its
  * own file is written `{ ... } satisfies ReactTask<AppContext>`.
  */
-export const createChecklists = createCoreChecklists as <
+export function createChecklists<
   TContext = {},
   const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>> = Readonly<
     Record<string, ReactTask<TContext>>
@@ -40,4 +38,8 @@ export const createChecklists = createCoreChecklists as <
   const TSelections extends ChecklistSelections<TTasks> = DefaultChecklists<TTasks>,
 >(
   config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>,
-) => Checklists<TContext, TTasks, TSelections>;
+): Checklists<TContext, TTasks, TSelections> {
+  return createCoreChecklists<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>(
+    config,
+  );
+}

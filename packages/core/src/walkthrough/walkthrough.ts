@@ -8,9 +8,15 @@ import type { ExactStep, Step, Walkthrough } from "./types";
  * spot, so no other module has to know that `advance: "click"` and
  * `advance: { click: true }` mean the same thing, and nothing needs to be
  * precomputed or cached.
+ *
+ * TShape names the fields a Step may carry. Core's own is `Step`; an adapter
+ * that adds display fields passes its wider Step type. It is never inferred.
  */
-export function defineWalkthrough<const TStep extends Step>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, Step>[],
+export function defineWalkthrough<
+  const TStep extends TShape,
+  TShape extends Step = Step,
+>(
+  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
 ): Walkthrough<NoInfer<TStep>> {
   return checkedWalkthrough<TStep>(steps, "");
 }
