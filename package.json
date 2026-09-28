@@ -16,6 +16,7 @@
     "dev": "pnpm --filter waymark-e2e dev",
     "dev:react": "pnpm --filter waymark-e2e dev:react",
     "shot": "pnpm --filter waymark-e2e shot",
+    "size": "pnpm build && pnpm --filter waymark-e2e size",
     "test:e2e": "pnpm --filter waymark test:e2e",
     "check:all": "pnpm check && pnpm test:e2e",
     "test:perf": "pnpm --filter waymark test:perf",

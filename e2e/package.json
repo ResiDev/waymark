@@ -6,12 +6,14 @@
     "dev": "vite --open",
     "dev:react": "vite --open /react.html",
     "shot": "node --experimental-strip-types scripts/shot.ts",
+    "size": "node --experimental-strip-types scripts/size.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.20.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "esbuild": "^0.27.7",
     "playwright": "^1.63.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -20,5 +22,5 @@
     "vite": "^8.3.0",
     "waymark": "workspace:*"
   },
-  "description": "Fixture pages for core, checklists and the React package: dev playgrounds for people and agents, and a screenshot script."
+  "description": "Fixture pages for core, checklists and the React package: dev playgrounds for people and agents, a screenshot script, and a bundle size script."
 }
