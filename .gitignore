@@ -8,6 +8,7 @@ playwright-report/
 test-results/
 blob-report/
 .playwright/
+size-history.jsonl
 
 # editor / os
 .DS_Store
