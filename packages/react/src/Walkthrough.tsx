@@ -1,8 +1,14 @@
-import { useEffect, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
+import {
+  useEffect,
+  useSyncExternalStore,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import type { ChecklistSelections, Checklists, Rect, Run } from "waymark";
 import { Beacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
   ChecklistWalkthroughProps,
+  GuidanceStep,
   ReactGuidanceTasks,
   WalkthroughProps,
   WalkthroughRenderProps,
@@ -25,10 +31,6 @@ const centeredRect = (): Rect => {
   };
 };
 
-type AnyChecklists = Checklists<any, any, any>;
-type AnyProps = WalkthroughProps<any> | ChecklistWalkthroughProps<any, any, any>;
-type PopoverRenderer = (props: WalkthroughRenderProps<any>) => ReactNode;
-
 /**
  * Renders a Run. With `walkthrough` the component creates and owns the Run;
  * with `checklists` it draws whichever Run the owner started. Either way the
@@ -37,17 +39,30 @@ type PopoverRenderer = (props: WalkthroughRenderProps<any>) => ReactNode;
 export function Walkthrough<TStep extends WalkthroughStep>(
   props: WalkthroughProps<TStep>,
 ): ReactElement | null;
+// Guidance never calls `update`, the one place an owner's context appears, so every owner fits `never`.
 export function Walkthrough<
-  TContext,
   TTasks extends ReactGuidanceTasks,
   TSelections extends ChecklistSelections<TTasks>,
->(props: ChecklistWalkthroughProps<TContext, TTasks, TSelections>): ReactElement | null;
-export function Walkthrough(props: AnyProps): ReactElement | null {
+>(
+  props: ChecklistWalkthroughProps<never, TTasks, TSelections>,
+): ReactElement | null;
+export function Walkthrough<
+  TStep extends WalkthroughStep,
+  TTasks extends ReactGuidanceTasks,
+  TSelections extends ChecklistSelections<TTasks>,
+>(
+  props:
+    | WalkthroughProps<TStep>
+    | ChecklistWalkthroughProps<never, TTasks, TSelections>,
+): ReactElement | null {
   if (typeof document === "undefined") return null;
   if (props.checklists !== undefined) {
-    // `any` tasks give the popover a `never` step; the runtime step is whatever the Run holds.
-    const renderPopover = props.renderPopover as PopoverRenderer | undefined;
-    return <ChecklistGuidance checklists={props.checklists} renderPopover={renderPopover} />;
+    return (
+      <ChecklistGuidance
+        checklists={props.checklists}
+        renderPopover={props.renderPopover}
+      />
+    );
   }
   if (props.active === false) return null;
   return <ActiveWalkthrough {...props} />;
@@ -73,7 +88,7 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
 }
 
 /** Which renderer currently holds each owner's UI binding, so a pending stop can tell a handoff from an unmount. */
-const holders = new WeakMap<AnyChecklists, symbol>();
+const holders = new WeakMap<object, symbol>();
 
 /**
  * Draws the owner's active Run. Removing this renderer stops that Run, but
@@ -82,12 +97,17 @@ const holders = new WeakMap<AnyChecklists, symbol>();
  * mounted component, and that must not stop guidance. A Run the owner has
  * since replaced is left alone too.
  */
-function ChecklistGuidance({
+function ChecklistGuidance<
+  TTasks extends ReactGuidanceTasks,
+  TSelections extends ChecklistSelections<TTasks>,
+>({
   checklists,
   renderPopover,
 }: {
-  checklists: AnyChecklists;
-  renderPopover?: PopoverRenderer | undefined;
+  checklists: Checklists<never, TTasks, TSelections>;
+  renderPopover?:
+    | ChecklistWalkthroughProps<never, TTasks, TSelections>["renderPopover"]
+    | undefined;
 }) {
   const { dialogRef, beaconRef, ui } = useUiRefs();
   const { active } = useSyncExternalStore(
@@ -114,7 +134,9 @@ function ChecklistGuidance({
   }, [checklists, ui]);
 
   if (active === null) return null;
-  const { task, run } = active;
+  const { task } = active;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the Run's steps come from these Tasks, which ReactGuidanceTasks holds to WalkthroughStep; TS cannot follow StepOf while TTasks is generic.
+  const run = active.run as Run<GuidanceStep<TTasks>>;
   return (
     <RunView
       run={run}
@@ -138,16 +160,23 @@ function RunView<TStep extends WalkthroughStep>({
   run: Run<TStep>;
   skipTask?: (() => void) | undefined;
   waymarkPadding: number;
-  renderPopover?: ((props: WalkthroughRenderProps<TStep>) => ReactNode) | undefined;
+  renderPopover?:
+    | ((props: WalkthroughRenderProps<TStep>) => ReactNode)
+    | undefined;
 }) {
-  const { snapshot, advance, previous, collapse, resume, reset, exit } = useRunView(run);
+  const { snapshot, advance, previous, collapse, resume, reset, exit } =
+    useRunView(run);
 
   if (snapshot.phase !== "running") return null;
-  if (snapshot.waymark.status === "searching" || snapshot.waymark.status === "lost") {
+  if (
+    snapshot.waymark.status === "searching" ||
+    snapshot.waymark.status === "lost"
+  ) {
     return null;
   }
 
-  const rect = snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
+  const rect =
+    snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
   if (snapshot.collapsed) {
     return <Beacon rect={rect} beaconRef={beaconRef} onResume={resume} />;
   }
