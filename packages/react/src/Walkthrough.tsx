@@ -175,7 +175,10 @@ function RunView<TStep extends WalkthroughStep>({
   }
 
   const anchor = rect ?? centeredRect();
-  const render = (placement: WalkthroughRenderProps<TStep>["placement"]) => {
+  const render = (
+    placement: WalkthroughRenderProps<TStep>["placement"],
+    arrow: number,
+  ) => {
     const renderProps: WalkthroughRenderProps<TStep> = {
       snapshot,
       currentStep: snapshot.step,
@@ -188,7 +191,11 @@ function RunView<TStep extends WalkthroughStep>({
       exit,
       ...(skipTask ? { skipTask } : {}),
     };
-    return renderPopover?.(renderProps) ?? <DefaultPopover {...renderProps} />;
+    return (
+      renderPopover?.(renderProps) ?? (
+        <DefaultPopover {...renderProps} arrow={arrow} />
+      )
+    );
   };
 
   return (

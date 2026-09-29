@@ -51,6 +51,18 @@ const buttonNamed = (label: string) =>
     (button) => button.textContent === label,
   );
 
+const beacon = () =>
+  document.querySelector<HTMLButtonElement>('button[aria-label="Resume walkthrough"]');
+
+const clickAway = async () => {
+  await act(async () => {
+    document.body.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, clientX: 400, clientY: 400 }),
+    );
+    await Promise.resolve();
+  });
+};
+
 const addTarget = (waymark: string, label: string): HTMLButtonElement => {
   const target = document.createElement("button");
   target.dataset.waymark = waymark;
@@ -120,10 +132,7 @@ describe("Walkthrough", () => {
     });
     expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Second step");
 
-    const next = Array.from(document.querySelectorAll("button")).find(
-      (button) => button.textContent === "Next (2 of 3)",
-    )!;
-    await act(async () => next.click());
+    await act(async () => buttonNamed("Next")!.click());
     expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Third step");
     expect(replacement).toHaveBeenCalled();
     expect(original).not.toHaveBeenCalled();
@@ -158,24 +167,49 @@ describe("Walkthrough", () => {
       { waymark: "panel", content: "Use this panel" },
     ]);
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    await clickAway();
 
-    await act(async () => {
-      document.body.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, clientX: 400, clientY: 400 }),
-      );
-      await Promise.resolve();
-    });
-
-    const beacon = document.querySelector(
-      'button[aria-label="Resume walkthrough"]',
-    ) as HTMLButtonElement;
-    expect(beacon).toBeInTheDocument();
+    expect(beacon()).toBeInTheDocument();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
 
-    await act(async () => beacon.click());
+    await act(async () => beacon()!.click());
     expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
       "Use this panel",
     );
+  });
+
+  it("pins the beacon to its Waymark's top-right corner", async () => {
+    addTarget("panel", "Panel");
+    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    await clickAway();
+
+    expect(beacon()!.style).toMatchObject({ left: "120px", top: "20px" });
+  });
+
+  it("keeps the beacon on screen for a Waymark in the screen's corner", async () => {
+    const target = addTarget("help", "Help");
+    target.getBoundingClientRect = () => new DOMRect(window.innerWidth - 60, 0, 60, 40);
+    const walkthrough = defineWalkthrough([{ waymark: "help", content: "Help lives here" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    await clickAway();
+
+    expect(parseFloat(beacon()!.style.left)).toBeLessThan(window.innerWidth - 10);
+    expect(parseFloat(beacon()!.style.top)).toBeGreaterThan(10);
+  });
+
+  it("ends the walkthrough from the close button", async () => {
+    addTarget("panel", "Panel");
+    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+
+    const close = document.querySelector<HTMLButtonElement>(
+      '[role="dialog"] button[aria-label="Close"]',
+    )!;
+    await act(async () => close.click());
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(beacon()).toBeNull();
   });
 
   it("supports one custom popover seam", async () => {
@@ -282,7 +316,7 @@ describe("Walkthrough with checklists", () => {
       await Promise.resolve();
     });
     expect(dialog()).toBeNull();
-    expect(document.querySelector('button[aria-label="Resume walkthrough"]')).toBeInTheDocument();
+    expect(beacon()).toBeInTheDocument();
   });
 
   it("renders a custom popover with the owner's step union", async () => {

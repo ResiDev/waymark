@@ -3,8 +3,9 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "paths": {
-      "waymark": ["../core/src/index.ts"]
+      "waymark": ["../core/src/index.ts"],
+      "react-waymark": ["./src/index.ts"]
     }
   },
-  "include": ["src", "tsup.config.ts", "vitest.config.ts", "vitest.setup.ts"]
+  "include": ["src", "registry", "tsup.config.ts", "vitest.config.ts", "vitest.setup.ts"]
 }

@@ -34,7 +34,7 @@ const DEFAULT_LABELS: ChecklistLabels = {
   skip: "Skip",
 };
 
-const STATUS_TEXT = { todo: "To do", done: "Done", skipped: "Skipped" } as const;
+export const STATUS_TEXT = { todo: "To do", done: "Done", skipped: "Skipped" } as const;
 
 const panelStyle: CSSProperties = {
   boxSizing: "border-box",
@@ -100,7 +100,7 @@ const boxStyle: CSSProperties = {
   background: "transparent",
 };
 
-const hidden: CSSProperties = {
+export const visuallyHidden: CSSProperties = {
   position: "absolute",
   width: 1,
   height: 1,
@@ -164,7 +164,7 @@ function DefaultRow<TTask extends AnyReactTask>({
           <span aria-hidden="true">{glyph}</span>
         </button>
       )}
-      <span id={statusId} style={hidden}>
+      <span id={statusId} style={visuallyHidden}>
         {STATUS_TEXT[status]}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>

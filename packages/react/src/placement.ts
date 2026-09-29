@@ -5,9 +5,17 @@ export type PopoverPlacement = Readonly<{
   placement: Placement;
   top: number;
   left: number;
+  /** How far along the edge facing the anchor its centre falls, for an arrow. */
+  arrow: number;
+  /**
+   * The most room above or below, or the viewport's for a side, for a popover that scrolls
+   * rather than leave the screen. Not the room on the side it was placed: capped to that, a
+   * popover would always fit there, and never move to a side with more.
+   */
+  maxHeight: number;
 }>;
 
-type Size = Readonly<{ width: number; height: number }>;
+export type Size = Readonly<{ width: number; height: number }>;
 type Viewport = Size;
 
 const opposite: Record<Placement, Placement> = {
@@ -19,8 +27,11 @@ const opposite: Record<Placement, Placement> = {
 
 const unique = <T,>(values: readonly T[]): T[] => [...new Set(values)];
 
-const clamp = (value: number, min: number, max: number): number =>
+export const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), Math.max(min, max));
+
+export const vertical = (placement: Placement): boolean =>
+  placement === "above" || placement === "below";
 
 // Tested directly, not through index.ts: jsdom lays nothing out, so reaching
 // each fallback through a rendered Walkthrough would mean faking every size.
@@ -48,30 +59,30 @@ export function placePopover({
     right: viewport.width - anchor.right - gap - margin,
   };
 
-  const fits = (placement: Placement): boolean => {
-    if (placement === "above" || placement === "below") {
-      return (
-        space[placement] >= popover.height &&
-        centerX - popover.width / 2 >= margin &&
-        centerX + popover.width / 2 <= viewport.width - margin
-      );
-    }
-    return (
-      space[placement] >= popover.width &&
-      centerY - popover.height / 2 >= margin &&
-      centerY + popover.height / 2 <= viewport.height - margin
-    );
-  };
+  const hasRoom = (placement: Placement): boolean =>
+    vertical(placement)
+      ? space[placement] >= popover.height &&
+        popover.width <= viewport.width - 2 * margin
+      : space[placement] >= popover.width &&
+        popover.height <= viewport.height - 2 * margin;
 
-  const order = unique<Placement>([
-    preferred,
-    opposite[preferred],
-    "below",
-    "above",
-    "right",
-    "left",
-  ]);
-  const placement = order.find(fits) ?? preferred;
+  const centred = (placement: Placement): boolean =>
+    hasRoom(placement) &&
+    (vertical(placement)
+      ? centerX - popover.width / 2 >= margin &&
+        centerX + popover.width / 2 <= viewport.width - margin
+      : centerY - popover.height / 2 >= margin &&
+        centerY + popover.height / 2 <= viewport.height - margin);
+
+  // The preferred side may slide along the anchor to stay on screen. Another
+  // side must sit centred, or else be below or above: beside a header item,
+  // left or right only fits by sliding down over the rest of the header.
+  const sides: Placement[] = ["below", "above", "right", "left"];
+  const placement = hasRoom(preferred)
+    ? preferred
+    : (unique<Placement>([opposite[preferred], ...sides]).find(centred) ??
+      sides.find(hasRoom) ??
+      preferred);
 
   const raw = {
     below: {
@@ -92,9 +103,16 @@ export function placePopover({
     },
   }[placement];
 
+  const top = clamp(raw.top, margin, viewport.height - popover.height - margin);
+  const left = clamp(raw.left, margin, viewport.width - popover.width - margin);
   return {
     placement,
-    top: clamp(raw.top, margin, viewport.height - popover.height - margin),
-    left: clamp(raw.left, margin, viewport.width - popover.width - margin),
+    top,
+    left,
+    arrow: vertical(placement) ? centerX - left : centerY - top,
+    maxHeight: Math.max(
+      0,
+      vertical(placement) ? Math.max(space.above, space.below) : viewport.height - 2 * margin,
+    ),
   };
 }

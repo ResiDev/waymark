@@ -1,5 +1,6 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import type {
+  ChecklistRow,
   ChecklistSelections,
   Checklists,
   ChecklistSnapshot,
@@ -118,6 +119,38 @@ export type ChecklistProps<TTask extends AnyReactTask> = Readonly<{
   /** Replaces a row's content; the list item around it stays. */
   renderRow?: (props: ChecklistRowProps<TTask>) => ReactNode;
 }>;
+
+export type ChecklistRootState<TTask extends AnyReactTask> = UseChecklistResult<TTask> &
+  Readonly<{
+    /** True while a mouse rests on the trigger or panel, or a press has pinned it open. */
+    open: boolean;
+  }>;
+
+export type ChecklistRootProps<TTask extends AnyReactTask> = Readonly<{
+  checklist: CoreChecklist<TTask>;
+  children?: ReactNode | ((state: ChecklistRootState<TTask>) => ReactNode);
+}>;
+
+export type ChecklistPanelProps = ComponentPropsWithoutRef<"div"> &
+  Readonly<{
+    /** Defaults to below. Another side is taken when this one has no room; `data-side` says which. */
+    side?: Placement;
+    /** Pixels between the trigger and the panel. Defaults to 8. */
+    gap?: number;
+    /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
+    portal?: boolean;
+  }>;
+
+export type ChecklistTaskProps = ComponentPropsWithoutRef<"li"> &
+  Readonly<{
+    row: ChecklistRow<AnyReactTask>;
+  }>;
+
+export type ChecklistCheckboxProps = ComponentPropsWithoutRef<"button"> &
+  Readonly<{
+    /** Read out after the Task's title. */
+    statusText?: Readonly<Record<TaskStatus, string>>;
+  }>;
 
 export type { Checklist as CoreChecklist } from "waymark";
 import type { Checklist as CoreChecklist } from "waymark";
