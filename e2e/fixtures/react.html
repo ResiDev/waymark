@@ -6,8 +6,11 @@
     <link rel="icon" href="data:," />
     <style>
       body { margin: 0; font: 14px/1.5 system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
-      button { font: inherit; cursor: pointer; }
-      button:disabled { cursor: default; }
+      /* In a layer, as a Tailwind app's base styles are, so the Tailwind copy's utilities win. */
+      @layer base {
+        button { font: inherit; cursor: pointer; }
+        button:disabled { cursor: default; }
+      }
       kbd { padding: 0 4px; border: 1px solid currentColor; border-radius: 3px; font-size: 12px; }
 
       /* ---- the app ---- */
@@ -19,7 +22,7 @@
         display: flex; align-items: center; gap: 10px; padding: 0 12px;
         color: #fff; background: #1e293b;
       }
-      .topbar button { flex: none; padding: 5px 10px; border: 1px solid #475569; border-radius: 6px; color: #fff; background: #334155; white-space: nowrap; }
+      .topbar > button { flex: none; padding: 5px 10px; border: 1px solid #475569; border-radius: 6px; color: #fff; background: #334155; white-space: nowrap; }
       .brand { font-weight: 700; font-size: 16px; }
       .search { flex: 0 1 220px; min-width: 60px; padding: 5px 8px; border: 0; border-radius: 6px; }
       .grow { flex: 1; }

@@ -80,7 +80,7 @@ const tour = defineWalkthrough([
     preferredPlacement: "below",
     content: "Feedback, bottom right. There is no room below, so it opens above.",
   },
-  { content: "That's the tour.", popoverStyle: { background: "#14532d" } },
+  { content: "That's the tour.", popoverStyle: { background: "#f0fdf4", borderColor: "#bbf7d0" } },
 ]);
 
 const whatsNew = defineWalkthrough([

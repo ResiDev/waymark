@@ -70,6 +70,7 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
       <Choice name="renderer" setup={current} />
       <Choice name="popover" setup={current} />
       <Choice name="list" setup={current} />
+      <Choice name="copy" setup={current} />
       <label title="Remounts the app, not this panel.">
         <input type="checkbox" name="strict" checked={current.strict} onChange={() => patch(setup, { strict: !current.strict })} />
         StrictMode

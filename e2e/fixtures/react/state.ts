@@ -42,6 +42,8 @@ const oneOf = <T extends string>(allowed: readonly T[], value: string | null): T
 export const setupOptions = {
   popover: ["default", "custom"],
   list: ["default", "styled", "rows", "headless"],
+  /** The copy-in checklist popover from packages/react/registry, in the header. */
+  copy: ["off", "css", "tailwind"],
   /** `home` unmounts the renderer, and so stops guidance, whenever you leave Home. */
   renderer: ["root", "home", "none"],
 } as const;
@@ -50,6 +52,7 @@ export type Setup = Readonly<{
   strict: boolean;
   popover: (typeof setupOptions.popover)[number];
   list: (typeof setupOptions.list)[number];
+  copy: (typeof setupOptions.copy)[number];
   renderer: (typeof setupOptions.renderer)[number];
   /** The decks page loads for 1.5s first, so its Waymarks mount late. */
   slow: boolean;
@@ -67,6 +70,7 @@ const readSetup = (): Setup => {
     strict: q.get("strict") !== "0",
     popover: oneOf(setupOptions.popover, q.get("popover")),
     list: oneOf(setupOptions.list, q.get("list")),
+    copy: oneOf(setupOptions.copy, q.get("copy")),
     renderer: oneOf(setupOptions.renderer, q.get("renderer")),
     slow: q.get("slow") === "1",
     padding: Number.isFinite(padding) ? padding : DEFAULT_PADDING,
@@ -80,6 +84,7 @@ const writeSetup = (setup: Setup) => {
   if (!setup.strict) q.set("strict", "0");
   if (setup.popover !== "default") q.set("popover", setup.popover);
   if (setup.list !== "default") q.set("list", setup.list);
+  if (setup.copy !== "off") q.set("copy", setup.copy);
   if (setup.renderer !== "root") q.set("renderer", setup.renderer);
   if (setup.slow) q.set("slow", "1");
   if (setup.padding !== DEFAULT_PADDING) q.set("padding", String(setup.padding));

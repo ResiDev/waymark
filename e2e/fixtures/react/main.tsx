@@ -5,6 +5,7 @@ import type { Action } from "waymark";
 import { App } from "./app";
 import { owner, stored } from "./guidance";
 import { Lab } from "./lab";
+import "./tailwind.css";
 import {
   data,
   EMPTY_DATA,
@@ -25,7 +26,7 @@ import {
  * The setup lives in the query and the route in the hash, so a link is a
  * reproduction:
  *
- *   /react.html?renderer=home&popover=custom&list=headless&slow=1#/decks
+ *   /react.html?renderer=home&popover=custom&list=headless&copy=css&slow=1#/decks
  */
 
 function Root() {

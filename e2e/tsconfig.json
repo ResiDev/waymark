@@ -11,7 +11,8 @@
       ]
     },
     "types": [
-      "node"
+      "node",
+      "vite/client"
     ]
   },
   "include": [

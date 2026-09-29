@@ -1,4 +1,6 @@
 import { Checklist, useChecklist, type ChecklistRowProps, type CoreChecklist } from "react-waymark";
+import { ChecklistPopover as CssPopover } from "../../../packages/react/registry/checklist-popover/css/checklist-popover";
+import { ChecklistPopover as TailwindPopover } from "../../../packages/react/registry/checklist-popover/tailwind/checklist-popover";
 import { owner, type AnyTask } from "./guidance";
 import { setup, useStore } from "./state";
 
@@ -114,4 +116,11 @@ export function DecksBanner() {
       </button>
     </div>
   );
+}
+
+export function HeaderChecklist() {
+  const { copy } = useStore(setup);
+  if (copy === "css") return <CssPopover checklist={owner.checklists.home} />;
+  if (copy === "tailwind") return <TailwindPopover checklist={owner.checklists.home} />;
+  return null;
 }

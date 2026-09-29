@@ -1,9 +1,11 @@
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
 // Serves the fixture pages against the packages' source, so no build step is needed.
 export default defineConfig({
   root: "fixtures",
+  plugins: [tailwindcss()],
   resolve: {
     alias: {
       waymark: fileURLToPath(new URL("../packages/core/src/index.ts", import.meta.url)),

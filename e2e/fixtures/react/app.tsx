@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Checklist } from "react-waymark";
-import { DecksBanner, HomeChecklist } from "./checklists";
+import { DecksBanner, HeaderChecklist, HomeChecklist } from "./checklists";
 import { Guidance, owner, WhatsNew } from "./guidance";
 import {
   data,
@@ -45,6 +45,10 @@ function Header() {
       <span className="brand">Study</span>
       <input className="search" name="search" data-waymark="search" placeholder="Search decks" aria-label="Search decks" />
       <span className="grow" />
+      {/* Not a direct child, so the header's own button look stays off the copy's trigger. */}
+      <span>
+        <HeaderChecklist />
+      </span>
       <button type="button" data-waymark="whats-new" onClick={() => whatsNewOpen.set(true)}>
         What's new
       </button>

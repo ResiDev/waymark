@@ -1,0 +1,9 @@
+/*
+ * Tailwind for the copy-in Tailwind checklist only. No preflight, so the rest
+ * of the fixture keeps its own look, and no scanning of the fixture, whose
+ * class names would otherwise turn into utilities.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "../../../packages/react/registry/checklist-popover/tailwind";
