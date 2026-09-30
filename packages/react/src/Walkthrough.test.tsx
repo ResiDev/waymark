@@ -83,6 +83,17 @@ describe("Walkthrough", () => {
     expect(frames.size).toBe(0);
   });
 
+  it("renders into the body, or in place with portal off", async () => {
+    const walkthrough = defineWalkthrough([{ content: "Hello" }]);
+    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    expect(dialog()!.parentElement).toBe(document.body);
+
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} portal={false} />));
+    expect(host).toContainElement(dialog());
+  });
+
   it("renders the default view and advances after a Waymark click", async () => {
     const target = addTarget("save", "Save");
     const walkthrough = defineWalkthrough([
@@ -283,7 +294,7 @@ describe("Walkthrough with checklists", () => {
       ...(onEvent ? { onEvent } : {}),
     });
 
-  const dialog = () => document.querySelector('[role="dialog"]');
+  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
   it("draws the Run the owner started and finishes it into completion", async () => {
     const owner = setup();

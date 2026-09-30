@@ -8,8 +8,9 @@ import {
   type ReactNode,
 } from "react";
 import type { Rect } from "waymark";
-import { clamp, placePopover, vertical } from "./placement";
+import { clamp, placePopover, vertical, type Size } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";
+import { useViewportSize } from "./useViewportSize";
 import type {
   Placement,
   WalkthroughRenderProps,
@@ -114,6 +115,13 @@ export function WaymarkShade({
   );
 }
 
+const centeredRect = ({ width, height }: Size): Rect => {
+  const left = width / 2;
+  const top = height / 2;
+  return { x: left, y: top, top, right: left, bottom: top, left, width: 0, height: 0 };
+};
+
+/** Placed against `rect`, or in the middle of the screen without one. */
 export function Dialog({
   rect,
   preferred,
@@ -122,20 +130,21 @@ export function Dialog({
   ariaLabel,
   children,
 }: {
-  rect: Rect;
+  rect: Rect | null;
   preferred?: Placement | undefined;
   padding: number;
   dialogRef: RefObject<HTMLDivElement>;
   ariaLabel: string;
   children: (placement: Placement, arrow: number) => ReactNode;
 }) {
-  const size = useMeasuredSize(dialogRef);
+  const size = useMeasuredSize(dialogRef, true);
+  const viewport = useViewportSize();
   const placed = placePopover({
-    anchor: rect,
+    anchor: rect ?? centeredRect(viewport),
     popover: size,
-    viewport: { width: window.innerWidth, height: window.innerHeight },
+    viewport,
     preferred,
-    gap: padding + 8,
+    gap: (rect ? padding : 0) + 8,
   });
 
   return (
@@ -407,7 +416,7 @@ export function Beacon({
 
   // The pulse's radius at full scale, kept from the screen's edges so the ring is never cut off.
   const reach = 15;
-  const { innerWidth: width, innerHeight: height } = window;
+  const { width, height } = useViewportSize();
   const left = rect ? clamp(rect.right, reach, width - reach) : width / 2;
   const top = rect ? clamp(rect.top, reach, height - reach) : height - 32;
   return (

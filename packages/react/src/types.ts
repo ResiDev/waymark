@@ -48,6 +48,8 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     waymarkPadding?: number;
     onEvent?: (event: RunEvent<TStep>) => void;
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
+    /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
+    portal?: boolean;
   }>;
 
 /** Admits any other field: it reads Tasks an owner already holds, whatever else they carry. */
@@ -75,6 +77,8 @@ export type ChecklistWalkthroughProps<
   waymarkPadding?: never;
   onEvent?: never;
   renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
+  /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
+  portal?: boolean;
 }>;
 
 /** A Task written away from `createChecklists` gets its context from `satisfies ReactTask<AppContext>`. */

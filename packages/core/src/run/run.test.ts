@@ -715,6 +715,38 @@ describe("createRun", () => {
     view.stop();
   });
 
+  it.each(["Escape", "ArrowRight", "ArrowLeft", "Tab"])("leaves %s from other Waymark UI to that UI", (key) => {
+    const dialog = document.createElement("div");
+    dialog.append(document.createElement("button"));
+    const other = document.createElement("button");
+    other.dataset["waymarkUi"] = "";
+    document.body.append(dialog, other);
+    const run = createRun(defineWalkthrough([{}, {}]), { ui: () => ({ dialog, beacon: null }) });
+    const view = watch(run);
+    const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+
+    other.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(view.snapshot).toMatchObject({ stepIndex: 0, collapsed: false });
+    view.stop();
+  });
+
+  it("takes keys from marked content inside its own dialog", () => {
+    const dialog = document.createElement("div");
+    const marked = document.createElement("button");
+    marked.dataset["waymarkUi"] = "";
+    dialog.append(marked);
+    document.body.append(dialog);
+    const run = createRun(defineWalkthrough([{}, {}]), { ui: () => ({ dialog, beacon: null }) });
+    const view = watch(run);
+
+    marked.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
   it("takes the arrow keys and Escape", () => {
     const view = watch(createRun(defineWalkthrough([{}, {}])));
 

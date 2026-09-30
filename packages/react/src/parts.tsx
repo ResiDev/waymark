@@ -17,6 +17,7 @@ import type { Rect, TaskStatus } from "waymark";
 import { STATUS_TEXT, useChecklist, visuallyHidden } from "./Checklist";
 import { placePopover } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";
+import { useViewportSize } from "./useViewportSize";
 import type {
   AnyReactTask,
   ChecklistCheckboxProps,
@@ -111,6 +112,7 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
 }: ChecklistRootProps<TTask>) {
   const state = useChecklist(checklist);
   const activeId = state.snapshot.active?.task.id ?? null;
+  const activeRun = state.snapshot.active?.run ?? null;
   const running = activeId !== null;
 
   const [hovered, setHovered] = useState(false);
@@ -148,8 +150,8 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
   // done during render instead, StrictMode's replayed render lost it.
   useLayoutEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- resets pin and hover; an `open` derived from `running` would reopen when the Run ends
-    if (running) close();
-  }, [running, close]);
+    if (activeRun !== null) close();
+  }, [activeRun, close]);
 
   useEffect(() => {
     if (!pinned) return;
@@ -237,8 +239,10 @@ export function ChecklistPanel({
   const root = useRootContext("ChecklistPanel");
   const { open, triggerRef, panelRef, focusIfKeyboardOpened } = root;
   const [anchor, setAnchor] = useState<Rect | null>(null);
-  const size = useMeasuredSize(panelRef);
-  usePointerHover(panelRef, root.hover, open && anchor !== null);
+  const mounted = open && anchor !== null;
+  const size = useMeasuredSize(panelRef, mounted);
+  const viewport = useViewportSize();
+  usePointerHover(panelRef, root.hover, mounted);
 
   useLayoutEffect(() => {
     if (!open) return;
@@ -262,7 +266,6 @@ export function ChecklistPanel({
 
   if (!open || anchor === null) return null;
 
-  const viewport = { width: window.innerWidth, height: window.innerHeight };
   const placed = placePopover({
     anchor,
     popover: size,
@@ -294,7 +297,7 @@ export function ChecklistPanel({
       onKeyDown={(event) => {
         onKeyDown?.(event);
         if (event.key !== "Escape" || event.defaultPrevented) return;
-        // Taken here, so a running walkthrough does not also take this Escape as its own.
+        // Marks it handled, for anything else on the page listening for Escape.
         event.preventDefault();
         root.close();
         triggerRef.current?.focus();

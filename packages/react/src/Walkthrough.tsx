@@ -4,7 +4,8 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
-import type { ChecklistSelections, Checklists, Rect, Run } from "waymark";
+import { createPortal } from "react-dom";
+import type { ChecklistSelections, Checklists, Run } from "waymark";
 import { Beacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
   ChecklistWalkthroughProps,
@@ -15,21 +16,6 @@ import type {
   WalkthroughStep,
 } from "./types";
 import { useOwnedRun, useRunView, useUiRefs, type UiRefs } from "./useRun";
-
-const centeredRect = (): Rect => {
-  const left = window.innerWidth / 2;
-  const top = window.innerHeight / 2;
-  return {
-    x: left,
-    y: top,
-    top,
-    right: left,
-    bottom: top,
-    left,
-    width: 0,
-    height: 0,
-  };
-};
 
 export function Walkthrough<TStep extends WalkthroughStep>(
   props: WalkthroughProps<TStep>,
@@ -56,6 +42,7 @@ export function Walkthrough<
       <ChecklistGuidance
         checklists={props.checklists}
         renderPopover={props.renderPopover}
+        portal={props.portal ?? true}
       />
     );
   }
@@ -68,6 +55,7 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
   waymarkPadding = 20,
   onEvent,
   renderPopover,
+  portal = true,
 }: WalkthroughProps<TStep>) {
   const { dialogRef, beaconRef, ui } = useUiRefs();
   const run = useOwnedRun({ walkthrough, waymarkPadding, onEvent, ui });
@@ -76,6 +64,7 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
       run={run}
       waymarkPadding={waymarkPadding}
       renderPopover={renderPopover}
+      portal={portal}
       dialogRef={dialogRef}
       beaconRef={beaconRef}
     />
@@ -96,11 +85,13 @@ function ChecklistGuidance<
 >({
   checklists,
   renderPopover,
+  portal,
 }: {
   checklists: Checklists<never, TTasks, TSelections>;
   renderPopover?:
     | ChecklistWalkthroughProps<never, TTasks, TSelections>["renderPopover"]
     | undefined;
+  portal: boolean;
 }) {
   const { dialogRef, beaconRef, ui } = useUiRefs();
   const { active } = useSyncExternalStore(
@@ -136,6 +127,7 @@ function ChecklistGuidance<
       skipTask={() => checklists.skip(task.id)}
       waymarkPadding={checklists.waymarkPadding}
       renderPopover={renderPopover}
+      portal={portal}
       dialogRef={dialogRef}
       beaconRef={beaconRef}
     />
@@ -147,6 +139,7 @@ function RunView<TStep extends WalkthroughStep>({
   skipTask,
   waymarkPadding,
   renderPopover,
+  portal,
   dialogRef,
   beaconRef,
 }: UiRefs & {
@@ -156,6 +149,7 @@ function RunView<TStep extends WalkthroughStep>({
   renderPopover?:
     | ((props: WalkthroughRenderProps<TStep>) => ReactNode)
     | undefined;
+  portal: boolean;
 }) {
   const { snapshot, advance, previous, collapse, resume, reset, exit } =
     useRunView(run);
@@ -170,11 +164,6 @@ function RunView<TStep extends WalkthroughStep>({
 
   const rect =
     snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
-  if (snapshot.collapsed) {
-    return <Beacon rect={rect} beaconRef={beaconRef} onResume={resume} />;
-  }
-
-  const anchor = rect ?? centeredRect();
   const render = (
     placement: WalkthroughRenderProps<TStep>["placement"],
     arrow: number,
@@ -198,13 +187,15 @@ function RunView<TStep extends WalkthroughStep>({
     );
   };
 
-  return (
+  const view = snapshot.collapsed ? (
+    <Beacon rect={rect} beaconRef={beaconRef} onResume={resume} />
+  ) : (
     <>
-      <WaymarkShade rect={rect} padding={rect ? waymarkPadding : 0} />
+      <WaymarkShade rect={rect} padding={waymarkPadding} />
       <Dialog
         key={snapshot.stepIndex}
-        rect={anchor}
-        padding={rect ? waymarkPadding : 0}
+        rect={rect}
+        padding={waymarkPadding}
         preferred={snapshot.step.preferredPlacement}
         dialogRef={dialogRef}
         ariaLabel={`Step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}
@@ -213,4 +204,5 @@ function RunView<TStep extends WalkthroughStep>({
       </Dialog>
     </>
   );
+  return portal ? createPortal(view, document.body) : view;
 }

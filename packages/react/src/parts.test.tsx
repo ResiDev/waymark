@@ -239,6 +239,24 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
     expect(panel()).toBeNull();
   });
 
+  it("closes again when a task replaces an already running task", async () => {
+    const owner = createChecklists({
+      tasks: {
+        first: { title: "First task", walkthrough: guide },
+        second: { title: "Second task", walkthrough: guide },
+      },
+    });
+    await act(async () => root.render(<Popover checklist={owner.checklists.main} />));
+    await press(trigger());
+    await act(async () => owner.start("first"));
+    expect(panel()).toBeNull();
+
+    await press(trigger());
+    await press(task("Second task").querySelector("button:last-child")!);
+    expect(owner.getSnapshot().active?.task.id).toBe("second");
+    expect(panel()).toBeNull();
+  });
+
   it("do not count a click on them as a click away from a running walkthrough", async () => {
     const owner = setup();
     await act(async () =>

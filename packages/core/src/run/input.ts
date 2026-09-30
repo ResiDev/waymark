@@ -16,15 +16,23 @@ const within = (rect: Rect, padding: number, x: number, y: number) =>
   y >= rect.top - padding &&
   y <= rect.bottom + padding;
 
+/**
+ * Whose UI `node` is in. This Run's dialog or beacon comes first, since content inside them
+ * may carry `data-waymark-ui`; "other" is any other Waymark UI, and "page" is the app's own.
+ */
+const uiOwner = (node: Element, { dialog, beacon }: UiElements): "run" | "other" | "page" => {
+  if (dialog?.contains(node) === true || beacon?.contains(node) === true) return "run";
+  if (node.closest("[data-waymark-ui]") !== null) return "other";
+  return "page";
+};
+
 export function whereClicked(event: MouseEvent, ctx: InputContext): ClickHit {
   const node = event.target;
   if (!(node instanceof Element) || !node.isConnected) return "ui";
 
   // UI first: the beacon can sit inside the Waymark's halo, and so can a
   // popover clamped into the viewport.
-  const { dialog, beacon } = ctx.ui;
-  if (dialog?.contains(node) === true || beacon?.contains(node) === true) return "ui";
-  if (node.closest("[data-waymark-ui]")) return "ui";
+  if (uiOwner(node, ctx.ui) !== "page") return "ui";
 
   if (ctx.element?.contains(node) === true) return "waymark";
   // Keyboard activation has no pointer position; its default 0,0 is not a hit.
@@ -77,6 +85,10 @@ export function keyAction(
   const alreadyHandled = event.defaultPrevented;
   const hasShortcutModifier = event.altKey || event.ctrlKey || event.metaKey;
   if (alreadyHandled || hasShortcutModifier) return undefined;
+
+  const node = event.target;
+  // Other Waymark UI owns its keys, even while this Run owns the page's shortcuts.
+  if (node instanceof Element && uiOwner(node, ctx.ui) === "other") return undefined;
 
   switch (event.key) {
     case "Escape":
