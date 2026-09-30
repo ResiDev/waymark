@@ -7,6 +7,7 @@
     "dev:react": "vite --open /react.html",
     "shot": "node --experimental-strip-types scripts/shot.ts",
     "size": "node --experimental-strip-types scripts/size.ts",
+    "repro:react": "node --experimental-strip-types scripts/repro-react.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
