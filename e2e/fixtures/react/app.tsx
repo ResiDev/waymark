@@ -90,7 +90,7 @@ function Sidebar({ current }: { current: Route }) {
 
 function Home() {
   const { renderer } = useStore(setup);
-  const { decks } = useStore(data);
+  const { decks, tipDismissed } = useStore(data);
   return (
     <>
       <h1>Good morning</h1>
@@ -102,6 +102,14 @@ function Home() {
           <b>{decks.length}</b> {decks.length === 1 ? "deck" : "decks"}
         </div>
       </div>
+      {!tipDismissed && (
+        <div className="tip" data-waymark="tip">
+          Tip: review a little every day.
+          <button type="button" aria-label="Dismiss tip" onClick={() => patch(data, { tipDismissed: true })}>
+            ×
+          </button>
+        </div>
+      )}
       <HomeChecklist />
       <div className="spacer" />
       <p className="guide" data-waymark="guide">

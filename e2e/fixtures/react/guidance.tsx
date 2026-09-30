@@ -74,6 +74,11 @@ const tour = defineWalkthrough([
     advance: { state: () => true, delayMs: 2000 },
     content: "Your streak. This step moves on by itself after two seconds.",
   },
+  {
+    waymark: "tip",
+    preferredPlacement: "below",
+    content: "A tip. Press its × to take this step's Waymark out of the page.",
+  },
   { waymark: "guide", content: "Far down the page: the Run scrolled here." },
   {
     waymark: "feedback",
@@ -127,7 +132,7 @@ export const owner = createChecklists({
   tasks: {
     tour: {
       title: "Take the tour",
-      description: "Eight stops, most of what a step can do.",
+      description: "Nine stops, most of what a step can do.",
       walkthrough: tour,
     },
     "create-deck": {

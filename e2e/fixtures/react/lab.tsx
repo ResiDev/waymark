@@ -127,7 +127,7 @@ function GuidancePanel() {
   );
 }
 
-const flags = ["hasPhoto", "invited", "emailVerified"] as const satisfies readonly (keyof AppData)[];
+const flags = ["hasPhoto", "invited", "emailVerified", "tipDismissed"] as const satisfies readonly (keyof AppData)[];
 
 function DataPanel() {
   const app = useStore(data);

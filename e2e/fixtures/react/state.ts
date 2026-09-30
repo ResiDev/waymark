@@ -114,6 +114,8 @@ export type AppData = Readonly<{
   hasPhoto: boolean;
   invited: boolean;
   emailVerified: boolean;
+  /** The Home tip's × removes it from the page, which leaves the tour's tip step without its Waymark. */
+  tipDismissed: boolean;
   theme: Theme;
 }>;
 
@@ -122,6 +124,7 @@ export const EMPTY_DATA: AppData = {
   hasPhoto: false,
   invited: false,
   emailVerified: false,
+  tipDismissed: false,
   theme: "light",
 };
 
