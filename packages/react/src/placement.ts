@@ -33,6 +33,25 @@ export const clamp = (value: number, min: number, max: number): number =>
 export const vertical = (placement: Placement): boolean =>
   placement === "above" || placement === "below";
 
+/** For a step with nothing to point at: the popover's own centre on the screen's, kept on it. */
+export function centerPopover({
+  popover,
+  viewport,
+  margin = 8,
+}: {
+  popover: Size;
+  viewport: Viewport;
+  margin?: number;
+}): PopoverPlacement {
+  return {
+    placement: "below",
+    top: Math.max(margin, (viewport.height - popover.height) / 2),
+    left: Math.max(margin, (viewport.width - popover.width) / 2),
+    arrow: popover.width / 2,
+    maxHeight: viewport.height - margin * 2,
+  };
+}
+
 // Tested directly, not through index.ts: jsdom lays nothing out, so reaching
 // each fallback through a rendered Walkthrough would mean faking every size.
 export function placePopover({

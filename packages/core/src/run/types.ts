@@ -23,18 +23,25 @@ export const actions = [
 
 export type Action = (typeof actions)[number];
 
-/** `absent`: the Step has no Waymark. Once found, a Waymark that leaves the page is `lost`, not `searching`. */
+/**
+ * `absent`: the Step has no Waymark. `searching` becomes `missing` once it has
+ * lasted too long, and stays so until the Waymark is found. Once found, a
+ * Waymark that leaves the page stays `found` for a moment, in case it comes
+ * straight back, then is `lost`, not `searching`.
+ */
 export type Location =
   | Readonly<{ status: "absent" }>
   | Readonly<{ status: "searching" }>
   | Readonly<{ status: "found"; rect: Rect }>
-  | Readonly<{ status: "lost" }>;
+  | Readonly<{ status: "lost" }>
+  | Readonly<{ status: "missing" }>;
 
 export type Running<TStep extends Step = Step> = Readonly<{
   phase: "running";
   step: TStep;
   stepIndex: number;
   stepCount: number;
+  /** Also true while the Waymark is `lost` or `missing`, so a user is never stuck behind a condition that cannot be met. */
   canAdvance: boolean;
   collapsed: boolean;
   waymark: Location;
@@ -49,7 +56,8 @@ export type Ended = Readonly<{
 /** A new object only when something in it changed. */
 export type Snapshot<TStep extends Step = Step> = Running<TStep> | Ended;
 
-export type RunEventType = "start" | Action | "finish";
+/** `lost` and `missing` fire as the Step's Waymark becomes so: `missing` often means a selector that never matches. */
+export type RunEventType = "start" | Action | "lost" | "missing" | "finish";
 
 /** `step` and `stepIndex` are the Step the event happened on; `snapshot` is the Run after it. */
 export type RunEvent<TStep extends Step = Step> = Readonly<{

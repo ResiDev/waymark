@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placePopover } from "./placement";
+import { centerPopover, placePopover } from "./placement";
 
 const anchor = {
   x: 100,
@@ -11,6 +11,20 @@ const anchor = {
   width: 50,
   height: 50,
 };
+
+describe("centerPopover", () => {
+  it("puts the popover's centre on the screen's, not its top edge", () => {
+    expect(
+      centerPopover({ popover: { width: 300, height: 200 }, viewport: { width: 1000, height: 600 } }),
+    ).toMatchObject({ top: 200, left: 350 });
+  });
+
+  it("keeps a popover taller than the screen on it", () => {
+    expect(
+      centerPopover({ popover: { width: 300, height: 700 }, viewport: { width: 1000, height: 600 } }),
+    ).toMatchObject({ top: 8 });
+  });
+});
 
 describe("placePopover", () => {
   it("uses the preferred placement when it fits", () => {

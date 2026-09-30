@@ -19,11 +19,11 @@ The element in the page that a step directs the user toward, marked with `data-w
 _Avoid_: Target, highlight
 
 **Advance condition**:
-What must happen before a run may leave a step: a click on the waymark, an event the waymark fires, or application state that holds. It may have to hold for a set time without a break, and a step that states one cannot be skipped past.
+What must happen before a run may leave a step: a click on the waymark, an event the waymark fires, or application state that holds. It may have to hold for a set time without a break, and a step that states one cannot be skipped past while its waymark can be found.
 _Avoid_: Trigger, auto-advance
 
 **Advance gate**:
-The rule that keeps manual advancement locked until the step's advance condition has been met. Meeting the condition either advances the run or unlocks the gate, as the step says.
+The rule that keeps manual advancement locked until the step's advance condition has been met. Meeting the condition either advances the run or unlocks the gate, as the step says. The gate also opens while the step's waymark is lost or missing, so the user is never stuck behind a condition that cannot be met.
 _Avoid_: Ready state, gate-next, allow-manual
 
 ### Runs
@@ -36,7 +36,7 @@ _Avoid_: Store, walkthrough instance
 One of the six things a run can be asked to do: advance, previous, collapse, resume, reset or exit. A run may refuse one, such as advancing while the gate is locked.
 
 **Location**:
-Where a run currently believes a step's waymark is: absent (the step has none), searching (not yet seen), found (with its position), or lost (seen, then gone). Once found, a waymark is never searching again.
+Where a run currently believes a step's waymark is: absent (the step has none), searching (not yet seen), found (with its position), lost (seen, then gone for 200ms), or missing (searched for half a second without being found). Once found, a waymark is never searching again. An element hidden with `display: none` counts as gone.
 _Avoid_: Target state, sighting, reading
 
 **Collapsed run**:
@@ -51,7 +51,7 @@ _Avoid_: View
 Everything needed to draw a run or a checklist at one moment. A new snapshot appears only when something in it has changed.
 
 **Run event**:
-Something a run did: starting, each action it took, or finishing. It belongs to the step it happened on.
+Something a run did or saw: starting, each action it took, its waymark becoming lost or missing, or finishing. It belongs to the step it happened on.
 
 ### Checklists
 

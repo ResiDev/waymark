@@ -14,6 +14,12 @@ const flush = (ms = 16) => {
   for (const callback of pending) callback(clock);
 };
 
+/** A frame that sees the Waymark gone, then one after the 200ms it may be gone before it counts as lost. */
+const flushLost = () => {
+  flush();
+  flush(200);
+};
+
 const addTarget = (waymark: string, rect: Partial<DOMRect> = {}) => {
   const element = document.createElement("button");
   element.dataset["waymark"] = waymark;
@@ -270,7 +276,153 @@ describe("createRun", () => {
     expect(view.snapshot.waymark.status).toBe("found");
 
     target.remove();
+    flushLost();
+    expect(view.snapshot.waymark).toEqual({ status: "lost" });
+    view.stop();
+  });
+
+  it("calls a waymark missing after half a second of searching, and lets the user past its gate", () => {
+    const view = watch(createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}])));
+    flush(499);
+    expect(view.snapshot).toMatchObject({ waymark: { status: "searching" }, canAdvance: false });
+
+    flush(1);
+    expect(view.snapshot).toMatchObject({ waymark: { status: "missing" }, canAdvance: true });
+
+    press("ArrowRight");
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("opens the gate once a waymark has been gone for 200ms, and shuts it again when it returns", () => {
+    const target = addTarget("save");
+    const view = watch(createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}])));
+    expect(view.snapshot.canAdvance).toBe(false);
+
+    target.remove();
     flush();
+    flush(199);
+    expect(view.snapshot).toMatchObject({ waymark: { status: "found" }, canAdvance: false });
+
+    flush(1);
+    expect(view.snapshot).toMatchObject({ waymark: { status: "lost" }, canAdvance: true });
+
+    addTarget("save");
+    flush();
+    expect(view.snapshot).toMatchObject({ waymark: { status: "found" }, canAdvance: false });
+    view.stop();
+  });
+
+  it("tells onEvent once when a waymark goes missing, and each time it is lost", () => {
+    const events: string[] = [];
+    const view = watch(
+      createRun(defineWalkthrough([{ waymark: "save" }]), {
+        onEvent: (event) => events.push(event.type),
+      }),
+    );
+    flush(500);
+    flush();
+    expect(events).toEqual(["start", "missing"]);
+
+    const target = addTarget("save");
+    flush();
+    target.remove();
+    flushLost();
+    document.body.append(target);
+    flush();
+    target.remove();
+    flushLost();
+    addTarget("save", { width: 0, height: 0 });
+    flush();
+    expect(events).toEqual(["start", "missing", "lost", "lost"]);
+    view.stop();
+  });
+
+  it("reports a waymark going missing before an advance in the same frame", () => {
+    const events: string[] = [];
+    const view = watch(
+      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => clock >= 1500 } }, {}]), {
+        onEvent: (event) => events.push(event.type),
+      }),
+    );
+    flush(500);
+    expect(events).toEqual(["start", "missing", "advance"]);
+    view.stop();
+  });
+
+  it("keeps checking a state condition while its waymark is missing", () => {
+    let ready = false;
+    const view = watch(
+      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => ready } }, {}])),
+    );
+    flush(500);
+    expect(view.snapshot.waymark.status).toBe("missing");
+
+    ready = true;
+    flush();
+    expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("keeps a met condition's unlock when its waymark is lost and comes back", () => {
+    addTarget("save");
+    const view = watch(
+      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => true, then: "unlock" } }, {}])),
+    );
+    flush();
+    expect(view.snapshot.canAdvance).toBe(true);
+
+    document.querySelector('[data-waymark="save"]')?.remove();
+    flushLost();
+    expect(view.snapshot.waymark.status).toBe("lost");
+
+    addTarget("save");
+    flush();
+    expect(view.snapshot).toMatchObject({ waymark: { status: "found" }, canAdvance: true });
+    view.stop();
+  });
+
+  it("keeps a waymark found, in its last place, while a re-render swaps its element", () => {
+    const events: string[] = [];
+    const target = addTarget("save");
+    const view = watch(
+      createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]), {
+        onEvent: (event) => events.push(event.type),
+      }),
+    );
+    const found = view.snapshot.waymark;
+
+    target.remove();
+    flush();
+    flush(100);
+    expect(view.snapshot).toMatchObject({ waymark: found, canAdvance: false });
+
+    addTarget("save");
+    flush(100);
+    flush(100);
+    expect(view.snapshot).toMatchObject({ waymark: found, canAdvance: false });
+    expect(events).toEqual(["start"]);
+    view.stop();
+  });
+
+  it("does not count time nobody was watching towards a waymark going missing", () => {
+    const run = createRun(defineWalkthrough([{ waymark: "save" }]));
+    watch(run).stop();
+    flush(5000);
+
+    const view = watch(run);
+    flush();
+    expect(view.snapshot.waymark.status).toBe("searching");
+    view.stop();
+  });
+
+  it("treats a waymark hidden with display: none as gone, not found at 0,0", () => {
+    const target = addTarget("save");
+    const view = watch(createRun(defineWalkthrough([{ waymark: "save" }])));
+    expect(view.snapshot.waymark.status).toBe("found");
+
+    target.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
+    flushLost();
     expect(view.snapshot.waymark).toEqual({ status: "lost" });
     view.stop();
   });
@@ -284,7 +436,7 @@ describe("createRun", () => {
 
     if (change === "moved outside root") document.body.append(target);
     else target.dataset["waymark"] = "other";
-    flush();
+    flushLost();
 
     expect(view.snapshot.waymark.status).toBe("lost");
     expect(target).not.toHaveAttribute("aria-haspopup");
@@ -1042,7 +1194,7 @@ describe("createRun", () => {
     stopBroken();
     expect(frames.size).toBe(1);
     target.remove();
-    flush();
+    flushLost();
     expect(view.snapshot.waymark.status).toBe("lost");
     view.stop();
     expect(frames.size).toBe(0);

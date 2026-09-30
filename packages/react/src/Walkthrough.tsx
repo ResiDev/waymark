@@ -155,12 +155,9 @@ function RunView<TStep extends WalkthroughStep>({
     useRunView(run);
 
   if (snapshot.phase !== "running") return null;
-  if (
-    snapshot.waymark.status === "searching" ||
-    snapshot.waymark.status === "lost"
-  ) {
-    return null;
-  }
+  // Only the shade while searching, so the tour doesn't seem to end and restart.
+  const searching = snapshot.waymark.status === "searching";
+  if (searching && snapshot.collapsed) return null;
 
   const rect =
     snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
@@ -192,16 +189,18 @@ function RunView<TStep extends WalkthroughStep>({
   ) : (
     <>
       <WaymarkShade rect={rect} padding={waymarkPadding} />
-      <Dialog
-        key={snapshot.stepIndex}
-        rect={rect}
-        padding={waymarkPadding}
-        preferred={snapshot.step.preferredPlacement}
-        dialogRef={dialogRef}
-        ariaLabel={`Step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}
-      >
-        {render}
-      </Dialog>
+      {!searching && (
+        <Dialog
+          key={snapshot.stepIndex}
+          rect={rect}
+          padding={waymarkPadding}
+          preferred={snapshot.step.preferredPlacement}
+          dialogRef={dialogRef}
+          ariaLabel={`Step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}
+        >
+          {render}
+        </Dialog>
+      )}
     </>
   );
   return portal ? createPortal(view, document.body) : view;

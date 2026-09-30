@@ -51,6 +51,17 @@ const buttonNamed = (label: string) =>
     (button) => button.textContent === label,
   );
 
+const shade = () => document.querySelector("[data-waymark-shade]");
+
+const runFrames = async (time: number) => {
+  await act(async () => {
+    const pending = [...frames.values()];
+    frames.clear();
+    for (const callback of pending) callback(time);
+    await Promise.resolve();
+  });
+};
+
 const beacon = () =>
   document.querySelector<HTMLButtonElement>('button[aria-label="Resume walkthrough"]');
 
@@ -170,6 +181,59 @@ describe("Walkthrough", () => {
     });
 
     expect(document.querySelector("button[disabled]")).toBeNull();
+  });
+
+  it("shows a step whose Waymark is missing, with a note, and lets the user past its gate", async () => {
+    let clock = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const walkthrough = defineWalkthrough([
+      { waymark: "save", advance: "click", content: "Save the document" },
+      { content: "The document is saved" },
+    ]);
+
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(shade()).not.toBeNull();
+
+    clock += 1000;
+    await runFrames(clock);
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).toHaveTextContent("Save the document");
+    expect(dialog).toHaveTextContent("Can't find the part of the page");
+
+    await act(async () => buttonNamed("Next")!.click());
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("The document is saved");
+  });
+
+  it("shows a note once a step's Waymark has been gone for 200ms", async () => {
+    let clock = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const target = addTarget("save", "Save");
+    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    expect(document.querySelector('[role="dialog"]')).not.toHaveTextContent("Can't find the part of the page");
+
+    target.remove();
+    await runFrames(clock);
+    clock += 199;
+    await runFrames(clock);
+    expect(document.querySelector('[role="dialog"]')).not.toHaveTextContent("Can't find the part of the page");
+
+    clock += 1;
+    await runFrames(clock);
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Can't find the part of the page");
+  });
+
+  it("shows nothing for a Collapsed run still searching for its Waymark", async () => {
+    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    expect(shade()).not.toBeNull();
+
+    await clickAway();
+    expect(shade()).toBeNull();
+    expect(beacon()).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
   it("turns an outside click into a resumable Collapsed run", async () => {

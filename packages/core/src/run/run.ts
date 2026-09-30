@@ -114,12 +114,10 @@ export function createRun<TStep extends Step>(
       cached.matches(selector);
 
     const element = canReuseTarget ? cached : root.querySelector(selector);
-    const rect = element ? element.getBoundingClientRect() : null;
-    return {
-      element,
-      rect,
-      inView: rect !== null && inViewport(rect),
-    };
+    const box = element?.getBoundingClientRect();
+    // `display: none` measures as an empty box at 0,0: there, but nowhere to point.
+    const rect = box && (box.width > 0 || box.height > 0) ? box : null;
+    return { element, rect, inView: rect !== null && inViewport(rect) };
   };
 
   const sendRead = (...after: Message[]) => {
@@ -140,10 +138,10 @@ export function createRun<TStep extends Step>(
         // Thrown once the look is sent, so the next frame is still scheduled.
         queue.fail(error);
       }
-      advance = { holds, now: performance.now() };
+      advance = { holds };
     }
 
-    const stepRead: StepRead = { waymark, advance };
+    const stepRead: StepRead = { now: performance.now(), waymark, advance };
     const read: Message[] =
       waymark || advance
         ? [{ kind: "stepRead", stepGeneration, stepRead }]

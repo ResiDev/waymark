@@ -1,16 +1,16 @@
 Events
 
-## Missing or hidden Waymarks (do first)
-- While a step's Waymark is `searching` or `lost`, the view renders nothing: no
-  popover, no beacon, no shade. The run is still active and the user can't see it
-  or leave it. Try it: lab tour step 6, press the tip's ×.
-- Let a step or run say what happens when its Waymark is not found within N ms:
-  show the step centred, skip it, or end the run.
-- A way to get there: a step hook such as `before: () => navigate("/settings")`
-  for walkthroughs that cross routes.
-- A `lost` Waymark should stay visible somehow, as a centred popover or a beacon.
-- `display: none` gives a zero rect, not null, so it reads as `found` and the
-  popover anchors at 0,0. Treat an empty rect as not found.
+## Missing Waymarks: what's left
+A lost Waymark, or one searched for 500ms without being found (`missing`), shows
+the step centred with a note, and Next unlocks. Left to do:
+- The 500ms searching grace is shorter than a slow page load. With the lab's
+  slow decks page (1.5s), step 2 shows the "Can't find" note for 1s before the
+  page arrives. Lengthen it, make it a run option, or both.
+- A collapsed run whose Waymark is lost or missing shows its beacon at the
+  screen's centre. Showing it where the Waymark was lost might read better.
+- The note's text is hard-coded; it belongs with the popover labels below.
+- Maybe later: go back automatically to the nearest earlier click step whose
+  Waymark is on the page. Click steps can't advance by themselves, so it can't loop.
 
 ## Persist the active run across reloads
 - `Stored` only holds statuses, so a reload drops the active task, its step and

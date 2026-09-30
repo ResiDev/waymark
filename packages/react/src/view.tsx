@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Rect } from "waymark";
-import { clamp, placePopover, vertical, type Size } from "./placement";
+import { centerPopover, clamp, placePopover, vertical } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";
 import { useViewportSize } from "./useViewportSize";
 import type {
@@ -24,6 +24,7 @@ const colors = {
   surface: "#ffffff",
   text: "#0f172a",
   muted: "#64748b",
+  danger: "#dc2626",
   line: "#e2e8f0",
   hover: "#f1f5f9",
 } as const;
@@ -86,6 +87,7 @@ export function WaymarkShade({
     return (
       <div
         aria-hidden="true"
+        data-waymark-shade=""
         style={{
           position: "fixed",
           inset: 0,
@@ -100,6 +102,7 @@ export function WaymarkShade({
   return (
     <div
       aria-hidden="true"
+      data-waymark-shade=""
       style={{
         position: "fixed",
         zIndex: 50,
@@ -114,12 +117,6 @@ export function WaymarkShade({
     />
   );
 }
-
-const centeredRect = ({ width, height }: Size): Rect => {
-  const left = width / 2;
-  const top = height / 2;
-  return { x: left, y: top, top, right: left, bottom: top, left, width: 0, height: 0 };
-};
 
 /** Placed against `rect`, or in the middle of the screen without one. */
 export function Dialog({
@@ -139,13 +136,9 @@ export function Dialog({
 }) {
   const size = useMeasuredSize(dialogRef, true);
   const viewport = useViewportSize();
-  const placed = placePopover({
-    anchor: rect ?? centeredRect(viewport),
-    popover: size,
-    viewport,
-    preferred,
-    gap: (rect ? padding : 0) + 8,
-  });
+  const placed = rect
+    ? placePopover({ anchor: rect, popover: size, viewport, preferred, gap: padding + 8 })
+    : centerPopover({ popover: size, viewport });
 
   return (
     <div
@@ -336,6 +329,11 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
         </Button>
       </div>
       <div>{currentStep.content}</div>
+      {(snapshot.waymark.status === "lost" || snapshot.waymark.status === "missing") && (
+        <div style={{ color: colors.danger, fontSize: 13 }}>
+          Can't find the part of the page this step points to. You can carry on, but the next steps may not match what you see.
+        </div>
+      )}
       <div
         style={{
           display: "flex",

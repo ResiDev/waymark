@@ -14,8 +14,12 @@ export type State<TStep extends Step = Step> = Readonly<{
   mounted: boolean;
   element: Element | null;
   satisfied: boolean;
+  /** The advance condition's side of the gate; `canAdvance` also opens while the Waymark is lost or missing. */
+  unlocked: boolean;
   scrolled: boolean;
   heldSince: number | undefined;
+  /** Since when the Step's Waymark has not been seen: while it is searched for, or found and then gone. */
+  unseenSince: number | undefined;
 }>;
 
 export type Outcome<TStep extends Step = Step> = Readonly<{
@@ -36,6 +40,11 @@ export const noChange = <TStep extends Step>(
 export const ABSENT: Location = { status: "absent" };
 export const SEARCHING: Location = { status: "searching" };
 export const LOST: Location = { status: "lost" };
+export const MISSING: Location = { status: "missing" };
+
+/** The user is shown the step without its Waymark, so the gate must not hold them there. */
+const gateOpen = (unlocked: boolean, waymark: Location): boolean =>
+  unlocked || waymark.status === "lost" || waymark.status === "missing";
 
 export function stepAt<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
@@ -52,23 +61,27 @@ export function enter<TStep extends Step>(
   previous?: State<TStep>,
 ): State<TStep> {
   const step = stepAt(walkthrough, index);
+  const unlocked = step.advance === undefined;
+  const waymark = hasWaymark(step) ? SEARCHING : ABSENT;
   return {
     snapshot: {
       phase: "running",
       step,
       stepIndex: index,
       stepCount: walkthrough.steps.length,
-      canAdvance: step.advance === undefined,
+      canAdvance: gateOpen(unlocked, waymark),
       collapsed: false,
-      waymark: hasWaymark(step) ? SEARCHING : ABSENT,
+      waymark,
     },
     stepGeneration: previous ? previous.stepGeneration + 1 : 0,
     started: previous?.started ?? false,
     mounted: previous?.mounted ?? false,
     element: null,
     satisfied: false,
+    unlocked,
     scrolled: false,
     heldSince: undefined,
+    unseenSince: undefined,
   };
 }
 
@@ -87,16 +100,37 @@ export function end<TStep extends Step>(
     mounted: previous.mounted,
     element: null,
     satisfied: false,
+    unlocked: false,
     scrolled: false,
     heldSince: undefined,
+    unseenSince: undefined,
   };
 }
 
-/** `running` is `state.snapshot`, passed in because the caller has already narrowed it. */
+/**
+ * `running` is `state.snapshot`, passed in because the caller has already narrowed it.
+ * The gate's fields go through `gate`, so `canAdvance` cannot fall out of step.
+ */
 export function show<TStep extends Step>(
   state: State<TStep>,
   running: Running<TStep>,
-  change: Partial<Running<TStep>>,
+  change: Partial<Omit<Running<TStep>, "canAdvance" | "waymark">>,
 ): State<TStep> {
   return { ...state, snapshot: { ...running, ...change } };
+}
+
+/** Changes the advance condition's side of the gate or the Waymark, and works out `canAdvance` from both. */
+export function gate<TStep extends Step>(
+  state: State<TStep>,
+  running: Running<TStep>,
+  {
+    unlocked = state.unlocked,
+    waymark = running.waymark,
+  }: Readonly<{ unlocked?: boolean; waymark?: Location }>,
+): State<TStep> {
+  return {
+    ...state,
+    snapshot: { ...running, waymark, canAdvance: gateOpen(unlocked, waymark) },
+    unlocked,
+  };
 }
