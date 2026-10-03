@@ -18,11 +18,12 @@ import type {
   NamedTask,
   Task,
   TaskMap,
+  TaskStatus,
 } from "./types";
 import { DEFAULT_CHECKLIST } from "./types";
 import { select } from "./validate";
 import { createView, refresh } from "./views";
-import type { ViewSource } from "./views";
+import type { View, ViewSource } from "./views";
 import type { Run, RunEvent, UiElements } from "../run/types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
@@ -31,6 +32,48 @@ const NO_UI: UiElements = { dialog: null, beacon: null };
 const isSteps = <TStep extends Step>(
   walkthrough: Walkthrough<TStep> | readonly TStep[],
 ): walkthrough is readonly TStep[] => Array.isArray(walkthrough);
+
+const fromView = (checklist: string | undefined) =>
+  checklist === undefined ? {} : { checklist };
+
+type Moment<TTask extends { readonly id: string }> = Readonly<{
+  record: Stored;
+  active: ActiveTask<TTask> | null;
+  startedFrom: string | undefined;
+}>;
+
+const stopReason = <TTask extends { readonly id: string }>(
+  { task, run }: ActiveTask<TTask>,
+  before: Moment<TTask>,
+  after: Moment<TTask>,
+) => {
+  if (run.getSnapshot().phase === "completed") return "finished";
+  const skipped =
+    statusIn(after.record, task.id) === "skipped" &&
+    statusIn(before.record, task.id) !== "skipped";
+  return skipped ? "skipped" : "stopped";
+};
+
+const statusEvent = <TTask>(
+  task: TTask,
+  was: TaskStatus,
+  now: TaskStatus,
+  checklist: string | undefined,
+) => {
+  if (now === "done") return { type: "taskComplete", task } as const;
+  if (now === "skipped")
+    return { type: "taskSkipped", task, ...fromView(checklist) } as const;
+  if (was === "done") return { type: "taskReopened", task } as const;
+  return { type: "taskUnskipped", task, ...fromView(checklist) } as const;
+};
+
+// A skip from inside guidance counts toward the view whose `start` began it.
+const skipCredit = <TTask extends { readonly id: string }>(
+  task: TTask,
+  before: Moment<TTask>,
+  from: string | undefined,
+) =>
+  from ?? (before.active?.task.id === task.id ? before.startedFrom : undefined);
 
 export function createChecklists<
   TContext = {},
@@ -56,13 +99,7 @@ export function createChecklists<
   type Active = ActiveTask<Named>;
   type Event = ChecklistsEvent<Tasks, Selections>;
 
-  type StopReason = Extract<Event, { type: "taskStopped" }>["reason"];
-
-  type State = Readonly<{
-    record: Stored;
-    active: Active | null;
-    startedFrom: string | undefined;
-  }>;
+  type State = Moment<Named>;
 
   type Flags = Readonly<{
     from?: string | undefined;
@@ -122,56 +159,51 @@ export function createChecklists<
     const before = current();
     run();
     const after = current();
+    const moved = after.active !== before.active;
 
     // Every snapshot is updated before any callback runs, so a callback that
     // reads another view sees this change too.
     const { changed, completed } = refresh(views, source);
-    const activeChanged = after.active !== before.active;
-    if (activeChanged) ownerSnapshot = { active: after.active };
+    if (moved) ownerSnapshot = { active: after.active };
     // Exited last, once `subscribeActive` listeners have moved off it, so they
     // never see it exit.
-    const stopped = activeChanged ? before.active : null;
+    const stopped = moved ? before.active : null;
     const exit =
       stopped !== null && stopped.run.getSnapshot().phase !== "completed";
 
     for (const view of changed) queue.notify(view.listeners, view.snapshot);
-    if (activeChanged) queue.notify(ownerListeners, ownerSnapshot);
-    if (after.record !== before.record && flags.persist !== false) {
-      queue.invoke(() => storage?.save(after.record));
-      queue.invoke(() => onChange?.(after.record));
-    }
-    if (flags.silent !== true) {
-      for (const event of eventsBetween(before, after, flags.from))
-        queue.invoke(() => emit?.(event));
-      for (const view of completed) {
-        queue.invoke(() =>
-          emit?.({
-            type: "checklistComplete",
-            checklist: view.name,
-            snapshot: view.snapshot,
-          }),
-        );
-      }
-    }
+    if (moved) queue.notify(ownerListeners, ownerSnapshot);
+    if (after.record !== before.record && flags.persist !== false)
+      save(after.record);
+    if (flags.silent !== true) announce(before, after, flags.from, completed);
     if (exit) queue.invoke(() => stopped.run.act("exit"));
   };
 
   const send = (run: () => void, flags: Flags = {}) =>
     queue.run(() => commit(run, flags));
 
-  const fromView = (checklist: string | undefined) =>
-    checklist === undefined ? {} : { checklist };
+  const save = (record: Stored) => {
+    queue.invoke(() => storage?.save(record));
+    queue.invoke(() => onChange?.(record));
+  };
 
-  const stopReason = (
-    { task, run }: Active,
+  const announce = (
     before: State,
     after: State,
-  ): StopReason => {
-    if (run.getSnapshot().phase === "completed") return "finished";
-    const skipped =
-      statusIn(after.record, task.id) === "skipped" &&
-      statusIn(before.record, task.id) !== "skipped";
-    return skipped ? "skipped" : "stopped";
+    from: string | undefined,
+    completed: readonly View<Named>[],
+  ) => {
+    for (const event of eventsBetween(before, after, from))
+      queue.invoke(() => emit?.(event));
+    for (const view of completed) {
+      queue.invoke(() =>
+        emit?.({
+          type: "checklistComplete",
+          checklist: view.name,
+          snapshot: view.snapshot,
+        }),
+      );
+    }
   };
 
   const eventsBetween = (
@@ -179,8 +211,9 @@ export function createChecklists<
     after: State,
     from: string | undefined,
   ): Event[] => {
+    const moved = before.active !== after.active;
     const events: Event[] = [];
-    if (before.active !== null && before.active !== after.active) {
+    if (moved && before.active !== null) {
       const reason = stopReason(before.active, before, after);
       events.push({ type: "taskStopped", task: before.active.task, reason });
     }
@@ -188,19 +221,10 @@ export function createChecklists<
       const was = statusIn(before.record, task.id);
       const now = statusIn(after.record, task.id);
       if (was === now) continue;
-      if (now === "done") {
-        events.push({ type: "taskComplete", task });
-      } else if (now === "skipped") {
-        const guided = before.active?.task.id === task.id;
-        const view = from ?? (guided ? before.startedFrom : undefined);
-        events.push({ type: "taskSkipped", task, ...fromView(view) });
-      } else if (was === "done") {
-        events.push({ type: "taskReopened", task });
-      } else {
-        events.push({ type: "taskUnskipped", task, ...fromView(from) });
-      }
+      const credit = now === "skipped" ? skipCredit(task, before, from) : from;
+      events.push(statusEvent(task, was, now, credit));
     }
-    if (after.active !== null && after.active !== before.active)
+    if (moved && after.active !== null)
       events.push({ type: "taskStarted", task: after.active.task });
     return events;
   };
