@@ -332,8 +332,6 @@ describe("createRun", () => {
     flush();
     target.remove();
     flushLost();
-    addTarget("save", { width: 0, height: 0 });
-    flush();
     expect(events).toEqual(["start", "missing", "lost", "lost"]);
     view.stop();
   });

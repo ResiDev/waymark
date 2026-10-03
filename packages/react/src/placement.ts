@@ -1,3 +1,5 @@
+// Tested directly, not through index.ts: jsdom lays nothing out, so reaching
+// each placement through a rendered Walkthrough would mean faking every size.
 import type { Rect } from "waymark";
 import type { Placement } from "./types";
 
@@ -52,8 +54,6 @@ export function centerPopover({
   };
 }
 
-// Tested directly, not through index.ts: jsdom lays nothing out, so reaching
-// each fallback through a rendered Walkthrough would mean faking every size.
 export function placePopover({
   anchor,
   popover,

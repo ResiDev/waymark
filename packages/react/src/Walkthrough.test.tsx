@@ -53,11 +53,11 @@ const buttonNamed = (label: string) =>
 
 const shade = () => document.querySelector("[data-waymark-shade]");
 
-const runFrames = async (time: number) => {
+const runFrames = async () => {
   await act(async () => {
     const pending = [...frames.values()];
     frames.clear();
-    for (const callback of pending) callback(time);
+    for (const callback of pending) callback(performance.now());
     await Promise.resolve();
   });
 };
@@ -196,7 +196,7 @@ describe("Walkthrough", () => {
     expect(shade()).not.toBeNull();
 
     clock += 1000;
-    await runFrames(clock);
+    await runFrames();
 
     const dialog = document.querySelector('[role="dialog"]');
     expect(dialog).toHaveTextContent("Save the document");
@@ -215,13 +215,13 @@ describe("Walkthrough", () => {
     expect(document.querySelector('[role="dialog"]')).not.toHaveTextContent("Can't find the part of the page");
 
     target.remove();
-    await runFrames(clock);
+    await runFrames();
     clock += 199;
-    await runFrames(clock);
+    await runFrames();
     expect(document.querySelector('[role="dialog"]')).not.toHaveTextContent("Can't find the part of the page");
 
     clock += 1;
-    await runFrames(clock);
+    await runFrames();
     expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Can't find the part of the page");
   });
 

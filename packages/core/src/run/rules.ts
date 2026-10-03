@@ -3,6 +3,7 @@ import {
   end,
   enter,
   gate,
+  isGone,
   ABSENT,
   LOST,
   MISSING,
@@ -141,7 +142,7 @@ export type WaymarkRead = Readonly<{
 }>;
 
 /** How long, in ms, a Waymark may be searched for before it counts as missing. */
-const SEARCH_FOR = 500;
+const MISSING_AFTER = 500;
 
 /** How long, in ms, a found Waymark may be gone before it counts as lost: long enough for a re-render that swaps its element. */
 const LOST_AFTER = 200;
@@ -187,7 +188,7 @@ type Located = Readonly<{
 }>;
 
 /**
- * A Waymark never found is missing after `SEARCH_FOR`. One found is lost after
+ * A Waymark never found is missing after `MISSING_AFTER`. One found is lost after
  * `LOST_AFTER`, and keeps its last place until then.
  */
 function locate(
@@ -206,7 +207,7 @@ function locate(
   }
   const since = unseenSince ?? now;
   const found = previous.status === "found";
-  return now - since < (found ? LOST_AFTER : SEARCH_FOR)
+  return now - since < (found ? LOST_AFTER : MISSING_AFTER)
     ? { waymark: previous, unseenSince: since }
     : { waymark: found ? LOST : MISSING, unseenSince: undefined };
 }
@@ -244,9 +245,7 @@ function whenDue<TStep extends Step>(
 
 /** Once, as the Waymark goes, not on every frame it stays gone. */
 const goneEvents = (before: Location, after: Location): readonly RunEventType[] =>
-  after !== before && (after.status === "lost" || after.status === "missing")
-    ? [after.status]
-    : NO_EVENTS;
+  after !== before && isGone(after) ? [after.status] : NO_EVENTS;
 
 function observeWaymark<TStep extends Step>(
   state: State<TStep>,
@@ -276,12 +275,12 @@ function observeWaymark<TStep extends Step>(
     return { state, events: NO_EVENTS, scrollTo };
   }
 
-  const shown =
+  const located =
     waymark === snapshot.waymark
       ? state
       : gate(state, snapshot, { waymark });
   return {
-    state: { ...shown, element: read.element, scrolled, unseenSince },
+    state: { ...located, element: read.element, scrolled, unseenSince },
     events: goneEvents(snapshot.waymark, waymark),
     scrollTo,
   };
@@ -417,7 +416,7 @@ export function liveWatchers(state: State): LiveWatchers {
   const snapshot = state.snapshot;
   if (!state.mounted || snapshot.phase !== "running") return NOTHING_LIVE;
   const step = snapshot.step;
-  const gateShut = !state.unlocked;
+  const conditionUnmet = !state.unlocked;
   const events = eventsOf(step);
   return {
     input: true,
@@ -427,7 +426,7 @@ export function liveWatchers(state: State): LiveWatchers {
         ? undefined
         : { element: state.element, expanded: !snapshot.collapsed },
     waymarkEvents:
-      state.element !== null && gateShut && events.length > 0
+      state.element !== null && conditionUnmet && events.length > 0
         ? {
             element: state.element,
             events,

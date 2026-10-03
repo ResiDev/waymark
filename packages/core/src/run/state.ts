@@ -38,13 +38,19 @@ export const noChange = <TStep extends Step>(
 });
 
 export const ABSENT: Location = { status: "absent" };
-export const SEARCHING: Location = { status: "searching" };
+const SEARCHING: Location = { status: "searching" };
 export const LOST: Location = { status: "lost" };
 export const MISSING: Location = { status: "missing" };
 
+/** The step has a Waymark, but the user is shown the step without it: `lost` or `missing`. */
+export const isGone = (
+  waymark: Location,
+): waymark is Extract<Location, { status: "lost" | "missing" }> =>
+  waymark.status === "lost" || waymark.status === "missing";
+
 /** The user is shown the step without its Waymark, so the gate must not hold them there. */
 const gateOpen = (unlocked: boolean, waymark: Location): boolean =>
-  unlocked || waymark.status === "lost" || waymark.status === "missing";
+  unlocked || isGone(waymark);
 
 export function stepAt<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,

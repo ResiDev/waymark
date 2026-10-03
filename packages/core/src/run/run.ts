@@ -115,7 +115,7 @@ export function createRun<TStep extends Step>(
 
     const element = canReuseTarget ? cached : root.querySelector(selector);
     const box = element?.getBoundingClientRect();
-    // `display: none` measures as an empty box at 0,0: there, but nowhere to point.
+    // An empty box, as `display: none` gives, is on the page but has nowhere to point.
     const rect = box && (box.width > 0 || box.height > 0) ? box : null;
     return { element, rect, inView: rect !== null && inViewport(rect) };
   };

@@ -36,7 +36,7 @@ _Avoid_: Store, walkthrough instance
 One of the six things a run can be asked to do: advance, previous, collapse, resume, reset or exit. A run may refuse one, such as advancing while the gate is locked.
 
 **Location**:
-Where a run currently believes a step's waymark is: absent (the step has none), searching (not yet seen), found (with its position), lost (seen, then gone for 200ms), or missing (searched for half a second without being found). Once found, a waymark is never searching again. An element hidden with `display: none` counts as gone.
+Where a run currently believes a step's waymark is: absent (the step has none), searching (not yet seen), found (with its position), lost (seen, then gone for 200ms), or missing (searched for half a second, while mounted, without being found). Once found, a waymark is never searching again. An element with an empty box, such as one hidden with `display: none`, counts as gone.
 _Avoid_: Target state, sighting, reading
 
 **Collapsed run**:

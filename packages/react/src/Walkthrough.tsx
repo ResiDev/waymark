@@ -155,8 +155,8 @@ function RunView<TStep extends WalkthroughStep>({
     useRunView(run);
 
   if (snapshot.phase !== "running") return null;
-  // Only the shade while searching, so the tour doesn't seem to end and restart.
   const searching = snapshot.waymark.status === "searching";
+  // A beacon has nowhere to sit until the Waymark is found or given up on.
   if (searching && snapshot.collapsed) return null;
 
   const rect =
@@ -189,6 +189,7 @@ function RunView<TStep extends WalkthroughStep>({
   ) : (
     <>
       <WaymarkShade rect={rect} padding={waymarkPadding} />
+      {/* Only the shade while searching, so the tour doesn't seem to end and restart. */}
       {!searching && (
         <Dialog
           key={snapshot.stepIndex}
