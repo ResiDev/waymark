@@ -12,22 +12,8 @@ the step centred with a note, and Next unlocks. Left to do:
 - Maybe later: go back automatically to the nearest earlier click step whose
   Waymark is on the page. Click steps can't advance by themselves, so it can't loop.
 
-## Persist the active run across reloads
-- `Stored` only holds statuses, so a reload drops the active task, its step and
-  whether it was collapsed. Add `active?: { task, step, collapsed, from }` to it.
-- The owner already sees every run event and saves after each change, so no new
-  events are needed. Save on start and stop, step changes and collapse or resume.
-- Restore on creation with `startAt`, collapsed. Drop it if the task is gone or
-  the step is past the end.
-- Bump the localStorage envelope to version 3 and migrate or drop v2 records.
-- Depends on the missing Waymark work: a resumed step skips the setup earlier
-  steps did (the deck form isn't open), so its Waymark may never appear.
-- Leave standalone `<Walkthrough>` out of the first pass. It has no storage.
-
-## Async storage
-- `StoredRecord.load()` is synchronous, so progress can't come from a server or
-  follow a user across devices. Needs an async load and a loading state in the
-  snapshot. Default stays localStorage.
+## Storage: async, the active run, standalone walkthroughs
+- Designed in `docs/design/storage.md`. Settle its open questions, then build.
 
 ## Popover labels
 - "Next", "Finish", "Previous" and "Skip task" are hard-coded in `view.tsx`. Add
