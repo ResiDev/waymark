@@ -25,6 +25,19 @@ export type WalkthroughStep = Step &
     popoverStyle?: CSSProperties;
   }>;
 
+/** The text of the default popover and beacon. `close`, `resume` and `stepOf` become accessible names, so they are strings. */
+export type WalkthroughLabels = Readonly<{
+  next: ReactNode;
+  finish: ReactNode;
+  previous: ReactNode;
+  skipTask: ReactNode;
+  /** Shown while a step's Waymark is lost or missing. */
+  missing: ReactNode;
+  close: string;
+  resume: string;
+  stepOf: (step: number, count: number) => string;
+}>;
+
 export type WalkthroughRenderProps<
   TStep extends WalkthroughStep = WalkthroughStep,
 > = Readonly<{
@@ -39,6 +52,8 @@ export type WalkthroughRenderProps<
   exit: () => void;
   /** Only when guiding a Checklists Task. */
   skipTask?: () => void;
+  /** The app's labels over the defaults. */
+  labels: WalkthroughLabels;
 }>;
 
 export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
@@ -53,6 +68,7 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     /** Without one, storage failures are logged. */
     onStorageError?: (error: unknown) => void;
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
+    labels?: Partial<WalkthroughLabels>;
     /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
     portal?: boolean;
   }>;
@@ -84,6 +100,7 @@ export type ChecklistWalkthroughProps<
   storage?: never;
   onStorageError?: never;
   renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
+  labels?: Partial<WalkthroughLabels>;
   /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
   portal?: boolean;
 }>;

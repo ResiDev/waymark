@@ -30,6 +30,7 @@ export type {
   Snapshot,
   Running,
   UseChecklistResult,
+  WalkthroughLabels,
   WalkthroughProps,
   WalkthroughRenderProps,
   WalkthroughStep,

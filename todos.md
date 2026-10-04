@@ -7,7 +7,6 @@ the step centred with a note, and Next unlocks. From 500ms until then
 step can set its own `missingAfterMs`. Left to do:
 - A collapsed run whose Waymark is lost or missing shows its beacon at the
   bottom centre of the screen. Showing it where the Waymark was lost might read better.
-- The note's text is hard-coded; it belongs with the popover labels below.
 - Maybe later: go back automatically to the nearest earlier click step whose
   Waymark is on the page. Click steps can't advance by themselves, so it can't loop.
 
@@ -18,10 +17,6 @@ step can set its own `missingAfterMs`. Left to do:
   through the adapter and remount.
 - An owner never unsubscribes from `storage.tasks`, since an owner has no
   `destroy`. Fine for one owner per page; not for owners made and dropped.
-
-## Popover labels
-- "Next", "Finish", "Previous" and "Skip task" are hard-coded in `view.tsx`. Add
-  `labels` like the checklist has, so the default popover can be translated.
 
 ## Beacon and overlay
 - Beacon styling, or let the app pass in its own beacon.

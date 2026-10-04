@@ -13,9 +13,22 @@ import { useMeasuredSize } from "./useMeasuredSize";
 import { useViewportSize } from "./useViewportSize";
 import type {
   Placement,
+  WalkthroughLabels,
   WalkthroughRenderProps,
   WalkthroughStep,
 } from "./types";
+
+export const DEFAULT_LABELS: WalkthroughLabels = {
+  next: "Next",
+  finish: "Finish",
+  previous: "Previous",
+  skipTask: "Skip task",
+  missing:
+    "Can't find the part of the page this step points to. You can carry on, but the next steps may not match what you see.",
+  close: "Close",
+  resume: "Resume walkthrough",
+  stepOf: (step, count) => `Step ${step} of ${count}`,
+};
 
 // Matches the checklist popover in registry/, so the two read as one design.
 const colors = {
@@ -252,6 +265,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
   advance,
   exit,
   skipTask,
+  labels,
 }: WalkthroughRenderProps<TStep> & { arrow: number }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   useAnimation(popoverRef, APPEAR, APPEAR_TIMING);
@@ -298,10 +312,10 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
           }}
         >
           {snapshot.stepCount > 1 &&
-            `Step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}
+            labels.stepOf(snapshot.stepIndex + 1, snapshot.stepCount)}
         </span>
         <Button
-          aria-label="Close"
+          aria-label={labels.close}
           onClick={exit}
           style={{
             ...quietButton,
@@ -331,7 +345,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
       <div>{currentStep.content}</div>
       {(snapshot.waymark.status === "lost" || snapshot.waymark.status === "missing") && (
         <div style={{ color: colors.danger, fontSize: 13 }}>
-          Can't find the part of the page this step points to. You can carry on, but the next steps may not match what you see.
+          {labels.missing}
         </div>
       )}
       <div
@@ -348,7 +362,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
             style={{ ...quietButton, marginLeft: -8 }}
             hoverStyle={{ color: colors.text, background: colors.hover }}
           >
-            Skip task
+            {labels.skipTask}
           </Button>
         )}
         <span style={{ flex: 1 }} />
@@ -358,7 +372,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
             style={secondaryButton}
             hoverStyle={{ background: colors.hover }}
           >
-            Previous
+            {labels.previous}
           </Button>
         )}
         <Button
@@ -371,7 +385,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
           }
           hoverStyle={{ background: colors.accentStrong }}
         >
-          {last ? "Finish" : "Next"}
+          {last ? labels.finish : labels.next}
         </Button>
       </div>
     </div>
@@ -400,10 +414,12 @@ const dot: CSSProperties = {
 export function Beacon({
   rect,
   beaconRef,
+  label,
   onResume,
 }: {
   rect: Rect | null;
   beaconRef: RefObject<HTMLButtonElement>;
+  label: string;
   onResume: () => void;
 }) {
   const pulseRef = useRef<HTMLSpanElement>(null);
@@ -421,8 +437,8 @@ export function Beacon({
     <button
       ref={beaconRef}
       type="button"
-      aria-label="Resume walkthrough"
-      title="Resume walkthrough"
+      aria-label={label}
+      title={label}
       onClick={onResume}
       {...hover}
       style={{

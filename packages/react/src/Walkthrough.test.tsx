@@ -334,6 +334,40 @@ describe("Walkthrough", () => {
     );
   });
 
+  it("uses an app's labels, and the defaults for those it leaves out", async () => {
+    addTarget("panel", "Panel");
+    const walkthrough = defineWalkthrough([
+      { content: "Welcome" },
+      { waymark: "panel", content: "Use this panel" },
+    ]);
+    await act(async () =>
+      root.render(
+        <Walkthrough
+          walkthrough={walkthrough}
+          labels={{
+            next: "Weiter",
+            close: "Schließen",
+            resume: "Fortsetzen",
+            stepOf: (step, count) => `Schritt ${step} von ${count}`,
+          }}
+        />,
+      ),
+    );
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).toHaveAttribute("aria-label", "Schritt 1 von 2");
+    expect(dialog).toHaveTextContent("Schritt 1 von 2");
+    expect(dialog!.querySelector('button[aria-label="Schließen"]')).not.toBeNull();
+
+    await act(async () => buttonNamed("Weiter")!.click());
+    await runFrames();
+    expect(buttonNamed("Previous")).toBeDefined();
+    expect(buttonNamed("Finish")).toBeDefined();
+
+    await clickAway();
+    expect(document.querySelector('button[aria-label="Fortsetzen"]')).toHaveAttribute("title", "Fortsetzen");
+  });
+
   it("emits completion after the committed terminal state and cleans up", async () => {
     const target = addTarget("finish", "Finish target");
     const phases: string[] = [];
@@ -524,6 +558,23 @@ describe("Walkthrough with checklists", () => {
     expect(dialog()).toBeNull();
     expect(owner.checklists.decks.getSnapshot().tasks[0]!.status).toBe("skipped");
     expect(owner.checklists.home.getSnapshot().tasks[0]!.status).toBe("skipped");
+  });
+
+  it("passes an app's labels to the guided task's popover", async () => {
+    const owner = setup();
+    await act(async () => root.render(<Walkthrough checklists={owner} labels={{ skipTask: "Aufgabe überspringen" }} />));
+    await act(async () => owner.start("create-deck"));
+    expect(buttonNamed("Aufgabe überspringen")).toBeDefined();
+  });
+
+  it("hands a custom popover the labels, the app's over the defaults", async () => {
+    const renderPopover = vi.fn((_props: WalkthroughRenderProps) => null);
+    const walkthrough = defineWalkthrough([{ content: "Alone" }]);
+    await act(async () =>
+      root.render(<Walkthrough walkthrough={walkthrough} labels={{ next: "Weiter" }} renderPopover={renderPopover} />),
+    );
+    const { labels } = renderPopover.mock.lastCall![0];
+    expect([labels.next, labels.finish]).toEqual(["Weiter", "Finish"]);
   });
 
   it("offers no task skip to a walkthrough it owns", async () => {
