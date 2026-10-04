@@ -1,5 +1,5 @@
-import { createChecklists, defineWalkthrough, localStorageAdapter } from "waymark";
-import type { Checklist, ChecklistsEvent, Snapshot, StoredTasks } from "waymark";
+import { createChecklists, defineWalkthrough, localStorageAdapter } from "waymark-core";
+import type { Checklist, ChecklistsEvent, Snapshot, StoredTasks } from "waymark-core";
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 

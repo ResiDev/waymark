@@ -5,7 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import type { ChecklistSelections, Checklists, Run } from "waymark";
+import type { ChecklistSelections, Checklists, Run } from "waymark-core";
 import { Beacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
   ChecklistWalkthroughProps,

@@ -35,8 +35,6 @@ the step centred with a note, and Next unlocks. Left to do:
 
 ## Docs and packaging
 - No READMEs yet, for either package or the repo.
-- Rename core from `waymark` to `waymark-core` before publishing. The bare name
-  on npm is taken.
 - Both packages are at 0.0.0.
 
 ## One error channel

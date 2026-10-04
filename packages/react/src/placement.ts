@@ -1,6 +1,6 @@
 // Tested directly, not through index.ts: jsdom lays nothing out, so reaching
 // each placement through a rendered Walkthrough would mean faking every size.
-import type { Rect } from "waymark";
+import type { Rect } from "waymark-core";
 import type { Placement } from "./types";
 
 export type PopoverPlacement = Readonly<{

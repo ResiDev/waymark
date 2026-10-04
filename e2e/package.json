@@ -23,7 +23,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^8.3.0",
-    "waymark": "workspace:*"
+    "waymark-core": "workspace:*"
   },
   "description": "Fixture pages for core, checklists and the React package: dev playgrounds for people and agents, a screenshot script, and a bundle size script."
 }

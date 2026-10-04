@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   createChecklists as createCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
-} from "waymark";
+} from "waymark-core";
 import { Checklist, createChecklists, defineWalkthrough, useChecklist, Walkthrough } from "./index";
 import type { ReactTask, WalkthroughStep } from "./types";
 

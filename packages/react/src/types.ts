@@ -14,7 +14,7 @@ import type {
   TaskCommands,
   TaskStatus,
   Walkthrough,
-} from "waymark";
+} from "waymark-core";
 
 export type Placement = "above" | "below" | "left" | "right";
 
@@ -163,6 +163,6 @@ export type ChecklistCheckboxProps = ComponentPropsWithoutRef<"button"> &
     statusText?: Readonly<Record<TaskStatus, string>>;
   }>;
 
-export type { Checklist as CoreChecklist } from "waymark";
-import type { Checklist as CoreChecklist } from "waymark";
-export type { RunEvent, Snapshot, Running, Walkthrough } from "waymark";
+export type { Checklist as CoreChecklist } from "waymark-core";
+import type { Checklist as CoreChecklist } from "waymark-core";
+export type { RunEvent, Snapshot, Running, Walkthrough } from "waymark-core";

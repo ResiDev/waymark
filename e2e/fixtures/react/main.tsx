@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import type { Snapshot, StoredTasks } from "react-waymark";
-import type { Action } from "waymark";
+import type { Action } from "waymark-core";
 import { App } from "./app";
 import { owner, stored } from "./guidance";
 import { Lab } from "./lab";

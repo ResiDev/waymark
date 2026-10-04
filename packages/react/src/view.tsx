@@ -7,7 +7,7 @@ import {
   type RefObject,
   type ReactNode,
 } from "react";
-import type { Rect } from "waymark";
+import type { Rect } from "waymark-core";
 import { centerPopover, clamp, placePopover, vertical } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";
 import { useViewportSize } from "./useViewportSize";

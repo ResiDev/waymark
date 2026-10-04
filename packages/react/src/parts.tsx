@@ -13,7 +13,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import type { Rect, TaskStatus } from "waymark";
+import type { Rect, TaskStatus } from "waymark-core";
 import { STATUS_TEXT, useChecklist, visuallyHidden } from "./Checklist";
 import { placePopover } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";

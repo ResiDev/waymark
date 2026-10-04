@@ -1,7 +1,7 @@
 import {
   createChecklists as createCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
-} from "waymark";
+} from "waymark-core";
 import type {
   ChecklistSelections,
   Checklists,
@@ -9,7 +9,7 @@ import type {
   ChecklistsConfig,
   ExactStep,
   Walkthrough,
-} from "waymark";
+} from "waymark-core";
 import type { ReactTask, WalkthroughStep } from "./types";
 
 export function defineWalkthrough<const TStep extends WalkthroughStep>(

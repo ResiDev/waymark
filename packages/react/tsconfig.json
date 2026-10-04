@@ -3,7 +3,7 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "paths": {
-      "waymark": ["../core/src/index.ts"],
+      "waymark-core": ["../core/src/index.ts"],
       "react-waymark": ["./src/index.ts"]
     }
   },

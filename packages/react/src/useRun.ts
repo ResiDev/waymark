@@ -7,8 +7,8 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
-import { createRun } from "waymark";
-import type { Run, RunEvent, RunStorage, UiElements, Walkthrough } from "waymark";
+import { createRun } from "waymark-core";
+import type { Run, RunEvent, RunStorage, UiElements, Walkthrough } from "waymark-core";
 import type { WalkthroughStep } from "./types";
 
 export type UiRefs = Readonly<{

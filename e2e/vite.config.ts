@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [tailwindcss()],
   resolve: {
     alias: {
-      waymark: fileURLToPath(new URL("../packages/core/src/index.ts", import.meta.url)),
+      "waymark-core": fileURLToPath(new URL("../packages/core/src/index.ts", import.meta.url)),
       "react-waymark": fileURLToPath(new URL("../packages/react/src/index.ts", import.meta.url)),
     },
     // react-waymark's source resolves React from its own package; both must be one copy.

@@ -22,16 +22,16 @@ import { build } from "esbuild";
 const repo = new URL("../../", import.meta.url);
 const packages = fileURLToPath(new URL("packages/", repo));
 const historyFile = new URL("size-history.jsonl", repo);
-const dist = { waymark: `${packages}core/dist/index.js`, "react-waymark": `${packages}react/dist/index.js` };
+const dist = { "waymark-core": `${packages}core/dist/index.js`, "react-waymark": `${packages}react/dist/index.js` };
 
 /** Keys name the history's columns: add cases freely, but never rename one. */
 const cases: Record<string, string> = {
   "react/all": `export * from "react-waymark";`,
   "react/walkthrough": `export { defineWalkthrough, Walkthrough } from "react-waymark";`,
   "react/headless": `export { createChecklists, localStorageAdapter, useChecklist } from "react-waymark";`,
-  "core/all": `export * from "waymark";`,
-  "core/run": `export { createRun, defineWalkthrough } from "waymark";`,
-  "core/checklists": `export { createChecklists } from "waymark";`,
+  "core/all": `export * from "waymark-core";`,
+  "core/run": `export { createRun, defineWalkthrough } from "waymark-core";`,
+  "core/checklists": `export { createChecklists } from "waymark-core";`,
 };
 
 /** Bytes. */

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import { actions } from "waymark";
+import { actions } from "waymark-core";
 import { owner, stored } from "./guidance";
 import {
   data,

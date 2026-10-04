@@ -1,5 +1,5 @@
 {
-  "name": "waymark",
+  "name": "waymark-core",
   "version": "0.0.0",
   "description": "Framework-agnostic core for guided walkthroughs and checklists: waymark location, advance conditions, and the frame loop.",
   "license": "MIT",

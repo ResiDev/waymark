@@ -1,5 +1,5 @@
-import { actions, createRun, defineWalkthrough } from "waymark";
-import type { Action, Run, RunEvent, RunOptions, Snapshot, Step, Walkthrough } from "waymark";
+import { actions, createRun, defineWalkthrough } from "waymark-core";
+import type { Action, Run, RunEvent, RunOptions, Snapshot, Step, Walkthrough } from "waymark-core";
 
 /**
  * The whole starting state lives in the URL, so a link is a reproduction:

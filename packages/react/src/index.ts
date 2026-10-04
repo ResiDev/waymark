@@ -9,7 +9,7 @@ export {
   ChecklistTaskTitle,
   ChecklistTrigger,
 } from "./parts";
-export { DEFAULT_CHECKLIST, localStorageAdapter } from "waymark";
+export { DEFAULT_CHECKLIST, localStorageAdapter } from "waymark-core";
 
 export type {
   AnyReactTask,
@@ -60,4 +60,4 @@ export type {
   TaskId,
   TaskStatus,
   WaymarkEventName,
-} from "waymark";
+} from "waymark-core";
