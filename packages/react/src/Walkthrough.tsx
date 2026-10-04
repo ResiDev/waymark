@@ -6,6 +6,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { ChecklistSelections, Checklists, Run } from "waymark-core";
+import { withDefaults } from "./labels";
 import { Beacon, DEFAULT_LABELS, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
   ChecklistWalkthroughProps,
@@ -186,7 +187,7 @@ function RunView<TStep extends WalkthroughStep>({
 
   const rect =
     snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
-  const text = { ...DEFAULT_LABELS, ...labels };
+  const text = withDefaults(DEFAULT_LABELS, labels);
   const render = (
     placement: WalkthroughRenderProps<TStep>["placement"],
     arrow: number,

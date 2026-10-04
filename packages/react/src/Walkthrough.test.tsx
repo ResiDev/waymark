@@ -7,6 +7,7 @@ import {
   defineWalkthrough,
   localStorageAdapter,
   Walkthrough,
+  type WalkthroughLabels,
   type WalkthroughRenderProps,
 } from "./index";
 
@@ -366,6 +367,16 @@ describe("Walkthrough", () => {
 
     await clickAway();
     expect(document.querySelector('button[aria-label="Fortsetzen"]')).toHaveAttribute("title", "Fortsetzen");
+  });
+
+  it("uses the default for a label passed as undefined", async () => {
+    const walkthrough = defineWalkthrough([{ content: "Welcome" }, { content: "Next up" }]);
+    // @ts-expect-error: only exactOptionalPropertyTypes, which an app may not set, rejects this.
+    const labels: Partial<WalkthroughLabels> = { next: undefined, stepOf: undefined };
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} labels={labels} />));
+
+    expect(document.querySelector('[role="dialog"]')).toHaveAttribute("aria-label", "Step 1 of 2");
+    expect(buttonNamed("Next")).toBeDefined();
   });
 
   it("emits completion after the committed terminal state and cleans up", async () => {

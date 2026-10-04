@@ -8,6 +8,7 @@ import {
   defineWalkthrough,
   localStorageAdapter,
   useChecklist,
+  type ChecklistLabels,
 } from "./index";
 
 let root: Root;
@@ -194,6 +195,14 @@ describe("Checklist", () => {
       ),
     );
     expect(buttons(row("Read the tips"))).toEqual(["Guide me", "Later"]);
+  });
+
+  it("uses the default for a label passed as undefined", async () => {
+    const { owner } = setup();
+    // ReactNode includes undefined, so even exactOptionalPropertyTypes allows this.
+    const labels: Partial<ChecklistLabels> = { start: undefined, skip: "Later" };
+    await act(async () => root.render(<Checklist checklist={owner.checklists.home} labels={labels} />));
+    expect(buttons(row("Read the tips"))).toEqual(["Show me", "Later"]);
   });
 });
 

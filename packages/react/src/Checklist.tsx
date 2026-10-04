@@ -7,6 +7,7 @@ import type {
   CoreChecklist,
   UseChecklistResult,
 } from "./types";
+import { withDefaults } from "./labels";
 
 export function useChecklist<TTask extends AnyReactTask>(
   checklist: CoreChecklist<TTask>,
@@ -198,7 +199,7 @@ export function Checklist<TTask extends AnyReactTask>({
   renderRow,
 }: ChecklistProps<TTask>) {
   const { snapshot, start, markDone, skip, toggle } = useChecklist(checklist);
-  const text = { ...DEFAULT_LABELS, ...labels };
+  const text = withDefaults(DEFAULT_LABELS, labels);
 
   return (
     <div
