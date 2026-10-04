@@ -7,6 +7,7 @@ import {
   isGone,
   ABSENT,
   LOST,
+  WAITING,
   MISSING,
   NO_EVENTS,
   noChange,
@@ -151,8 +152,14 @@ export type WaymarkRead = Readonly<{
   inView: boolean;
 }>;
 
-/** How long, in ms, a Waymark may be searched for before it counts as missing. */
-const MISSING_AFTER = 500;
+/** How long, in ms, a Waymark is searched for before its Step shows without it. */
+const WAITING_AFTER = 500;
+
+/**
+ * How long, in ms, a Waymark may be searched for before it counts as missing,
+ * unless its Step says: long enough for a screen to fetch what it shows.
+ */
+const MISSING_AFTER = 3000;
 
 /** How long, in ms, a found Waymark may be gone before it counts as lost: long enough for a re-render that swaps its element. */
 const LOST_AFTER = 200;
@@ -198,8 +205,9 @@ type Located = Readonly<{
 }>;
 
 /**
- * A Waymark never found is missing after `MISSING_AFTER`. One found is lost after
- * `LOST_AFTER`, and keeps its last place until then.
+ * A Waymark never found is waiting after `WAITING_AFTER`, and missing after its
+ * Step's `missingAfterMs`. One found is lost after `LOST_AFTER`, and keeps its
+ * last place until then.
  */
 function locate(
   previous: Location,
@@ -212,14 +220,20 @@ function locate(
   if (read.rect !== null) {
     return { waymark: foundAt(previous, read.rect), unseenSince: undefined };
   }
-  if (previous.status !== "searching" && previous.status !== "found") {
+  if (previous.status === "absent" || isGone(previous)) {
     return { waymark: previous, unseenSince: undefined };
   }
   const since = unseenSince ?? now;
-  const found = previous.status === "found";
-  return now - since < (found ? LOST_AFTER : MISSING_AFTER)
-    ? { waymark: previous, unseenSince: since }
-    : { waymark: found ? LOST : MISSING, unseenSince: undefined };
+  const unseen = now - since;
+  if (previous.status === "found") {
+    return unseen < LOST_AFTER
+      ? { waymark: previous, unseenSince: since }
+      : { waymark: LOST, unseenSince: undefined };
+  }
+  if (unseen >= (step.missingAfterMs ?? MISSING_AFTER)) {
+    return { waymark: MISSING, unseenSince: undefined };
+  }
+  return { waymark: unseen < WAITING_AFTER ? previous : WAITING, unseenSince: since };
 }
 
 function scrollTarget(

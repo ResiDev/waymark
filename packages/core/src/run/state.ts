@@ -41,6 +41,7 @@ export const noChange = <TStep extends Step>(
 
 export const ABSENT: Location = { status: "absent" };
 const SEARCHING: Location = { status: "searching" };
+export const WAITING: Location = { status: "waiting" };
 export const LOST: Location = { status: "lost" };
 export const MISSING: Location = { status: "missing" };
 

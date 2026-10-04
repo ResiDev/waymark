@@ -28,6 +28,8 @@ export type Step = Readonly<{
   advance?: AdvanceCondition;
   /** `"once"`, the default, scrolls the Waymark into view the first time it is off-screen. */
   scroll?: "once" | "always" | "never";
+  /** How long to wait for the Waymark before it counts as missing. Defaults to 3000. */
+  missingAfterMs?: number;
   meta?: unknown;
 }>;
 

@@ -26,14 +26,16 @@ export const actions = [
 export type Action = (typeof actions)[number];
 
 /**
- * `absent`: the Step has no Waymark. `searching` becomes `missing` once it has
- * lasted too long, and stays so until the Waymark is found. Once found, a
- * Waymark that leaves the page stays `found` for a moment, in case it comes
- * straight back, then is `lost`, not `searching`.
+ * `absent`: the Step has no Waymark. `searching` becomes `waiting` after a
+ * moment, when the Step shows without its Waymark while the page catches up,
+ * then `missing` once it has lasted too long, and stays so until the Waymark
+ * is found. Once found, a Waymark that leaves the page stays `found` for a
+ * moment, in case it comes straight back, then is `lost`, not `searching`.
  */
 export type Location =
   | Readonly<{ status: "absent" }>
   | Readonly<{ status: "searching" }>
+  | Readonly<{ status: "waiting" }>
   | Readonly<{ status: "found"; rect: Rect }>
   | Readonly<{ status: "lost" }>
   | Readonly<{ status: "missing" }>;

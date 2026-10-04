@@ -190,7 +190,7 @@ describe("Walkthrough", () => {
     expect(document.querySelector("button[disabled]")).toBeNull();
   });
 
-  it("shows a step whose Waymark is missing, with a note, and lets the user past its gate", async () => {
+  it("shows a step waiting for its Waymark without a note, then with one once missing, and lets the user past its gate", async () => {
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const walkthrough = defineWalkthrough([
@@ -204,10 +204,14 @@ describe("Walkthrough", () => {
 
     clock += 1000;
     await runFrames();
+    const dialog = () => document.querySelector('[role="dialog"]');
+    expect(dialog()).toHaveTextContent("Save the document");
+    expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
+    expect(buttonNamed("Next")).toBeDisabled();
 
-    const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog).toHaveTextContent("Save the document");
-    expect(dialog).toHaveTextContent("Can't find the part of the page");
+    clock += 2000;
+    await runFrames();
+    expect(dialog()).toHaveTextContent("Can't find the part of the page");
 
     await act(async () => buttonNamed("Next")!.click());
     expect(document.querySelector('[role="dialog"]')).toHaveTextContent("The document is saved");
@@ -241,6 +245,22 @@ describe("Walkthrough", () => {
     expect(shade()).toBeNull();
     expect(beacon()).toBeNull();
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("shows a Collapsed run's beacon only once its Waymark is found or missing, not while waiting", async () => {
+    let clock = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    await clickAway();
+
+    clock += 1000;
+    await runFrames();
+    expect(beacon()).toBeNull();
+
+    clock += 2000;
+    await runFrames();
+    expect(beacon()).not.toBeNull();
   });
 
   it("turns an outside click into a resumable Collapsed run", async () => {

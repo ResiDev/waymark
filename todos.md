@@ -1,11 +1,10 @@
 Events
 
 ## DONE Missing Waymarks: what's left
-A lost Waymark, or one searched for 500ms without being found (`missing`), shows
-the step centred with a note, and Next unlocks. Left to do:
-- The 500ms searching grace is shorter than a slow page load. With the lab's
-  slow decks page (1.5s), step 2 shows the "Can't find" note for 1s before the
-  page arrives. Lengthen it, make it a run option, or both.
+A lost Waymark, or one searched for 3s without being found (`missing`), shows
+the step centred with a note, and Next unlocks. From 500ms until then
+(`waiting`), the step shows centred without the note, Next locked as usual. A
+step can set its own `missingAfterMs`. Left to do:
 - A collapsed run whose Waymark is lost or missing shows its beacon at the
   bottom centre of the screen. Showing it where the Waymark was lost might read better.
 - The note's text is hard-coded; it belongs with the popover labels below.

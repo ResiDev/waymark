@@ -173,7 +173,7 @@ function RunView<TStep extends WalkthroughStep>({
   if (snapshot.phase !== "running") return null;
   const searching = snapshot.waymark.status === "searching";
   // A beacon has nowhere to sit until the Waymark is found or given up on.
-  if (searching && snapshot.collapsed) return null;
+  if (snapshot.collapsed && (searching || snapshot.waymark.status === "waiting")) return null;
 
   const rect =
     snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;

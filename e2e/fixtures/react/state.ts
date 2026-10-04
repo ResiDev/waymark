@@ -46,6 +46,8 @@ export const setupOptions = {
   copy: ["off", "css", "tailwind"],
   /** `home` unmounts the renderer, and so stops guidance, whenever you leave Home. */
   renderer: ["root", "home", "none"],
+  /** Where task statuses are kept. `server` is the dev server's /api/tasks. The owner reads it once, at creation. */
+  storage: ["local", "server"],
 } as const;
 
 export type Setup = Readonly<{
@@ -54,6 +56,7 @@ export type Setup = Readonly<{
   list: (typeof setupOptions.list)[number];
   copy: (typeof setupOptions.copy)[number];
   renderer: (typeof setupOptions.renderer)[number];
+  storage: (typeof setupOptions.storage)[number];
   /** The decks page loads for 1.5s first, so its Waymarks mount late. */
   slow: boolean;
   /** The owner reads it once, at creation. */
@@ -72,6 +75,7 @@ const readSetup = (): Setup => {
     list: oneOf(setupOptions.list, q.get("list")),
     copy: oneOf(setupOptions.copy, q.get("copy")),
     renderer: oneOf(setupOptions.renderer, q.get("renderer")),
+    storage: oneOf(setupOptions.storage, q.get("storage")),
     slow: q.get("slow") === "1",
     padding: Number.isFinite(padding) ? padding : DEFAULT_PADDING,
     lab: q.get("lab") !== "0",
@@ -86,6 +90,7 @@ const writeSetup = (setup: Setup) => {
   if (setup.list !== "default") q.set("list", setup.list);
   if (setup.copy !== "off") q.set("copy", setup.copy);
   if (setup.renderer !== "root") q.set("renderer", setup.renderer);
+  if (setup.storage !== "local") q.set("storage", setup.storage);
   if (setup.slow) q.set("slow", "1");
   if (setup.padding !== DEFAULT_PADDING) q.set("padding", String(setup.padding));
   if (!setup.lab) q.set("lab", "0");

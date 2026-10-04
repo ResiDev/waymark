@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { actions } from "waymark-core";
-import { owner, stored } from "./guidance";
+import { owner, stored, storedWalkthrough, storedWhatsNew, WHATS_NEW_KEY } from "./guidance";
 import {
   data,
   EMPTY_DATA,
@@ -44,7 +44,16 @@ export function Lab() {
   );
 }
 
-function Choice<K extends keyof typeof setupOptions>({ name, setup: current }: { name: K; setup: Setup }) {
+function Choice<K extends keyof typeof setupOptions>({
+  name,
+  setup: current,
+  reload = false,
+}: {
+  name: K;
+  setup: Setup;
+  /** For what the owner reads once, at creation. */
+  reload?: boolean;
+}) {
   return (
     <div className="choice">
       <span>{name}</span>
@@ -54,7 +63,10 @@ function Choice<K extends keyof typeof setupOptions>({ name, setup: current }: {
             type="radio"
             name={name}
             checked={current[name] === option}
-            onChange={() => patch(setup, { [name]: option })}
+            onChange={() => {
+              patch(setup, { [name]: option });
+              if (reload) location.reload();
+            }}
           />
           {option}
         </label>
@@ -71,6 +83,7 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
       <Choice name="popover" setup={current} />
       <Choice name="list" setup={current} />
       <Choice name="copy" setup={current} />
+      <Choice name="storage" setup={current} reload />
       <label title="Remounts the app, not this panel.">
         <input type="checkbox" name="strict" checked={current.strict} onChange={() => patch(setup, { strict: !current.strict })} />
         StrictMode
@@ -153,17 +166,38 @@ function DataPanel() {
 }
 
 function ProgressPanel() {
-  const record = useStore(stored);
+  const { storage } = useStore(setup);
+  const { storageStatus } = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const tasks = useStore(stored);
+  const walkthrough = useStore(storedWalkthrough);
+  const whatsNew = useStore(storedWhatsNew);
   return (
     <>
-      <h2>Stored progress</h2>
-      <pre>{JSON.stringify(record)}</pre>
+      <h2>Storage</h2>
+      <div className="lab-status" data-testid="storage-status">
+        tasks in {storage === "server" ? "/api/tasks" : "localStorage"}: {storageStatus}
+      </div>
+      <pre data-testid="stored-tasks">{JSON.stringify(tasks)}</pre>
+      <div>checklist walkthrough</div>
+      <pre data-testid="stored-walkthrough">{JSON.stringify(walkthrough)}</pre>
+      <div>what's new</div>
+      <pre data-testid="stored-whats-new">{JSON.stringify(whatsNew)}</pre>
       <div>
         <button type="button" onClick={() => owner.clear()}>
           owner.clear()
         </button>
         <button type="button" onClick={() => data.set(EMPTY_DATA)}>
           reset app data
+        </button>
+        <button
+          type="button"
+          title="Removes the stored what's new, so it can show again after a reload."
+          onClick={() => {
+            localStorage.removeItem(WHATS_NEW_KEY);
+            storedWhatsNew.set(null);
+          }}
+        >
+          forget what's new
         </button>
         <button type="button" onClick={() => location.reload()}>
           reload

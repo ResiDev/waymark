@@ -7,7 +7,10 @@ import {
   type ChecklistsEvent,
   type ReactTask,
   type Snapshot,
+  type StorageAdapter,
+  type StoredChecklistWalkthrough,
   type StoredTasks,
+  type StoredWalkthrough,
   type WalkthroughRenderProps,
 } from "react-waymark";
 import { CustomPopover } from "./popover";
@@ -111,9 +114,50 @@ const contextOf = (app: AppData) => ({
 });
 
 const TASKS_KEY = "waymark-react-checklists";
+export const WALKTHROUGH_KEY = "waymark-react-walkthrough";
+export const WHATS_NEW_KEY = "waymark-react-whats-new";
 
-/** What localStorage holds now, shown in the lab and updated on each save. */
-export const stored = createStore<StoredTasks | null>(JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null"));
+const readLocal = <T,>(key: string): T | null => JSON.parse(localStorage.getItem(key) ?? "null");
+
+/** What storage holds now, shown in the lab. In `server` mode, what the server last answered. */
+export const stored = createStore<StoredTasks | null>(setup.get().storage === "local" ? readLocal(TASKS_KEY) : null);
+export const storedWalkthrough = createStore(readLocal<StoredChecklistWalkthrough>(WALKTHROUGH_KEY));
+export const storedWhatsNew = createStore(readLocal<StoredWalkthrough>(WHATS_NEW_KEY));
+
+/** localStorage, with each save, and each change another tab makes, shown in the lab. */
+function shownLocally<T>(key: string, shown: { set: (value: T | null) => void }): StorageAdapter<T> {
+  const local = localStorageAdapter<T>(key);
+  return {
+    load: local.load,
+    save: (value) => {
+      void local.save(value);
+      shown.set(value);
+    },
+    subscribe: (listener) =>
+      local.subscribe!((value) => {
+        shown.set(value);
+        listener(value);
+      }),
+  };
+}
+
+const answer = async (response: Promise<Response>): Promise<StoredTasks | null> => {
+  const value = (await (await response).json()) as StoredTasks | null;
+  stored.set(value);
+  return value;
+};
+
+/** The dev server's /api/tasks: slow, and without `subscribe`, so tabs don't hear each other. */
+const serverTasks: StorageAdapter<StoredTasks> = {
+  load: () => answer(fetch("/api/tasks")),
+  save: async (value) => {
+    await answer(
+      value === null
+        ? fetch("/api/tasks", { method: "DELETE" })
+        : fetch("/api/tasks", { method: "PUT", body: JSON.stringify(value) }),
+    );
+  },
+};
 
 const describeEvent = (event: ChecklistsEvent<any, any>): string => {
   switch (event.type) {
@@ -193,10 +237,10 @@ export const owner = createChecklists({
     settings: ["add-photo", "pick-theme", "verify-email"],
   },
   storage: {
-    tasks: localStorageAdapter(TASKS_KEY),
-    walkthrough: localStorageAdapter("waymark-react-walkthrough"),
+    tasks: setup.get().storage === "server" ? serverTasks : shownLocally(TASKS_KEY, stored),
+    walkthrough: shownLocally(WALKTHROUGH_KEY, storedWalkthrough),
   },
-  onChange: (next) => stored.set(next),
+  onStorageError: (error, which) => record("owner", `storage error (${which}): ${String(error)}`),
   onEvent: (event) => record("owner", describeEvent(event)),
   run: {
     waymarkPadding: setup.get().padding,
@@ -251,6 +295,8 @@ export function Guidance() {
   );
 }
 
+const whatsNewStorage = shownLocally(WHATS_NEW_KEY, storedWhatsNew);
+
 export function WhatsNew() {
   const active = useStore(whatsNewOpen);
   const { popover, padding } = useStore(setup);
@@ -258,6 +304,7 @@ export function WhatsNew() {
     <Walkthrough
       walkthrough={whatsNew}
       active={active}
+      storage={{ walkthrough: whatsNewStorage }}
       waymarkPadding={padding}
       onEvent={(event) => {
         record("whats-new", `${event.type} on step ${event.stepIndex + 1} → ${describeRun(event.snapshot)}`);

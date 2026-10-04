@@ -281,16 +281,47 @@ describe("createRun", () => {
     view.stop();
   });
 
-  it("calls a waymark missing after half a second of searching, and lets the user past its gate", () => {
-    const view = watch(createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}])));
+  it("waits for a waymark after half a second of searching, with its gate shut and nothing reported", () => {
+    const events: string[] = [];
+    const view = watch(
+      createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]), {
+        onEvent: (event) => events.push(event.type),
+      }),
+    );
     flush(499);
     expect(view.snapshot).toMatchObject({ waymark: { status: "searching" }, canAdvance: false });
+
+    flush(1);
+    expect(view.snapshot).toMatchObject({ waymark: { status: "waiting" }, canAdvance: false });
+    expect(events).toEqual(["start"]);
+
+    addTarget("save");
+    flush();
+    expect(view.snapshot).toMatchObject({ waymark: { status: "found" }, canAdvance: false });
+    view.stop();
+  });
+
+  it("calls a waymark missing after three seconds of searching, and lets the user past its gate", () => {
+    const view = watch(createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}])));
+    flush(500);
+    flush(2499);
+    expect(view.snapshot).toMatchObject({ waymark: { status: "waiting" }, canAdvance: false });
 
     flush(1);
     expect(view.snapshot).toMatchObject({ waymark: { status: "missing" }, canAdvance: true });
 
     press("ArrowRight");
     expect(view.snapshot.stepIndex).toBe(1);
+    view.stop();
+  });
+
+  it("waits as long as its step's missingAfterMs before calling a waymark missing", () => {
+    const view = watch(createRun(defineWalkthrough([{ waymark: "save", missingAfterMs: 6000 }])));
+    flush(5999);
+    expect(view.snapshot.waymark.status).toBe("waiting");
+
+    flush(1);
+    expect(view.snapshot.waymark.status).toBe("missing");
     view.stop();
   });
 
@@ -320,7 +351,7 @@ describe("createRun", () => {
         onEvent: (event) => events.push(event.type),
       }),
     );
-    flush(500);
+    flush(3000);
     flush();
     expect(events).toEqual(["start", "missing"]);
 
@@ -339,11 +370,11 @@ describe("createRun", () => {
   it("reports a waymark going missing before an advance in the same frame", () => {
     const events: string[] = [];
     const view = watch(
-      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => clock >= 1500 } }, {}]), {
+      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => clock >= 4000 } }, {}]), {
         onEvent: (event) => events.push(event.type),
       }),
     );
-    flush(500);
+    flush(3000);
     expect(events).toEqual(["start", "missing", "advance"]);
     view.stop();
   });
@@ -353,7 +384,7 @@ describe("createRun", () => {
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => ready } }, {}])),
     );
-    flush(500);
+    flush(3000);
     expect(view.snapshot.waymark.status).toBe("missing");
 
     ready = true;
