@@ -1,6 +1,7 @@
 # Storage
 
-Status: accepted, not built. Replaces two todos: "Persist the active run across
+Status: built. Where the build settled a detail this design left open, or
+changed one, "As built" at the end says so. Replaces two todos: "Persist the active run across
 reloads" and "Async storage".
 
 ## Problem
@@ -209,8 +210,9 @@ wrong, because some depend on a task's current status:
 Nothing changes on screen until the record arrives; the UI shows loading.
 Events fire once, when the calls run, and describe what really changed. A
 `start` waits too, so a tour started on page load is only shown if its task is
-still todo. If a held `start` runs, it wins over the restored walkthrough
-record.
+still todo. Held calls run before the walkthrough record is restored, and a
+record is only restored if no walkthrough has been started or stopped since
+the owner was made, so a held `start` wins, and so does a `stop`.
 
 `update(context)` is not held. Only the latest context matters, and rule 4
 checks it.
@@ -246,8 +248,8 @@ The `stepCount` and age checks apply only while running. A standalone
 walkthrough's `completed` or `exited` survives changes to its steps and never
 expires; otherwise every user would see the tour again after a deploy.
 
-Every failure goes to `onStorageError` and to `console.error`, naming the
-record.
+Every failure goes to `onStorageError`, naming the record. Without a handler it
+goes to `console.error` instead.
 
 ### Saving
 
@@ -289,10 +291,10 @@ The server has no localStorage. If it rendered nothing stored and the client's
 first render read localStorage, React would report a hydration mismatch.
 
 - With localStorage, the server renders the loading state and so does the
-  client's first render; localStorage is read straight after. The React adapter
-  does this through the server snapshot it gives `useSyncExternalStore`, which
-  today is `getSnapshot` (`useRun.ts:26`). The cost is one frame of loading
-  state on server-rendered pages only.
+  client's first render; localStorage is read straight after. Each checklist
+  and the owner have `getServerSnapshot`, the snapshot from before storage was
+  read, which the React adapter gives `useSyncExternalStore`. The cost is one
+  frame of loading state on server-rendered pages only.
 - An app that fetches task statuses on the server passes them as `initial`.
   Server and client render the same statuses, with no loading state.
 
@@ -319,3 +321,33 @@ first render read localStorage, React would report a hydration mismatch.
 A restored step skips whatever setup earlier steps did, such as opening a form,
 so its Waymark may never appear. The missing Waymark handling covers this. The
 step shows centred and Next unlocks.
+
+## As built
+
+- A standalone Run has a `loading` phase, `{ phase: "loading", stepCount }`,
+  while an async load is pending. `Snapshot` is now `Running | Ended | Loading`,
+  so reading `stepIndex` takes a phase check. Its actions wait like the
+  owner's commands.
+- A restored `completed` Run sits on the last step, and a restored `exited` Run
+  on the first: the record keeps no step for an ended Run, and `reset` needs one
+  for its event.
+- `initial` replaces loading `storage.tasks`, rather than coming first. The
+  adapter is still saved to and subscribed to.
+- `onChange`, `initial` and the owner's `load()` all use `StoredTasks`.
+  `load()` checks its value like a loaded one; one it cannot read is reported
+  and changes nothing.
+- A walkthrough record that cannot be read, or picked up, is wiped by saving
+  `null`.
+- `createRun` takes `collapsed` beside `startAt`.
+- `localStorageAdapter()` stores nothing outside a browser. Its type parameter
+  defaults to `never`, and `StorageAdapter` declares `save` and `subscribe` as
+  methods, so an adapter made on its own line fits either record.
+- Both snapshots call it `storageStatus`, not `status`: each task row already
+  has a `status`.
+- A Run picked up from storage does not send `start` again; it began on an
+  earlier page. `createRun` takes `resumed` for an app that stores the Run
+  itself.
+- React's `<Walkthrough>` draws nothing on the server or while React hydrates,
+  and draws once hydrated. A standalone Run so needs no server snapshot.
+- React's `<Walkthrough>` reads `storage` once, as it mounts. A new object on
+  each render would otherwise make a new Run and read storage again.

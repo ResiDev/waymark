@@ -1,3 +1,5 @@
+import type { StorageAdapter } from "../storage/adapter";
+import type { StoredWalkthrough } from "../storage/records";
 import type { Step } from "../walkthrough/types";
 
 /** In viewport coordinates. */
@@ -53,8 +55,14 @@ export type Ended = Readonly<{
   stepCount: number;
 }>;
 
+/** Only while a Run's stored state is on its way. */
+export type Loading = Readonly<{
+  phase: "loading";
+  stepCount: number;
+}>;
+
 /** A new object only when something in it changed. */
-export type Snapshot<TStep extends Step = Step> = Running<TStep> | Ended;
+export type Snapshot<TStep extends Step = Step> = Running<TStep> | Ended | Loading;
 
 /** `lost` and `missing` fire as the Step's Waymark becomes so: `missing` often means a selector that never matches. */
 export type RunEventType = "start" | Action | "lost" | "missing" | "finish";
@@ -76,13 +84,31 @@ export type UiElements = Readonly<{
   beacon: Element | null;
 }>;
 
+export type RunStorage = Readonly<{
+  /**
+   * Saved as the step changes, the Run collapses or resumes, and as it ends.
+   * Until a Promise from `load` settles, the Run is `loading` and holds its
+   * actions.
+   */
+  walkthrough?: StorageAdapter<StoredWalkthrough>;
+  /** In ms, since the last change. An older running walkthrough starts again. Defaults to a day. */
+  maxAge?: number;
+}>;
+
 export type RunOptions<TStep extends Step = Step> = Readonly<{
   root?: Document | Element;
   /** In px. Clicks this close to the Waymark count as clicks on it. */
   waymarkPadding?: number;
+  /** Stored state, when there is some, wins over `startAt` and `collapsed`. */
   startAt?: number;
+  collapsed?: boolean;
+  /** Picked up at `startAt` where an earlier page left it, so it does not send `start` again. */
+  resumed?: boolean;
   ui?: () => UiElements;
   onEvent?: (event: RunEvent<TStep>) => void;
+  storage?: RunStorage;
+  /** Without one, storage failures are logged. */
+  onStorageError?: (error: unknown) => void;
 }>;
 
 /** Watches the page only while it has a subscriber and has not ended. */

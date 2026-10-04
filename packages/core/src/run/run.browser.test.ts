@@ -92,7 +92,7 @@ describe("pointer", () => {
     await expect.poll(() => running(run).canAdvance).toBe(false);
 
     await page.getByText("Save").click();
-    await expect.poll(() => run.getSnapshot().stepIndex).toBe(1);
+    await expect.poll(() => running(run).stepIndex).toBe(1);
 
     await page.getByRole("main").click({ position: { x: 600, y: 20 } });
     await expect.poll(() => running(run).collapsed).toBe(true);
@@ -105,7 +105,7 @@ describe("pointer", () => {
 
     // Position is relative to the clicked element; main starts at the page origin.
     await page.getByRole("main").click({ position: { x: rect.right + 6, y: rect.bottom + 6 } });
-    await expect.poll(() => run.getSnapshot().stepIndex).toBe(1);
+    await expect.poll(() => running(run).stepIndex).toBe(1);
   });
 });
 
@@ -124,7 +124,7 @@ describe("time", () => {
     await page.getByRole("textbox").fill("abc");
 
     await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(run.getSnapshot().stepIndex).toBe(0);
-    await expect.poll(() => run.getSnapshot().stepIndex, { timeout: 1_000 }).toBe(1);
+    expect(running(run).stepIndex).toBe(0);
+    await expect.poll(() => running(run).stepIndex, { timeout: 1_000 }).toBe(1);
   });
 });

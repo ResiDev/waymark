@@ -106,7 +106,10 @@ try {
       }), false, "Checklist Escape should not collapse the walkthrough.");
       await page.getByRole("button", { name: "Close", exact: true }).focus();
       await page.keyboard.press("ArrowRight");
-      await page.waitForFunction(() => window.playground.snapshot()?.stepIndex === 1);
+      await page.waitForFunction(() => {
+        const snapshot = window.playground.snapshot();
+        return snapshot?.phase === "running" && snapshot.stepIndex === 1;
+      });
     });
 
     await run("switch-task", async (page, result) => {

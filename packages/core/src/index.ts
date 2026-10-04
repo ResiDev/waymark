@@ -2,7 +2,7 @@ export { defineWalkthrough } from "./walkthrough/walkthrough";
 export { createRun } from "./run/run";
 export { createChecklists } from "./checklists/checklists";
 export { DEFAULT_CHECKLIST } from "./checklists/types";
-export { createLocalStorageRecord } from "./checklists/storage";
+export { localStorageAdapter } from "./storage/adapter";
 export { actions } from "./run/types";
 export type { Exactly } from "./exact";
 export type {
@@ -15,12 +15,14 @@ export type {
 export type {
   Action,
   Ended,
+  Loading,
   Location,
   Rect,
   Run,
   RunEvent,
   RunEventType,
   RunOptions,
+  RunStorage,
   Running,
   Snapshot,
   UiElements,
@@ -38,16 +40,22 @@ export type {
   ChecklistsEvent,
   ChecklistsOptions,
   ChecklistsSnapshot,
+  ChecklistsStorage,
   DefaultChecklists,
   ExactTasks,
   NamedTask,
   SelectedTask,
   StepOf,
+  StorageStatus,
   Task,
   TaskCommands,
   TaskId,
   TaskMap,
   TaskStatus,
 } from "./checklists/types";
-export type { Stored } from "./checklists/record";
-export type { StoredRecord } from "./checklists/storage";
+export type { StorageAdapter } from "./storage/adapter";
+export type {
+  StoredChecklistWalkthrough,
+  StoredTasks,
+  StoredWalkthrough,
+} from "./storage/records";

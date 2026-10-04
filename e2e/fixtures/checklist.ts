@@ -1,5 +1,5 @@
-import { createChecklists, createLocalStorageRecord, defineWalkthrough } from "waymark";
-import type { Checklist, ChecklistsEvent, Snapshot, Stored } from "waymark";
+import { createChecklists, defineWalkthrough, localStorageAdapter } from "waymark";
+import type { Checklist, ChecklistsEvent, Snapshot, StoredTasks } from "waymark";
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 
@@ -18,7 +18,8 @@ const readTips = defineWalkthrough([
   { waymark: "tips", meta: { text: "The tips live down here. Finishing this marks the task done." } },
 ]);
 
-const record = createLocalStorageRecord("waymark-checklist");
+const TASKS_KEY = "waymark-checklist";
+const readStored = (): StoredTasks | null => JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null");
 const events: ChecklistsEvent<any, any>[] = [];
 
 const owner = createChecklists({
@@ -35,7 +36,10 @@ const owner = createChecklists({
     home: ["create-deck", "add-photo", "read-tips", "say-hello"],
     decks: ["create-deck"],
   },
-  storage: record,
+  storage: {
+    tasks: localStorageAdapter(TASKS_KEY),
+    walkthrough: localStorageAdapter("waymark-checklist-walkthrough"),
+  },
   onChange: (stored) => renderStored(stored),
   onEvent: (event) => {
     events.push(event);
@@ -126,10 +130,10 @@ ui.owner.append(
   button("reload", () => location.reload()),
 );
 
-const renderStored = (stored: Stored) => {
+const renderStored = (stored: StoredTasks | null) => {
   ui.stored.textContent = JSON.stringify(stored);
 };
-renderStored(record.load());
+renderStored(readStored());
 
 const describeEvent = (event: ChecklistsEvent<any, any>): string => {
   switch (event.type) {
@@ -200,9 +204,9 @@ declare global {
       owner: typeof owner;
       update: typeof update;
       events: typeof events;
-      stored: () => Stored;
+      stored: () => StoredTasks | null;
     };
   }
 }
 
-window.checklists = { owner, update, events, stored: record.load };
+window.checklists = { owner, update, events, stored: readStored };

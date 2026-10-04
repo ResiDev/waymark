@@ -137,6 +137,7 @@ const ui = {
 };
 
 const describe = (snapshot: Snapshot): string => {
+  if (snapshot.phase === "loading") return "loading";
   if (snapshot.phase !== "running") return `${snapshot.phase} at step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`;
   const parts = [
     `step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`,

@@ -1,7 +1,14 @@
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Checklist, createChecklists, defineWalkthrough, useChecklist } from "./index";
+import {
+  Checklist,
+  createChecklists,
+  defineWalkthrough,
+  localStorageAdapter,
+  useChecklist,
+} from "./index";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -213,5 +220,35 @@ describe("useChecklist", () => {
     seen.length = 0;
     await act(async () => owner.update({ hasDeck: false, hasPhoto: false }));
     expect(seen).toEqual([]);
+  });
+});
+
+describe("Checklist with storage", () => {
+  afterEach(() => localStorage.clear());
+
+  const stored = () =>
+    createChecklists({
+      tasks: { hello: { title: "Say hello" }, invite: { title: "Invite a friend" } },
+      storage: { tasks: localStorageAdapter("setup") },
+    });
+
+  it("hydrates a server render, which could not read storage, then shows what storage holds", async () => {
+    localStorage.setItem("setup", JSON.stringify({ version: 3, tasks: { hello: "done" } }));
+    const server = renderToString(<Checklist checklist={stored().checklists.main} />);
+    expect(server).toContain("0<!-- --> of <!-- -->2<!-- --> done");
+    expect(server).toContain('aria-busy="true"');
+
+    host.innerHTML = server;
+    const onRecoverableError = vi.fn();
+    const owner = stored();
+    let hydrated: Root | undefined;
+    await act(async () => {
+      hydrated = hydrateRoot(host, <Checklist checklist={owner.checklists.main} />, { onRecoverableError });
+    });
+
+    expect(onRecoverableError).not.toHaveBeenCalled();
+    expect(host).toHaveTextContent("1 of 2 done");
+    expect(host.querySelector('[role="group"]')).toHaveAttribute("aria-busy", "false");
+    await act(async () => hydrated?.unmount());
   });
 });

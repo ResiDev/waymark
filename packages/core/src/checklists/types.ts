@@ -1,8 +1,8 @@
 import type { Exactly } from "../exact";
 import type { Run, RunOptions, Snapshot, UiElements } from "../run/types";
 import type { ExactStep, Step, Walkthrough } from "../walkthrough/types";
-import type { Stored } from "./record";
-import type { StoredRecord } from "./storage";
+import type { StorageAdapter } from "../storage/adapter";
+import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
 
 /**
  * A Task written away from `createChecklists` has no context type. Give it one
@@ -60,6 +60,9 @@ export type SelectedTask<
 
 export type TaskStatus = "todo" | "done" | "skipped";
 
+/** Of the stored Task statuses: `error` when they could not be read, and every Task starts todo. */
+export type StorageStatus = "loading" | "ready" | "error";
+
 export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
   task: TTask;
   status: TaskStatus;
@@ -80,6 +83,8 @@ export type ChecklistSnapshot<TTask extends { readonly id: string }> =
     complete: boolean;
     /** Null while the active Task is not in this checklist. */
     active: ActiveTask<TTask> | null;
+    /** While `loading`, every Task shows todo. */
+    storageStatus: StorageStatus;
   }>;
 
 export type TaskCommands<TId extends string> = Readonly<{
@@ -100,6 +105,11 @@ export type Checklist<TTask extends { readonly id: string }> = TaskCommands<
 > &
   Readonly<{
     getSnapshot: () => ChecklistSnapshot<TTask>;
+    /**
+     * The snapshot from before storage was read, for a server render and the
+     * hydration after it, which cannot see the browser's storage.
+     */
+    getServerSnapshot: () => ChecklistSnapshot<TTask>;
     /** Calls the listener at once, then on each change. */
     subscribe: (listener: (snapshot: ChecklistSnapshot<TTask>) => void) => () => void;
   }>;
@@ -142,27 +152,42 @@ export type ChecklistsEvent<
       snapshot: ChecklistSnapshot<NamedTask<TTasks>>;
     }>;
 
+export type ChecklistsStorage = Readonly<{
+  /** Saved after each change to a Task's status. */
+  tasks?: StorageAdapter<StoredTasks>;
+  /**
+   * The active Task and where its walkthrough is, saved as it starts, moves,
+   * collapses, resumes and stops. Restored once the Task statuses are in.
+   */
+  walkthrough?: StorageAdapter<StoredChecklistWalkthrough>;
+  /** In ms, since the last change. An older walkthrough is not restored. Defaults to a day. */
+  maxAge?: number;
+}>;
+
 export type ChecklistsOptions<
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,
-> = Persistence &
-  Readonly<{
-    onChange?: (stored: Stored) => void;
-    onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
-    /** Your `onEvent` is called after the owner has handled the event. */
-    run?: Omit<RunOptions<StepOf<TTasks[keyof TTasks]>>, "startAt" | "ui">;
-  }>;
-
-type Persistence =
-  | Readonly<{
-      stored?: Stored;
-      storage?: never;
-    }>
-  | Readonly<{
-      /** Loaded once at creation, saved after each change. `load()` does not save; `clear()` does. */
-      storage: StoredRecord;
-      stored?: never;
-    }>;
+> = Readonly<{
+  /**
+   * Until a Promise from `tasks.load` settles, the owner is `loading`: it holds
+   * commands and runs them in order once the statuses are in.
+   */
+  storage?: ChecklistsStorage;
+  /**
+   * Task statuses already in hand, such as ones fetched for a server render.
+   * Given these, the owner does not load `storage.tasks`; it still saves to it.
+   */
+  initial?: StoredTasks;
+  onChange?: (stored: StoredTasks) => void;
+  /** Without one, storage failures are logged. */
+  onStorageError?: (error: unknown, record: "tasks" | "walkthrough") => void;
+  onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
+  /** Your `onEvent` is called after the owner has handled the event. */
+  run?: Omit<
+    RunOptions<StepOf<TTasks[keyof TTasks]>>,
+    "startAt" | "collapsed" | "resumed" | "ui" | "storage" | "onStorageError"
+  >;
+}>;
 
 export type ChecklistViews<
   TTasks,
@@ -175,6 +200,7 @@ export type ChecklistViews<
 
 export type ChecklistsSnapshot<TTasks> = Readonly<{
   active: ActiveTask<NamedTask<TTasks>> | null;
+  storageStatus: StorageStatus;
 }>;
 
 export type ActiveSnapshot<TTasks> = Readonly<{
@@ -209,10 +235,14 @@ export type Checklists<
   waymarkPadding: number;
 
   getSnapshot: () => ChecklistsSnapshot<TTasks>;
+  /** The snapshot from before storage was read, for a server render and the hydration after it. */
+  getServerSnapshot: () => ChecklistsSnapshot<TTasks>;
   /** Calls the listener at once, then on each change. */
   subscribe: (
     listener: (snapshot: ChecklistsSnapshot<TTasks>) => void,
   ) => () => void;
+  /** Settles once the Task statuses are in, read or not; it never rejects. */
+  ready: Promise<void>;
   /**
    * Use this, not `subscribe`, to draw guidance. A Run watches the page only
    * while subscribed, so one read through `subscribe` alone never finds its
@@ -224,8 +254,8 @@ export type Checklists<
 
   /** A condition that holds completes a skipped Task too. */
   update: (context: TContext) => void;
-  /** No `onChange`, no events. */
-  load: (stored: Stored) => void;
+  /** No `onChange`, no events, and nothing saved. */
+  load: (stored: StoredTasks) => void;
   /** Also removes unknown ids. Calls `onChange` but emits no events, and keeps the active Run. */
   clear: () => void;
 }>;

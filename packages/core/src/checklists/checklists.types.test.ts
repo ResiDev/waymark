@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from "vitest";
 import { createChecklists } from "./checklists";
-import type { Stored } from "./record";
+import type { StoredTasks } from "../storage/records";
 import type { ChecklistsEvent, StepOf, Task } from "./types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Run } from "../run/types";
@@ -348,12 +348,12 @@ describe("createChecklists types", () => {
   });
 
   it("accepts a stored record and an event handler typed over the owner", () => {
-    const stored: Stored = { x: "done", y: "skipped", z: "reopened" };
+    const stored: StoredTasks = { version: 3, tasks: { x: "done", y: "skipped", z: "reopened" } };
     const owner = createChecklists({
       context: {},
       tasks: { a: {} },
       checklists: { all: ["a"] },
-      stored,
+      initial: stored,
     });
     type Event = ChecklistsEvent<{ a: {} }, { all: readonly ["a"] }>;
     const handler = (event: Event) => event.type;

@@ -1,15 +1,18 @@
-import type { ActiveTask, ChecklistSnapshot, TaskStatus } from "./types";
+import type { ActiveTask, ChecklistSnapshot, StorageStatus, TaskStatus } from "./types";
 
 export type View<TTask extends { readonly id: string }> = {
   readonly name: string;
   readonly tasks: readonly TTask[];
   snapshot: ChecklistSnapshot<TTask>;
+  /** The snapshot from before storage was read. */
+  serverSnapshot: ChecklistSnapshot<TTask>;
   readonly listeners: Set<(snapshot: ChecklistSnapshot<TTask>) => void>;
 };
 
 export type ViewSource<TTask extends { readonly id: string }> = Readonly<{
   status: (id: string) => TaskStatus;
   active: () => ActiveTask<TTask> | null;
+  storageStatus: () => StorageStatus;
 }>;
 
 export function createView<TTask extends { readonly id: string }>(
@@ -17,12 +20,8 @@ export function createView<TTask extends { readonly id: string }>(
   tasks: readonly TTask[],
   source: ViewSource<TTask>,
 ): View<TTask> {
-  return {
-    name,
-    tasks,
-    snapshot: snapshotOf(tasks, source),
-    listeners: new Set(),
-  };
+  const snapshot = snapshotOf(tasks, source);
+  return { name, tasks, snapshot, serverSnapshot: snapshot, listeners: new Set() };
 }
 
 // A view that did not change keeps its snapshot, so identity means "nothing to redraw".
@@ -61,6 +60,7 @@ function snapshotOf<TTask extends { readonly id: string }>(
       active !== null && tasks.some((task) => task.id === active.task.id)
         ? active
         : null,
+    storageStatus: source.storageStatus(),
   };
 }
 
@@ -69,4 +69,5 @@ const sameSnapshot = <TTask extends { readonly id: string }>(
   b: ChecklistSnapshot<TTask>,
 ): boolean =>
   a.active === b.active &&
+  a.storageStatus === b.storageStatus &&
   a.tasks.every((row, index) => row.status === b.tasks[index]?.status);

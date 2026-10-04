@@ -28,7 +28,7 @@ const dist = { waymark: `${packages}core/dist/index.js`, "react-waymark": `${pac
 const cases: Record<string, string> = {
   "react/all": `export * from "react-waymark";`,
   "react/walkthrough": `export { defineWalkthrough, Walkthrough } from "react-waymark";`,
-  "react/headless": `export { createChecklists, createLocalStorageRecord, useChecklist } from "react-waymark";`,
+  "react/headless": `export { createChecklists, localStorageAdapter, useChecklist } from "react-waymark";`,
   "core/all": `export * from "waymark";`,
   "core/run": `export { createRun, defineWalkthrough } from "waymark";`,
   "core/checklists": `export { createChecklists } from "waymark";`,

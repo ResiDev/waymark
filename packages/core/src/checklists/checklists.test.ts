@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createChecklists } from "./checklists";
-import type { Stored } from "./record";
+import type { StoredTasks } from "../storage/records";
 import type { ChecklistSelections, ChecklistsEvent, Task, TaskMap } from "./types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 
@@ -13,9 +13,12 @@ type Context = typeof context;
 /** An event from any owner in this file: `Task<never>` accepts a condition on any context. */
 type AnyEvent = ChecklistsEvent<TaskMap<never>, ChecklistSelections<TaskMap<never>>>;
 
+/** Task statuses as storage holds them. */
+const saved = (tasks: StoredTasks["tasks"]): StoredTasks => ({ version: 3, tasks });
+
 type Options = {
-  stored?: Stored;
-  onChange?: (stored: Stored) => void;
+  initial?: StoredTasks;
+  onChange?: (stored: StoredTasks) => void;
   onEvent?: (event: AnyEvent) => void;
 };
 
@@ -53,7 +56,7 @@ describe("createChecklists", () => {
   it.each(["constructor", "toString", "__proto__"])(
     "supports %s as both a task id and checklist name",
     (name) => {
-      const onChange = vi.fn<(stored: Stored) => void>();
+      const onChange = vi.fn<(stored: StoredTasks) => void>();
       const owner = createChecklists({
         context: {},
         tasks: { [name]: { walkthrough: single } },
@@ -69,15 +72,15 @@ describe("createChecklists", () => {
       view.skip(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       const stored = onChange.mock.calls[0]![0];
-      expect(Object.hasOwn(stored, name)).toBe(true);
-      expect(stored[name]).toBe("skipped");
+      expect(Object.hasOwn(stored.tasks, name)).toBe(true);
+      expect(stored.tasks[name]).toBe("skipped");
 
       owner.clear();
-      owner.load(JSON.parse(JSON.stringify(stored)) as Stored);
+      owner.load(JSON.parse(JSON.stringify(stored)) as StoredTasks);
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       view.markDone(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("done");
-      expect(onChange.mock.lastCall![0]).toEqual({ [name]: "done" });
+      expect(onChange.mock.lastCall![0]).toEqual(saved({ [name]: "done" }));
     },
   );
 
@@ -113,7 +116,7 @@ describe("createChecklists", () => {
     ]);
 
     owner.checklists.main.skip("hello");
-    expect(onChange).toHaveBeenLastCalledWith({ hello: "skipped" });
+    expect(onChange).toHaveBeenLastCalledWith(saved({ hello: "skipped" }));
   });
 
   it("rejects definitions it cannot show", () => {
@@ -159,30 +162,30 @@ describe("createChecklists", () => {
     const owner = setup({ context: { hasDeck: true, hasPhoto: false }, onChange, onEvent });
     expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "done" });
     expect(owner.checklists.decks.getSnapshot().complete).toBe(true);
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "done" });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "create-deck": "done" }));
     expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("does not save the record it starts from", () => {
     const onChange = vi.fn();
-    const owner = setup({ stored: { "read-tips": "done", "say-hello": "skipped" }, onChange });
+    const owner = setup({ initial: saved({ "read-tips": "done", "say-hello": "skipped" }), onChange });
     expect(onChange).not.toHaveBeenCalled();
     expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "done", "say-hello": "skipped" });
 
     owner.markDone("say-hello");
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "read-tips": "done", "say-hello": "done" });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "read-tips": "done", "say-hello": "done" }));
   });
 
   it("preserves unknown ids across local changes", () => {
     const onChange = vi.fn();
-    const owner = setup({ stored: { zeta: "done", gone: "skipped", old: "reopened" }, onChange });
+    const owner = setup({ initial: saved({ zeta: "done", gone: "skipped", old: "reopened" }), onChange });
     owner.checklists.decks.skip("create-deck");
-    expect(onChange).toHaveBeenLastCalledWith({
+    expect(onChange).toHaveBeenLastCalledWith(saved({
       zeta: "done",
       gone: "skipped",
       old: "reopened",
       "create-deck": "skipped",
-    });
+    }));
   });
 });
 
@@ -204,7 +207,7 @@ describe("update", () => {
     expect(statuses(owner.checklists.decks)["create-deck"]).toBe("done");
     expect(home).toHaveBeenCalledOnce();
     expect(decks).toHaveBeenCalledOnce();
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "done" });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "create-deck": "done" }));
     expect(types(onEvent)).toEqual(["taskComplete:create-deck", "checklistComplete:decks"]);
     const complete = onEvent.mock.calls[1]![0] as Extract<AnyEvent, { type: "checklistComplete" }>;
     expect(complete.snapshot).toBe(owner.checklists.decks.getSnapshot());
@@ -222,7 +225,7 @@ describe("update", () => {
         a: { isComplete: (c) => (seen.push("a"), c.ready) },
       },
       checklists: { all: ["a", "b"] },
-      stored: { "unknown-task": "done", a: "skipped", "unknown-skipped": "skipped" },
+      initial: saved({ "unknown-task": "done", a: "skipped", "unknown-skipped": "skipped" }),
       onEvent,
       onChange,
     });
@@ -234,12 +237,12 @@ describe("update", () => {
     owner.update({ ready: true });
     expect(seen).toEqual(["b", "a"]);
     expect(listener).toHaveBeenCalledOnce();
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({
       "unknown-task": "done",
       a: "done",
       b: "done",
       "unknown-skipped": "skipped",
-    });
+    }));
     expect(types(onEvent)).toEqual(["taskComplete:b", "taskComplete:a", "checklistComplete:all"]);
   });
 
@@ -400,7 +403,7 @@ describe("guidance", () => {
 
     expect(owner.getSnapshot().active).toBeNull();
     expect(statuses(owner.checklists.home)["read-tips"]).toBe("done");
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "read-tips": "done" });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "read-tips": "done" }));
     expect(types(onEvent)).toEqual(["taskStopped:read-tips", "taskComplete:read-tips"]);
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
   });
@@ -506,7 +509,7 @@ describe("subscribe", () => {
     owner.checklists.home.subscribe(view);
     owner.subscribe(own);
     expect(view).toHaveBeenCalledExactlyOnceWith(owner.checklists.home.getSnapshot());
-    expect(own).toHaveBeenCalledExactlyOnceWith({ active: null });
+    expect(own).toHaveBeenCalledExactlyOnceWith({ active: null, storageStatus: "ready" });
 
     owner.start("read-tips");
     expect(view).toHaveBeenLastCalledWith(owner.checklists.home.getSnapshot());
@@ -633,7 +636,7 @@ describe("markDone and skip", () => {
     expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
     expect(owner.getSnapshot().active).toBeNull();
     expect(run.getSnapshot().phase).toBe("exited");
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({ "create-deck": "skipped" });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "create-deck": "skipped" }));
     expect(types(onEvent)).toEqual([
       "taskStopped:create-deck",
       "taskSkipped:create-deck",
@@ -710,7 +713,7 @@ describe("toggle and markTodo", () => {
     expect(statuses(owner.checklists.home)["say-hello"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskComplete:say-hello", "taskReopened:say-hello"]);
     // No condition, so nothing to hold back: the record is empty again.
-    expect(onChange).toHaveBeenLastCalledWith({});
+    expect(onChange).toHaveBeenLastCalledWith(saved({}));
   });
 
   it("takes a skipped task back, in every view", () => {
@@ -734,13 +737,13 @@ describe("toggle and markTodo", () => {
     expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
 
     owner.checklists.home.toggle("add-photo");
-    expect(onChange).toHaveBeenLastCalledWith({ "add-photo": "reopened" });
+    expect(onChange).toHaveBeenLastCalledWith(saved({ "add-photo": "reopened" }));
 
     owner.update({ ...context, hasPhoto: true });
     expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
 
     owner.update({ ...context, hasPhoto: false });
-    expect(onChange).toHaveBeenLastCalledWith({});
+    expect(onChange).toHaveBeenLastCalledWith(saved({}));
 
     onEvent.mockClear();
     owner.update({ ...context, hasPhoto: true });
@@ -753,13 +756,13 @@ describe("toggle and markTodo", () => {
     const owner = setup({ context: { ...context, hasPhoto: true }, onChange });
     owner.checklists.home.toggle("add-photo");
     owner.checklists.home.toggle("add-photo");
-    expect(onChange).toHaveBeenLastCalledWith({ "add-photo": "done" });
+    expect(onChange).toHaveBeenLastCalledWith(saved({ "add-photo": "done" }));
   });
 
   it("holds a reopened task back across a reload", () => {
     const owner = setup({
       context: { ...context, hasPhoto: true },
-      stored: { "add-photo": "reopened" },
+      initial: saved({ "add-photo": "reopened" }),
     });
     expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
   });
@@ -785,45 +788,6 @@ describe("toggle and markTodo", () => {
   });
 });
 
-describe("storage", () => {
-  const storageOf = (saved: Stored) => {
-    const calls: string[] = [];
-    return {
-      calls,
-      storage: {
-        load: vi.fn(() => saved),
-        save: vi.fn(() => {
-          calls.push("save");
-        }),
-      },
-    };
-  };
-
-  it("loads once at creation and saves each local change before onChange", () => {
-    const { calls, storage } = storageOf({ hello: "done" });
-    const onChange = vi.fn(() => {
-      calls.push("onChange");
-    });
-    const owner = createChecklists({ tasks: { hello: {}, invite: {} }, storage, onChange });
-    expect(storage.load).toHaveBeenCalledOnce();
-    expect(statuses(owner.checklists.main)).toEqual({ hello: "done", invite: "todo" });
-
-    owner.checklists.main.skip("invite");
-    expect(storage.save).toHaveBeenCalledExactlyOnceWith({ hello: "done", invite: "skipped" });
-    expect(calls).toEqual(["save", "onChange"]);
-  });
-
-  it("saves a clear but not a load", () => {
-    const { storage } = storageOf({ hello: "done" });
-    const owner = createChecklists({ tasks: { hello: {} }, storage });
-    owner.load({});
-    expect(storage.save).not.toHaveBeenCalled();
-    owner.markDone("hello");
-    owner.clear();
-    expect(storage.save).toHaveBeenLastCalledWith({});
-  });
-});
-
 describe("load and clear", () => {
   it("replaces the record without saving or announcing, and notifies changed views", () => {
     const onChange = vi.fn();
@@ -839,7 +803,7 @@ describe("load and clear", () => {
     onChange.mockClear();
     onEvent.mockClear();
 
-    owner.load({ ghost: "done", "add-photo": "skipped" });
+    owner.load(saved({ ghost: "done", "add-photo": "skipped" }));
 
     expect(statuses(owner.checklists.home)).toEqual({
       "add-photo": "skipped",
@@ -853,17 +817,17 @@ describe("load and clear", () => {
     expect(onEvent).not.toHaveBeenCalled();
 
     owner.markDone("read-tips");
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({
       ghost: "done",
       "add-photo": "skipped",
       "read-tips": "done",
-    });
+    }));
   });
 
   it("clears everything once, keeps the Run, and is a no-op when already empty", () => {
     const onChange = vi.fn();
     const onEvent = vi.fn();
-    const owner = setup({ stored: { ghost: "done", gone: "skipped" }, onChange, onEvent });
+    const owner = setup({ initial: saved({ ghost: "done", gone: "skipped" }), onChange, onEvent });
     owner.markDone("say-hello");
     owner.checklists.decks.skip("create-deck");
     owner.start("add-photo");
@@ -875,7 +839,7 @@ describe("load and clear", () => {
 
     owner.clear();
 
-    expect(onChange).toHaveBeenCalledExactlyOnceWith({});
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({}));
     expect(onEvent).not.toHaveBeenCalled();
     expect(listener).toHaveBeenCalledOnce();
     expect(statuses(owner.checklists.home)).toEqual({
@@ -969,7 +933,7 @@ describe("re-entrancy and errors", () => {
         expect(statuses(owner.checklists.first)["a"]).toBe("done");
         expect(owner.getSnapshot().active?.task.id ?? null).toBe(command === "start" ? "b" : null);
         expect(run.getSnapshot().phase).toBe("completed");
-        expect(onChange).toHaveBeenCalledExactlyOnceWith({ a: "done" });
+        expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ a: "done" }));
         expect(types(onEvent)).toEqual([
           "taskStopped:a",
           "taskComplete:a",

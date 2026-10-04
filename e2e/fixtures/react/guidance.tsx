@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import {
   createChecklists,
-  createLocalStorageRecord,
   defineWalkthrough,
+  localStorageAdapter,
   Walkthrough,
   type ChecklistsEvent,
   type ReactTask,
   type Snapshot,
+  type StoredTasks,
   type WalkthroughRenderProps,
 } from "react-waymark";
 import { CustomPopover } from "./popover";
@@ -109,9 +110,10 @@ const contextOf = (app: AppData) => ({
   emailVerified: app.emailVerified,
 });
 
-const storage = createLocalStorageRecord("waymark-react-checklists");
+const TASKS_KEY = "waymark-react-checklists";
 
-export const stored = createStore(storage.load());
+/** What localStorage holds now, shown in the lab and updated on each save. */
+export const stored = createStore<StoredTasks | null>(JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null"));
 
 const describeEvent = (event: ChecklistsEvent<any, any>): string => {
   switch (event.type) {
@@ -190,7 +192,10 @@ export const owner = createChecklists({
     decks: ["create-deck"],
     settings: ["add-photo", "pick-theme", "verify-email"],
   },
-  storage,
+  storage: {
+    tasks: localStorageAdapter(TASKS_KEY),
+    walkthrough: localStorageAdapter("waymark-react-walkthrough"),
+  },
   onChange: (next) => stored.set(next),
   onEvent: (event) => record("owner", describeEvent(event)),
   run: {

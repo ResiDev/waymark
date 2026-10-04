@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import type { Snapshot, Stored } from "react-waymark";
+import type { Snapshot, StoredTasks } from "react-waymark";
 import type { Action } from "waymark";
 import { App } from "./app";
 import { owner, stored } from "./guidance";
@@ -60,7 +60,7 @@ declare global {
       watched: () => string | null;
       whatsNew: () => void;
       log: () => string[];
-      stored: () => Stored;
+      stored: () => StoredTasks | null;
       /** Clears guidance, progress, app data and the log without a reload. */
       reset: () => void;
     };

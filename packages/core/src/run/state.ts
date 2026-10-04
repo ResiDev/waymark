@@ -11,6 +11,8 @@ export type State<TStep extends Step = Step> = Readonly<{
   snapshot: Snapshot<TStep>;
   stepGeneration: number;
   started: boolean;
+  /** Picked up where an earlier page left it: it began there, so `start` is not sent again. */
+  resumed: boolean;
   mounted: boolean;
   element: Element | null;
   satisfied: boolean;
@@ -61,56 +63,75 @@ export function stepAt<TStep extends Step>(
   return step;
 }
 
+/** Everything but the Snapshot, as a new step or a new phase begins. */
+const fresh = <TStep extends Step>(
+  snapshot: Snapshot<TStep>,
+  previous: State<TStep> | undefined,
+  unlocked = false,
+): State<TStep> => ({
+  snapshot,
+  stepGeneration: previous ? previous.stepGeneration + 1 : 0,
+  started: previous?.started ?? false,
+  resumed: previous?.resumed ?? false,
+  mounted: previous?.mounted ?? false,
+  element: null,
+  satisfied: false,
+  unlocked,
+  scrolled: false,
+  heldSince: undefined,
+  unseenSince: undefined,
+});
+
 export function enter<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   index: number,
   previous?: State<TStep>,
+  collapsed = false,
 ): State<TStep> {
   const step = stepAt(walkthrough, index);
   const unlocked = step.advance === undefined;
   const waymark = hasWaymark(step) ? SEARCHING : ABSENT;
-  return {
-    snapshot: {
-      phase: "running",
-      step,
-      stepIndex: index,
-      stepCount: walkthrough.steps.length,
-      canAdvance: gateOpen(unlocked, waymark),
-      collapsed: false,
-      waymark,
-    },
-    stepGeneration: previous ? previous.stepGeneration + 1 : 0,
-    started: previous?.started ?? false,
-    mounted: previous?.mounted ?? false,
-    element: null,
-    satisfied: false,
-    unlocked,
-    scrolled: false,
-    heldSince: undefined,
-    unseenSince: undefined,
+  const snapshot: Running<TStep> = {
+    phase: "running",
+    step,
+    stepIndex: index,
+    stepCount: walkthrough.steps.length,
+    canAdvance: gateOpen(unlocked, waymark),
+    collapsed,
+    waymark,
   };
+  return fresh(snapshot, previous, unlocked);
 }
 
 export function end<TStep extends Step>(
   previous: State<TStep>,
+  running: Running<TStep>,
   phase: "completed" | "exited",
 ): State<TStep> {
-  return {
-    snapshot: {
-      phase,
-      stepIndex: previous.snapshot.stepIndex,
-      stepCount: previous.snapshot.stepCount,
-    },
-    stepGeneration: previous.stepGeneration + 1,
-    started: previous.started,
-    mounted: previous.mounted,
-    element: null,
-    satisfied: false,
-    unlocked: false,
-    scrolled: false,
-    heldSince: undefined,
-    unseenSince: undefined,
-  };
+  const snapshot = { phase, stepIndex: running.stepIndex, stepCount: running.stepCount };
+  return fresh(snapshot, previous);
+}
+
+export const loading = <TStep extends Step>(walkthrough: Walkthrough<TStep>): State<TStep> =>
+  fresh({ phase: "loading", stepCount: walkthrough.steps.length }, undefined);
+
+/** Where a Run begins: as asked, or as storage left it. */
+export type Start =
+  | Readonly<{ phase: "running"; step: number; collapsed: boolean; resumed: boolean }>
+  | Readonly<{ phase: "completed" | "exited" }>;
+
+export function begin<TStep extends Step>(
+  walkthrough: Walkthrough<TStep>,
+  start: Start,
+  previous?: State<TStep>,
+): State<TStep> {
+  if (start.phase === "running") {
+    return { ...enter(walkthrough, start.step, previous, start.collapsed), resumed: start.resumed };
+  }
+  // Storage keeps no step for an ended Run; these are the ones it would have ended on.
+  const stepCount = walkthrough.steps.length;
+  const stepIndex = start.phase === "completed" ? stepCount - 1 : 0;
+  return fresh({ phase: start.phase, stepIndex, stepCount }, previous);
 }
 
 /**

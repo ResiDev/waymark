@@ -9,7 +9,7 @@ export {
   ChecklistTaskTitle,
   ChecklistTrigger,
 } from "./parts";
-export { createLocalStorageRecord, DEFAULT_CHECKLIST } from "waymark";
+export { DEFAULT_CHECKLIST, localStorageAdapter } from "waymark";
 
 export type {
   AnyReactTask,
@@ -44,12 +44,17 @@ export type {
   ChecklistsEvent,
   ChecklistsOptions,
   ChecklistsSnapshot,
+  ChecklistsStorage,
   DefaultChecklists,
   NamedTask,
   SelectedTask,
+  RunStorage,
   StepOf,
-  Stored,
-  StoredRecord,
+  StorageAdapter,
+  StorageStatus,
+  StoredChecklistWalkthrough,
+  StoredTasks,
+  StoredWalkthrough,
   Task,
   TaskCommands,
   TaskId,

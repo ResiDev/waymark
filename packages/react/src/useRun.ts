@@ -3,11 +3,12 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
   type RefObject,
 } from "react";
 import { createRun } from "waymark";
-import type { Run, RunEvent, UiElements, Walkthrough } from "waymark";
+import type { Run, RunEvent, RunStorage, UiElements, Walkthrough } from "waymark";
 import type { WalkthroughStep } from "./types";
 
 export type UiRefs = Readonly<{
@@ -40,28 +41,43 @@ export function useOwnedRun<TStep extends WalkthroughStep>({
   walkthrough,
   waymarkPadding,
   onEvent,
+  storage,
+  onStorageError,
   ui,
 }: {
   walkthrough: Walkthrough<TStep>;
   waymarkPadding: number;
   onEvent?: ((event: RunEvent<TStep>) => void) | undefined;
+  storage?: RunStorage | undefined;
+  onStorageError?: ((error: unknown) => void) | undefined;
   ui: () => UiElements;
 }): Run<TStep> {
   const eventRef = useRef(onEvent);
+  const storageErrorRef = useRef(onStorageError);
   useLayoutEffect(() => {
     eventRef.current = onEvent;
-  }, [onEvent]);
+    storageErrorRef.current = onStorageError;
+  }, [onEvent, onStorageError]);
+  // The first ones only: an inline object is new each render, and a new Run
+  // for each would reload storage and start the walkthrough over. Without a
+  // handler, core logs the failure.
+  const [firstStorage] = useState(storage);
+  const [handlesStorageErrors] = useState(onStorageError !== undefined);
 
   return useMemo(
     () =>
-      // The closure reads the ref when the Run fires, not during render.
+      // The closures read the refs when the Run fires, not during render.
       // oxlint-disable-next-line react/refs
       createRun(walkthrough, {
         root: document,
         waymarkPadding,
         onEvent: (event) => eventRef.current?.(event),
+        ...(firstStorage && { storage: firstStorage }),
+        ...(handlesStorageErrors && {
+          onStorageError: (error) => storageErrorRef.current?.(error),
+        }),
         ui,
       }),
-    [waymarkPadding, walkthrough, ui],
+    [waymarkPadding, walkthrough, ui, firstStorage, handlesStorageErrors],
   );
 }

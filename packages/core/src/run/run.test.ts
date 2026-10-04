@@ -1009,11 +1009,12 @@ describe("createRun", () => {
     const run = createRun(defineWalkthrough([{}, {}, {}]));
     const seenByFirst: number[] = [];
     const seenBySecond: number[] = [];
+    const stepIndex = () => (run.getSnapshot() as Running).stepIndex;
     run.subscribe(skipFirstCall(() => {
-      seenByFirst.push(run.getSnapshot().stepIndex);
-      if (run.getSnapshot().stepIndex === 1) run.act("advance");
+      seenByFirst.push(stepIndex());
+      if (stepIndex() === 1) run.act("advance");
     }));
-    run.subscribe(skipFirstCall(() => seenBySecond.push(run.getSnapshot().stepIndex)));
+    run.subscribe(skipFirstCall(() => seenBySecond.push(stepIndex())));
 
     run.act("advance");
 

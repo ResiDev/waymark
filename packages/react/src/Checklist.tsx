@@ -14,7 +14,7 @@ export function useChecklist<TTask extends AnyReactTask>(
   const snapshot = useSyncExternalStore(
     checklist.subscribe,
     checklist.getSnapshot,
-    checklist.getSnapshot,
+    checklist.getServerSnapshot,
   );
   return useMemo(
     () => ({
@@ -201,7 +201,12 @@ export function Checklist<TTask extends AnyReactTask>({
   const text = { ...DEFAULT_LABELS, ...labels };
 
   return (
-    <div role="group" aria-label="Checklist" style={{ ...panelStyle, ...style }}>
+    <div
+      role="group"
+      aria-label="Checklist"
+      aria-busy={snapshot.storageStatus === "loading"}
+      style={{ ...panelStyle, ...style }}
+    >
       <div style={{ color: "#475569" }}>
         {snapshot.finishedCount} of {snapshot.taskCount} done
       </div>

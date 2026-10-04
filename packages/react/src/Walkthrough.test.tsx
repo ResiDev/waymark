@@ -1,7 +1,14 @@
 import { act, StrictMode } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createChecklists, defineWalkthrough, Walkthrough, type WalkthroughRenderProps } from "./index";
+import {
+  createChecklists,
+  defineWalkthrough,
+  localStorageAdapter,
+  Walkthrough,
+  type WalkthroughRenderProps,
+} from "./index";
 
 let root: Root;
 let host: HTMLDivElement;
@@ -332,6 +339,78 @@ describe("Walkthrough", () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(target).not.toHaveAttribute("aria-haspopup");
     expect(frames.size).toBe(0);
+  });
+});
+
+describe("Walkthrough with storage", () => {
+  afterEach(() => localStorage.clear());
+
+  const walkthrough = defineWalkthrough([
+    { content: "First step" },
+    { content: "Second step" },
+    { content: "Third step" },
+  ]);
+  const tour = localStorageAdapter("tour");
+  // A new object each render, as an app would write it.
+  const view = () => <Walkthrough walkthrough={walkthrough} storage={{ walkthrough: tour }} />;
+  const dialog = () => document.querySelector('[role="dialog"]');
+
+  it("reads storage once as it mounts, and picks up its place on the next mount", async () => {
+    const load = vi.spyOn(tour, "load");
+    await act(async () => root.render(view()));
+    await act(async () => buttonNamed("Next")!.click());
+    expect(dialog()).toHaveTextContent("Second step");
+
+    await act(async () => root.render(view()));
+    expect(load).toHaveBeenCalledOnce();
+
+    await act(async () => root.unmount());
+    root = createRoot(host);
+    await act(async () => root.render(view()));
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(dialog()).toHaveTextContent("Second step");
+  });
+
+  it.each([true, false])(
+    "hydrates a server render, which has no document, then shows the stored step (portal %s)",
+    async (portal) => {
+      localStorage.setItem(
+        "tour",
+        JSON.stringify({ version: 1, phase: "running", step: 1, stepCount: 3, collapsed: false, savedAt: Date.now() }),
+      );
+      const app = () => (
+        <Walkthrough walkthrough={walkthrough} storage={{ walkthrough: tour }} portal={portal} />
+      );
+      vi.stubGlobal("document", undefined);
+      let server: string;
+      try {
+        server = renderToString(app());
+      } finally {
+        vi.unstubAllGlobals();
+      }
+
+      const page = document.createElement("div");
+      document.body.append(page);
+      page.innerHTML = server;
+      const onRecoverableError = vi.fn();
+      const error = vi.spyOn(console, "error");
+      let hydrated: Root | undefined;
+      await act(async () => {
+        hydrated = hydrateRoot(page, app(), { onRecoverableError });
+      });
+
+      expect(onRecoverableError).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
+      expect(dialog()).toHaveTextContent("Second step");
+      await act(async () => hydrated?.unmount());
+    },
+  );
+
+  it("shows nothing for a walkthrough storage says was finished", async () => {
+    localStorage.setItem("tour", JSON.stringify({ version: 1, phase: "completed" }));
+    await act(async () => root.render(view()));
+    expect(dialog()).toBeNull();
+    expect(shade()).toBeNull();
   });
 });
 

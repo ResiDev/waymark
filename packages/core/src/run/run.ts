@@ -2,13 +2,23 @@ import { keyAction, whereClicked } from "./input";
 import { createQueue } from "../queue";
 import { apply, liveWatchers, needsAdvanceRead, sameWaymarkAria, sameWaymarkEvents } from "./rules";
 import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
-import { enter, stepAt } from "./state";
-import type { State } from "./state";
+import { begin, loading, stepAt } from "./state";
+import type { Start, State } from "./state";
+import { loadFrom, reporter, saveTo } from "../storage/adapter";
+import type { StorageAdapter } from "../storage/adapter";
+import { DEFAULT_MAX_AGE, isCurrent, parseWalkthrough, storedWalkthrough } from "../storage/records";
+import type { StoredWalkthrough } from "../storage/records";
 import { checkOf, selectorOf } from "../walkthrough/walkthrough";
 import type { Action, Rect, Run, RunOptions, Snapshot, UiElements } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
 const NO_UI: UiElements = { dialog: null, beacon: null };
+
+/** What storage keeps of a Snapshot: its phase, step and whether it is collapsed. */
+const sameStored = (a: Snapshot, b: Snapshot): boolean => {
+  if (a.phase !== "running" || b.phase !== "running") return a.phase === b.phase;
+  return a.stepIndex === b.stepIndex && a.collapsed === b.collapsed;
+};
 
 const inViewport = (rect: Rect): boolean =>
   rect.bottom > 0 &&
@@ -69,8 +79,20 @@ export function createRun<TStep extends Step>(
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;
 
+  const storage = options.storage?.walkthrough;
+  const maxAge = options.storage?.maxAge ?? DEFAULT_MAX_AGE;
+  const report = reporter("walkthrough", options.onStorageError);
+  const asked: Start = {
+    phase: "running",
+    step: options.startAt ?? 0,
+    collapsed: options.collapsed ?? false,
+    resumed: options.resumed ?? false,
+  };
+
   const listeners = new Set<(snapshot: Snapshot<TStep>) => void>();
-  let state: State<TStep> = enter(walkthrough, options.startAt ?? 0);
+  let state: State<TStep> = storage ? loading(walkthrough) : begin(walkthrough, asked);
+  /** Actions asked for while loading, run once the Run has begun. */
+  const held: Action[] = [];
 
   const queue = createQueue("Run callbacks failed.");
 
@@ -89,13 +111,22 @@ export function createRun<TStep extends Step>(
 
     const after = state.snapshot;
     if (after !== before.snapshot) queue.notify(listeners, after);
+    // Restoring saves nothing: storage already holds it.
+    if (storage && message.kind !== "loaded" && !sameStored(before.snapshot, after)) {
+      const saved = storedWalkthrough(after);
+      queue.invoke(() => saveTo(storage, saved, report));
+    }
+
+    // A loading Run takes no actions, so it has no events.
+    const from = before.snapshot;
+    if (from.phase === "loading") return;
     // After notify, so an onEvent handler sees a renderer that has already redrawn.
     for (const type of outcome.events) {
       queue.invoke(() =>
         options.onEvent?.({
           type,
-          step: stepAt(walkthrough, before.snapshot.stepIndex),
-          stepIndex: before.snapshot.stepIndex,
+          step: stepAt(walkthrough, from.stepIndex),
+          stepIndex: from.stepIndex,
           snapshot: after,
         }),
       );
@@ -201,8 +232,41 @@ export function createRun<TStep extends Step>(
     waymarkEvents = syncWatcher(waymarkEvents, live.waymarkEvents, openWaymarkEvents, sameWaymarkEvents);
   }
 
+  /** A stored Run that cannot be picked up again starts as asked, and its record is wiped. */
+  const startFrom = (adapter: StorageAdapter<StoredWalkthrough>, value: unknown): Start => {
+    const parsed = parseWalkthrough(value);
+    if (!parsed.ok) {
+      report(parsed.error);
+    } else {
+      const saved = parsed.value;
+      if (saved === null) return asked;
+      if (saved.phase !== "running") return saved;
+      if (isCurrent(saved, walkthrough.steps.length, maxAge)) {
+        return { phase: "running", step: saved.step, collapsed: saved.collapsed, resumed: true };
+      }
+    }
+    saveTo(adapter, null, report);
+    return asked;
+  };
+
+  if (storage) {
+    const arrive = (value: unknown) => {
+      send({ kind: "loaded", start: startFrom(storage, value) });
+      // A subscriber that came while loading has not seen the Run start.
+      if (listeners.size > 0) queue.now(() => sendRead({ kind: "start" }));
+      for (const action of held.splice(0)) send({ kind: "act", action });
+    };
+    loadFrom(storage, arrive, (error) => {
+      report(error);
+      arrive(null);
+    });
+  }
+
   return {
-    act: (action: Action) => send({ kind: "act", action }),
+    act: (action: Action) => {
+      if (state.snapshot.phase === "loading") held.push(action);
+      else send({ kind: "act", action });
+    },
     getSnapshot: (): Snapshot<TStep> => state.snapshot,
     subscribe: (listener) => {
       const first = listeners.size === 0;

@@ -17,6 +17,20 @@ import type {
 } from "./types";
 import { useOwnedRun, useRunView, useUiRefs, type UiRefs } from "./useRun";
 
+const subscribeNever = () => () => {};
+
+/**
+ * False on the server and while React hydrates its HTML, true after. A server
+ * cannot read the browser's storage, so it draws no walkthrough; drawing one
+ * straight away in the browser would not match.
+ */
+const useDrawn = () =>
+  useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
+
 export function Walkthrough<TStep extends WalkthroughStep>(
   props: WalkthroughProps<TStep>,
 ): ReactElement | null;
@@ -36,7 +50,7 @@ export function Walkthrough<
     | WalkthroughProps<TStep>
     | ChecklistWalkthroughProps<never, TTasks, TSelections>,
 ): ReactElement | null {
-  if (typeof document === "undefined") return null;
+  if (!useDrawn()) return null;
   if (props.checklists !== undefined) {
     return (
       <ChecklistGuidance
@@ -54,11 +68,13 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
   walkthrough,
   waymarkPadding = 20,
   onEvent,
+  storage,
+  onStorageError,
   renderPopover,
   portal = true,
 }: WalkthroughProps<TStep>) {
   const { dialogRef, beaconRef, ui } = useUiRefs();
-  const run = useOwnedRun({ walkthrough, waymarkPadding, onEvent, ui });
+  const run = useOwnedRun({ walkthrough, waymarkPadding, onEvent, storage, onStorageError, ui });
   return (
     <RunView
       run={run}
@@ -97,7 +113,7 @@ function ChecklistGuidance<
   const { active } = useSyncExternalStore(
     checklists.subscribe,
     checklists.getSnapshot,
-    checklists.getSnapshot,
+    checklists.getServerSnapshot,
   );
 
   useEffect(() => {

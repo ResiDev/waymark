@@ -1,5 +1,6 @@
 import type { ClickHit } from "./input";
 import {
+  begin,
   end,
   enter,
   gate,
@@ -11,7 +12,7 @@ import {
   noChange,
   show,
 } from "./state";
-import type { Outcome, State } from "./state";
+import type { Outcome, Start, State } from "./state";
 import {
   checkOf,
   delayOf,
@@ -20,7 +21,7 @@ import {
   isAuto,
   isClick,
 } from "../walkthrough/walkthrough";
-import type { Action, Location, Rect, RunEventType } from "./types";
+import type { Action, Location, Rect, RunEventType, Running } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
 /**
@@ -40,7 +41,8 @@ export type Message =
     }>
   | Readonly<{ kind: "event"; stepGeneration: number; now: number }>
   | Readonly<{ kind: "mounted" }>
-  | Readonly<{ kind: "unmounted" }>;
+  | Readonly<{ kind: "unmounted" }>
+  | Readonly<{ kind: "loaded"; start: Start }>;
 
 export function apply<TStep extends Step>(
   state: State<TStep>,
@@ -80,17 +82,22 @@ export function apply<TStep extends Step>(
       return mount(state, true);
     case "unmounted":
       return mount(state, false);
+    case "loaded":
+      return state.snapshot.phase === "loading"
+        ? { state: begin(walkthrough, message.start, state), events: NO_EVENTS }
+        : noChange(state);
   }
 }
 
 function advanceStep<TStep extends Step>(
   state: State<TStep>,
+  running: Running<TStep>,
   walkthrough: Walkthrough<TStep>,
 ): Outcome<TStep> {
-  const from = state.snapshot.stepIndex;
+  const from = running.stepIndex;
   return from + 1 < walkthrough.steps.length
     ? { state: enter(walkthrough, from + 1, state), events: ["advance"] }
-    : { state: end(state, "completed"), events: ["advance", "finish"] };
+    : { state: end(state, running, "completed"), events: ["advance", "finish"] };
 }
 
 function act<TStep extends Step>(
@@ -99,15 +106,18 @@ function act<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
 ): Outcome<TStep> {
   const snapshot = state.snapshot;
-  // Reset also applies to completed and exited runs.
-  if (action === "reset")
-    return { state: enter(walkthrough, 0, state), events: ["reset"] };
+  // Reset also applies to completed and exited runs. A loading Run has nothing to reset yet.
+  if (action === "reset") {
+    return snapshot.phase === "loading"
+      ? noChange(state)
+      : { state: enter(walkthrough, 0, state), events: ["reset"] };
+  }
   if (snapshot.phase !== "running") return noChange(state);
 
   switch (action) {
     case "advance":
       return snapshot.canAdvance
-        ? advanceStep(state, walkthrough)
+        ? advanceStep(state, snapshot, walkthrough)
         : noChange(state);
     case "previous":
       return snapshot.stepIndex === 0
@@ -131,7 +141,7 @@ function act<TStep extends Step>(
           }
         : noChange(state);
     case "exit":
-      return { state: end(state, "exited"), events: ["exit"] };
+      return { state: end(state, snapshot, "exited"), events: ["exit"] };
   }
 }
 
@@ -239,7 +249,7 @@ function whenDue<TStep extends Step>(
     return noChange(state);
   }
   return isAuto(snapshot.step)
-    ? advanceStep(state, walkthrough)
+    ? advanceStep(state, snapshot, walkthrough)
     : { state: gate(state, snapshot, { unlocked: true }), events: NO_EVENTS };
 }
 
@@ -323,7 +333,7 @@ function observe<TStep extends Step>(
 function start<TStep extends Step>(state: State<TStep>): Outcome<TStep> {
   return state.started || state.snapshot.phase !== "running"
     ? noChange(state)
-    : { state: { ...state, started: true }, events: ["start"] };
+    : { state: { ...state, started: true }, events: state.resumed ? NO_EVENTS : ["start"] };
 }
 
 function satisfy<TStep extends Step>(

@@ -6,6 +6,7 @@ import type {
   ChecklistSnapshot,
   NamedTask,
   RunEvent,
+  RunStorage,
   Running,
   Step,
   StepOf,
@@ -47,6 +48,10 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     active?: boolean;
     waymarkPadding?: number;
     onEvent?: (event: RunEvent<TStep>) => void;
+    /** Read once, as the walkthrough mounts. A finished walkthrough stays finished. */
+    storage?: RunStorage;
+    /** Without one, storage failures are logged. */
+    onStorageError?: (error: unknown) => void;
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
     /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
     portal?: boolean;
@@ -76,6 +81,8 @@ export type ChecklistWalkthroughProps<
   active?: never;
   waymarkPadding?: never;
   onEvent?: never;
+  storage?: never;
+  onStorageError?: never;
   renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
   /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
   portal?: boolean;
