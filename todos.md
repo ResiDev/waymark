@@ -23,17 +23,14 @@ step can set its own `missingAfterMs`. Left to do:
 - Overlay clicks: make a click on the shade configurable to block, collapse or
   pass through.
 
-## Placement
-- Side placements should also check for height.
-- Vertical placements should check for width.
-
 ## Docs and packaging
 - No READMEs yet, for either package or the repo.
 - Both packages are at 0.0.0.
 
 ## One error channel
-- Problems reach an app three ways: `onStorageError`, `lost` and `missing` as
-  run events, and errors thrown when an app callback throws. Make one channel
+- Problems reach an app three ways: `onStorageError` (on a walkthrough's
+  definition, or on an owner), `lost` and `missing` as run events, and errors
+  thrown when an app callback throws. Make one channel
   whose events are a typed union, with storage failures one member.
 - It would also give a home to things that are not errors but an app may want
   to know: a walkthrough record dropped as too old, because its steps changed,
@@ -45,14 +42,10 @@ step can set its own `missingAfterMs`. Left to do:
 - Other framework adapters. Core already meets Svelte's store contract.
 - Waymarks inside iframes or shadow DOM. Only `root` is searched now.
 
-## Perf tracking as a Playwright test (idea, not started)
-- e2e/ is empty; add Playwright there, one spec that serves a page with real layout
-  (a few thousand rows) and a data-waymark target, imports an esbuild bundle of core.
-- Stub requestAnimationFrame in the page to capture the frame callback, warm 50k
-  iterations, time 500k with one performance.now() pair around the loop (see
-  scratchpad bench.html / prims.html from the 2026-09-01 session for the shape).
-- Measure per frame: still, moving (transform), dirty layout; and the primitives
-  alone (gBCR, innerHeight/Width, performance.now, real rAF) in the same page.
+## Perf tracking
+- Started: `packages/core/src/run/run.perf.ts` runs in Chromium through
+  `pnpm test:perf`, stubs requestAnimationFrame and reports medians in ns. It
+  only checks the figures are sane. Left over:
 - Assert ratios, not absolutes: core's own share of a still frame vs bare gBCR,
   moving frame overhead vs bare transform+gBCR. CI machines are too noisy for ns.
 - Also record absolutes to a JSON artifact per run so regressions show as a trend.
