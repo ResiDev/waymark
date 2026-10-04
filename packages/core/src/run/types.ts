@@ -1,5 +1,3 @@
-import type { StorageAdapter } from "../storage/adapter";
-import type { StoredWalkthrough } from "../storage/records";
 import type { Step } from "../walkthrough/types";
 
 /** In viewport coordinates. */
@@ -86,17 +84,6 @@ export type UiElements = Readonly<{
   beacon: Element | null;
 }>;
 
-export type RunStorage = Readonly<{
-  /**
-   * Saved as the step changes, the Run collapses or resumes, and as it ends.
-   * Until a Promise from `load` settles, the Run is `loading` and holds its
-   * actions.
-   */
-  walkthrough?: StorageAdapter<StoredWalkthrough>;
-  /** In ms, since the last change. An older running walkthrough starts again. Defaults to a day. */
-  maxAge?: number;
-}>;
-
 export type RunOptions<TStep extends Step = Step> = Readonly<{
   root?: Document | Element;
   /** In px. Clicks this close to the Waymark count as clicks on it. */
@@ -108,9 +95,6 @@ export type RunOptions<TStep extends Step = Step> = Readonly<{
   resumed?: boolean;
   ui?: () => UiElements;
   onEvent?: (event: RunEvent<TStep>) => void;
-  storage?: RunStorage;
-  /** Without one, storage failures are logged. */
-  onStorageError?: (error: unknown) => void;
 }>;
 
 /** Watches the page only while it has a subscriber and has not ended. */

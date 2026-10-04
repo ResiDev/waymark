@@ -3,12 +3,11 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore,
   type RefObject,
 } from "react";
 import { createRun } from "waymark-core";
-import type { Run, RunEvent, RunStorage, UiElements, Walkthrough } from "waymark-core";
+import type { Run, RunEvent, UiElements, Walkthrough } from "waymark-core";
 import type { WalkthroughStep } from "./types";
 
 export type UiRefs = Readonly<{
@@ -41,28 +40,17 @@ export function useOwnedRun<TStep extends WalkthroughStep>({
   walkthrough,
   waymarkPadding,
   onEvent,
-  storage,
-  onStorageError,
   ui,
 }: {
   walkthrough: Walkthrough<TStep>;
   waymarkPadding: number;
   onEvent?: ((event: RunEvent<TStep>) => void) | undefined;
-  storage?: RunStorage | undefined;
-  onStorageError?: ((error: unknown) => void) | undefined;
   ui: () => UiElements;
 }): Run<TStep> {
   const eventRef = useRef(onEvent);
-  const storageErrorRef = useRef(onStorageError);
   useLayoutEffect(() => {
     eventRef.current = onEvent;
-    storageErrorRef.current = onStorageError;
-  }, [onEvent, onStorageError]);
-  // The first ones only: an inline object is new each render, and a new Run
-  // for each would reload storage and start the walkthrough over. Without a
-  // handler, core logs the failure.
-  const [firstStorage] = useState(storage);
-  const [handlesStorageErrors] = useState(onStorageError !== undefined);
+  }, [onEvent]);
 
   return useMemo(
     () =>
@@ -72,12 +60,8 @@ export function useOwnedRun<TStep extends WalkthroughStep>({
         root: document,
         waymarkPadding,
         onEvent: (event) => eventRef.current?.(event),
-        ...(firstStorage && { storage: firstStorage }),
-        ...(handlesStorageErrors && {
-          onStorageError: (error) => storageErrorRef.current?.(error),
-        }),
         ui,
       }),
-    [waymarkPadding, walkthrough, ui, firstStorage, handlesStorageErrors],
+    [waymarkPadding, walkthrough, ui],
   );
 }

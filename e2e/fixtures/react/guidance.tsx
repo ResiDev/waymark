@@ -92,20 +92,6 @@ const tour = defineWalkthrough([
   { content: "That's the tour.", popoverStyle: { background: "#f0fdf4", borderColor: "#bbf7d0" } },
 ]);
 
-const whatsNew = defineWalkthrough([
-  {
-    waymark: "whats-new",
-    preferredPlacement: "below",
-    content: (
-      <>
-        New: sharing. This walkthrough is its own <code>{"<Walkthrough walkthrough>"}</code>, outside the
-        checklists.
-      </>
-    ),
-  },
-  { waymark: "nav-decks", preferredPlacement: "right", content: "Share a deck from the decks page." },
-]);
-
 const contextOf = (app: AppData) => ({
   hasDeck: app.decks.length > 0,
   hasPhoto: app.hasPhoto,
@@ -115,7 +101,7 @@ const contextOf = (app: AppData) => ({
 
 const TASKS_KEY = "waymark-react-checklists";
 export const WALKTHROUGH_KEY = "waymark-react-walkthrough";
-export const WHATS_NEW_KEY = "waymark-react-whats-new";
+const WHATS_NEW_KEY = "waymark-react-whats-new";
 
 const readLocal = <T,>(key: string): T | null => JSON.parse(localStorage.getItem(key) ?? "null");
 
@@ -295,7 +281,22 @@ export function Guidance() {
   );
 }
 
-const whatsNewStorage = shownLocally(WHATS_NEW_KEY, storedWhatsNew);
+export const whatsNew = defineWalkthrough(
+  [
+    {
+      waymark: "whats-new",
+      preferredPlacement: "below",
+      content: (
+        <>
+          New: sharing. This walkthrough is its own <code>{"<Walkthrough walkthrough>"}</code>, outside the
+          checklists.
+        </>
+      ),
+    },
+    { waymark: "nav-decks", preferredPlacement: "right", content: "Share a deck from the decks page." },
+  ],
+  { storage: shownLocally(WHATS_NEW_KEY, storedWhatsNew) },
+);
 
 export function WhatsNew() {
   const active = useStore(whatsNewOpen);
@@ -304,7 +305,6 @@ export function WhatsNew() {
     <Walkthrough
       walkthrough={whatsNew}
       active={active}
-      storage={{ walkthrough: whatsNewStorage }}
       waymarkPadding={padding}
       onEvent={(event) => {
         record("whats-new", `${event.type} on step ${event.stepIndex + 1} → ${describeRun(event.snapshot)}`);

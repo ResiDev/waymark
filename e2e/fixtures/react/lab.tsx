@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { actions } from "waymark-core";
-import { owner, stored, storedWalkthrough, storedWhatsNew, WHATS_NEW_KEY } from "./guidance";
+import { owner, stored, storedWalkthrough, storedWhatsNew, whatsNew } from "./guidance";
 import {
   data,
   EMPTY_DATA,
@@ -170,7 +170,7 @@ function ProgressPanel() {
   const { storageStatus } = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   const tasks = useStore(stored);
   const walkthrough = useStore(storedWalkthrough);
-  const whatsNew = useStore(storedWhatsNew);
+  const whatsNewRecord = useStore(storedWhatsNew);
   return (
     <>
       <h2>Storage</h2>
@@ -181,7 +181,7 @@ function ProgressPanel() {
       <div>checklist walkthrough</div>
       <pre data-testid="stored-walkthrough">{JSON.stringify(walkthrough)}</pre>
       <div>what's new</div>
-      <pre data-testid="stored-whats-new">{JSON.stringify(whatsNew)}</pre>
+      <pre data-testid="stored-whats-new">{JSON.stringify(whatsNewRecord)}</pre>
       <div>
         <button type="button" onClick={() => owner.clear()}>
           owner.clear()
@@ -191,13 +191,10 @@ function ProgressPanel() {
         </button>
         <button
           type="button"
-          title="Removes the stored what's new, so it can show again after a reload."
-          onClick={() => {
-            localStorage.removeItem(WHATS_NEW_KEY);
-            storedWhatsNew.set(null);
-          }}
+          title="Starts what's new again from its first step: now if it is showing, else the next time it shows."
+          onClick={() => whatsNew.reset()}
         >
-          forget what's new
+          whatsNew.reset()
         </button>
         <button type="button" onClick={() => location.reload()}>
           reload

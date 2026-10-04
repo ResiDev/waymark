@@ -9,7 +9,10 @@ export type {
   AdvanceCondition,
   ExactStep,
   Step,
+  UnstoredWalkthrough,
   Walkthrough,
+  WalkthroughOptions,
+  WalkthroughStore,
   WaymarkEventName,
 } from "./walkthrough/types";
 export type {
@@ -22,7 +25,6 @@ export type {
   RunEvent,
   RunEventType,
   RunOptions,
-  RunStorage,
   Running,
   Snapshot,
   UiElements,

@@ -12,9 +12,9 @@ step can set its own `missingAfterMs`. Left to do:
 
 ## Storage follow-ups
 - Built as `docs/design/storage.md` describes. Left over:
-- React's `<Walkthrough>` gives an app no way to show a finished, stored tour
-  again: it can't reach the Run to `reset` it. Today it has to save `null`
-  through the adapter and remount.
+- A walkthrough's `storage` takes a key function, so a record can name who is
+  signed in. The owner's `storage.tasks` and `storage.walkthrough` take only
+  adapters; let them take a key or a key function too, so both paths match.
 - An owner never unsubscribes from `storage.tasks`, since an owner has no
   `destroy`. Fine for one owner per page; not for owners made and dropped.
 

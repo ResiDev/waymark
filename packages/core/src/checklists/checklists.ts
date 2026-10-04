@@ -150,6 +150,12 @@ export function createChecklists<
   const walkthroughs = dictionary<Walkthrough>();
   for (const [id, { walkthrough }] of Object.entries(tasks)) {
     if (walkthrough === undefined) continue;
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
+    if (!isSteps(walkthrough) && walkthrough.storage !== undefined) {
+      throw new Error(
+        `Task "${id}": its walkthrough has its own storage, but the owner keeps a Task's place. Define it without storage.`,
+      );
+    }
     walkthroughs[id] = isSteps(walkthrough)
       ? checkedWalkthrough(walkthrough, `Task "${id}": `)
       : walkthrough;

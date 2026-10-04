@@ -283,7 +283,8 @@ active run, so it needs no clearing of its own.
 
 Runs get no `clear()`. To show a finished standalone walkthrough again, call
 `act("reset")`. It already restarts a completed or exited run, and saving the
-new running state replaces the stored `completed`.
+new running state replaces the stored `completed`. As built, the walkthrough's
+own `reset()` does this for an app that cannot reach the Run; see the end.
 
 ### Server rendering
 
@@ -349,5 +350,24 @@ step shows centred and Next unlocks.
   itself.
 - React's `<Walkthrough>` draws nothing on the server or while React hydrates,
   and draws once hydrated. A standalone Run so needs no server snapshot.
-- React's `<Walkthrough>` reads `storage` once, as it mounts. A new object on
-  each render would otherwise make a new Run and read storage again.
+- React's `<Walkthrough>` reads storage once, as it mounts.
+- A standalone walkthrough's storage moved onto its definition:
+  `defineWalkthrough(steps, { storage, maxAge })`, where `storage` is a
+  localStorage key, an adapter, or a function returning either. `createRun`
+  and `<Walkthrough>` no longer take `storage`. React's `<Walkthrough>` keeps
+  its Run to itself, so an app had no way to show a finished walkthrough
+  again; the definition is what the app holds, so `reset()` lives there.
+  - `reset()` starts it again from its first step. A Run on screen hears it
+    and resets itself, saving its fresh start; with none on screen the record
+    is cleared. A Run hears resets only while watched, so one nothing shows
+    any more cannot save over the record. Other tabs do not hear a reset.
+  - A function is called as each Run starts, and on a `reset` with none on
+    screen, so a definition made before sign-in can still key its record by
+    user. A Run keeps the key it started with; for a new user, remount it.
+  - `onStorageError` moved onto the definition too, beside `storage`, so a
+    failure from `reset` reaches it as well as a Run's. `createRun` and
+    `<Walkthrough>` no longer take it. A key function that throws is reported
+    and the walkthrough runs unstored.
+  - A Task's walkthrough cannot have storage: the owner keeps a Task's place.
+    The types forbid it, and `createChecklists` throws for an app without
+    them.

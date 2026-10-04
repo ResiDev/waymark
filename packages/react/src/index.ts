@@ -49,7 +49,6 @@ export type {
   DefaultChecklists,
   NamedTask,
   SelectedTask,
-  RunStorage,
   StepOf,
   StorageAdapter,
   StorageStatus,
@@ -60,5 +59,7 @@ export type {
   TaskCommands,
   TaskId,
   TaskStatus,
+  WalkthroughOptions,
+  WalkthroughStore,
   WaymarkEventName,
 } from "waymark-core";

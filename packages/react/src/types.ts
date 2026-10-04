@@ -6,13 +6,13 @@ import type {
   ChecklistSnapshot,
   NamedTask,
   RunEvent,
-  RunStorage,
   Running,
   Step,
   StepOf,
   Task,
   TaskCommands,
   TaskStatus,
+  UnstoredWalkthrough,
   Walkthrough,
 } from "waymark-core";
 
@@ -63,10 +63,6 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     active?: boolean;
     waymarkPadding?: number;
     onEvent?: (event: RunEvent<TStep>) => void;
-    /** Read once, as the walkthrough mounts. A finished walkthrough stays finished. */
-    storage?: RunStorage;
-    /** Without one, storage failures are logged. */
-    onStorageError?: (error: unknown) => void;
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
     labels?: Partial<WalkthroughLabels>;
     /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
@@ -78,7 +74,7 @@ export type ReactGuidanceTasks = Readonly<
   Record<
     string,
     Readonly<{
-      walkthrough?: Walkthrough<WalkthroughStep> | readonly WalkthroughStep[];
+      walkthrough?: UnstoredWalkthrough<WalkthroughStep> | readonly WalkthroughStep[];
       [field: string]: unknown;
     }>
   >
@@ -97,8 +93,6 @@ export type ChecklistWalkthroughProps<
   active?: never;
   waymarkPadding?: never;
   onEvent?: never;
-  storage?: never;
-  onStorageError?: never;
   renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
   labels?: Partial<WalkthroughLabels>;
   /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */

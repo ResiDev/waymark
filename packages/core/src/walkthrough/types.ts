@@ -1,3 +1,6 @@
+import type { StorageAdapter } from "../storage/adapter";
+import type { StoredWalkthrough } from "../storage/records";
+
 // `string & {}` accepts custom event names without collapsing the union to
 // `string`, which would lose autocomplete for the built-in ones.
 export type WaymarkEventName = keyof HTMLElementEventMap | (string & {});
@@ -65,7 +68,39 @@ export type ExactStep<TStep extends object, TShape> = NoInfer<
     : never
 >;
 
+/** Where a standalone walkthrough keeps its place: a localStorage key, or an adapter. */
+export type WalkthroughStore = string | StorageAdapter<StoredWalkthrough>;
+
+export type WalkthroughOptions = Readonly<{
+  /**
+   * Saved as the step changes, the Run collapses or resumes, and as it ends; a
+   * finished walkthrough stays finished until `reset`. A function is called
+   * as each Run starts, and on a `reset` with none on screen, so the key can
+   * name who is signed in; a Run keeps the key it started with. Until a
+   * Promise from the adapter's `load` settles, the Run is `loading` and holds
+   * its actions.
+   */
+  storage: WalkthroughStore | (() => WalkthroughStore);
+  /** In ms, since the last change. An older running walkthrough starts again. Defaults to a day. */
+  maxAge?: number;
+  /** Every storage failure, from a Run or from `reset`. Without one, they are logged. */
+  onStorageError?: (error: unknown) => void;
+}>;
+
 export type Walkthrough<TStep extends Step = Step> = Readonly<{
   steps: readonly TStep[];
+  storage?: WalkthroughOptions["storage"];
+  maxAge?: number;
+  onStorageError?: WalkthroughOptions["onStorageError"];
+  /**
+   * Starts it again from its first step, finished or not: a Run on screen
+   * starts again now, and with none on screen its stored place, if it has
+   * one, is cleared.
+   */
+  reset: () => void;
 }>;
+
+/** A checklist's Task keeps its place in the owner's storage, so its walkthrough has none of its own. */
+export type UnstoredWalkthrough<TStep extends Step = Step> = Walkthrough<TStep> &
+  Readonly<{ storage?: never }>;
 

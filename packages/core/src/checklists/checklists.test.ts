@@ -138,6 +138,12 @@ describe("createChecklists", () => {
     expect(() =>
       createChecklists({ context: {}, tasks: { "": {} }, checklists: { home: [""] } }),
     ).toThrow(/cannot be empty/);
+    expect(() =>
+      createChecklists({
+        context: {},
+        tasks: { a: { walkthrough: defineWalkthrough([{}], { storage: "a" }) as never } },
+      }),
+    ).toThrow(/Task "a": its walkthrough has its own storage/);
   });
 
   it("shows every task of a selection in its order, with its id and definition", () => {

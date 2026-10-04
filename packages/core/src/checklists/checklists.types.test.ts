@@ -1,4 +1,4 @@
-import { describe, expectTypeOf, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import { createChecklists } from "./checklists";
 import type { StoredTasks } from "../storage/records";
 import type { ChecklistsEvent, StepOf, Task } from "./types";
@@ -57,6 +57,16 @@ describe("createChecklists types", () => {
       .toEqualTypeOf<"create-deck">();
     // @ts-expect-error not in decks
     owner.checklists.decks.start("add-photo");
+
+    expect(() =>
+      createChecklists({
+        context: initialContext,
+        tasks: {
+          // @ts-expect-error the owner keeps a Task's place, so its walkthrough has no storage
+          tour: { walkthrough: defineWalkthrough([{}], { storage: "tour" }) },
+        },
+      }),
+    ).toThrow(/its own storage/);
 
     type HomeRow = ReturnType<
       typeof owner.checklists.home.getSnapshot

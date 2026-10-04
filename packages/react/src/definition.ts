@@ -8,14 +8,26 @@ import type {
   DefaultChecklists,
   ChecklistsConfig,
   ExactStep,
+  UnstoredWalkthrough,
   Walkthrough,
+  WalkthroughOptions,
 } from "waymark-core";
 import type { ReactTask, WalkthroughStep } from "./types";
 
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
   steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
+): UnstoredWalkthrough<NoInfer<TStep>>;
+export function defineWalkthrough<const TStep extends WalkthroughStep>(
+  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
+  options: WalkthroughOptions,
+): Walkthrough<NoInfer<TStep>>;
+export function defineWalkthrough<const TStep extends WalkthroughStep>(
+  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
+  options?: WalkthroughOptions,
 ): Walkthrough<NoInfer<TStep>> {
-  return defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
+  return options
+    ? defineCoreWalkthrough<TStep, WalkthroughStep>(steps, options)
+    : defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
 }
 
 export function createChecklists<

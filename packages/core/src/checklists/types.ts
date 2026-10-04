@@ -1,6 +1,6 @@
 import type { Exactly } from "../exact";
 import type { Run, RunOptions, Snapshot, UiElements } from "../run/types";
-import type { ExactStep, Step, Walkthrough } from "../walkthrough/types";
+import type { ExactStep, Step, UnstoredWalkthrough, Walkthrough } from "../walkthrough/types";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
 
@@ -10,7 +10,7 @@ import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records
  * step inference; `as const satisfies` keeps literal types inside `meta` too.
  */
 export type Task<TContext, TStep extends Step = Step> = Readonly<{
-  walkthrough?: Walkthrough<TStep> | readonly TStep[];
+  walkthrough?: UnstoredWalkthrough<TStep> | readonly TStep[];
   /** Must be pure. Without one, finishing the walkthrough records the Task done. */
   isComplete?: (context: TContext) => boolean;
   meta?: unknown;
@@ -185,7 +185,7 @@ export type ChecklistsOptions<
   /** Your `onEvent` is called after the owner has handled the event. */
   run?: Omit<
     RunOptions<StepOf<TTasks[keyof TTasks]>>,
-    "startAt" | "collapsed" | "resumed" | "ui" | "storage" | "onStorageError"
+    "startAt" | "collapsed" | "resumed" | "ui"
   >;
 }>;
 

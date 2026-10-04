@@ -410,14 +410,12 @@ describe("Walkthrough", () => {
 describe("Walkthrough with storage", () => {
   afterEach(() => localStorage.clear());
 
-  const walkthrough = defineWalkthrough([
-    { content: "First step" },
-    { content: "Second step" },
-    { content: "Third step" },
-  ]);
   const tour = localStorageAdapter("tour");
-  // A new object each render, as an app would write it.
-  const view = () => <Walkthrough walkthrough={walkthrough} storage={{ walkthrough: tour }} />;
+  const walkthrough = defineWalkthrough(
+    [{ content: "First step" }, { content: "Second step" }, { content: "Third step" }],
+    { storage: tour },
+  );
+  const view = () => <Walkthrough walkthrough={walkthrough} />;
   const dialog = () => document.querySelector('[role="dialog"]');
 
   it("reads storage once as it mounts, and picks up its place on the next mount", async () => {
@@ -436,6 +434,15 @@ describe("Walkthrough with storage", () => {
     expect(dialog()).toHaveTextContent("Second step");
   });
 
+  it("shows a finished walkthrough again once it is reset", async () => {
+    localStorage.setItem("tour", JSON.stringify({ version: 1, phase: "completed" }));
+    await act(async () => root.render(view()));
+    expect(dialog()).toBeNull();
+
+    await act(async () => walkthrough.reset());
+    expect(dialog()).toHaveTextContent("First step");
+  });
+
   it.each([true, false])(
     "hydrates a server render, which has no document, then shows the stored step (portal %s)",
     async (portal) => {
@@ -444,7 +451,7 @@ describe("Walkthrough with storage", () => {
         JSON.stringify({ version: 1, phase: "running", step: 1, stepCount: 3, collapsed: false, savedAt: Date.now() }),
       );
       const app = () => (
-        <Walkthrough walkthrough={walkthrough} storage={{ walkthrough: tour }} portal={portal} />
+        <Walkthrough walkthrough={walkthrough} portal={portal} />
       );
       vi.stubGlobal("document", undefined);
       let server: string;

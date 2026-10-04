@@ -71,14 +71,12 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
   walkthrough,
   waymarkPadding = 20,
   onEvent,
-  storage,
-  onStorageError,
   renderPopover,
   labels,
   portal = true,
 }: WalkthroughProps<TStep>) {
   const { dialogRef, beaconRef, ui } = useUiRefs();
-  const run = useOwnedRun({ walkthrough, waymarkPadding, onEvent, storage, onStorageError, ui });
+  const run = useOwnedRun({ walkthrough, waymarkPadding, onEvent, ui });
   return (
     <RunView
       run={run}

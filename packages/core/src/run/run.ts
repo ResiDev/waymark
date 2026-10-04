@@ -4,11 +4,9 @@ import { apply, liveWatchers, needsAdvanceRead, sameWaymarkAria, sameWaymarkEven
 import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
 import { begin, loading, stepAt } from "./state";
 import type { Start, State } from "./state";
-import { loadFrom, reporter, saveTo } from "../storage/adapter";
-import type { StorageAdapter } from "../storage/adapter";
+import { loadFrom, saveTo } from "../storage/adapter";
 import { DEFAULT_MAX_AGE, isCurrent, parseWalkthrough, storedWalkthrough } from "../storage/records";
-import type { StoredWalkthrough } from "../storage/records";
-import { checkOf, selectorOf } from "../walkthrough/walkthrough";
+import { checkOf, onReset, reportOf, selectorOf, storageOf } from "../walkthrough/walkthrough";
 import type { Action, Rect, Run, RunOptions, Snapshot, UiElements } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
@@ -79,9 +77,9 @@ export function createRun<TStep extends Step>(
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;
 
-  const storage = options.storage?.walkthrough;
-  const maxAge = options.storage?.maxAge ?? DEFAULT_MAX_AGE;
-  const report = reporter("walkthrough", options.onStorageError);
+  const storage = storageOf(walkthrough);
+  const maxAge = walkthrough.maxAge ?? DEFAULT_MAX_AGE;
+  const report = reportOf(walkthrough);
   const asked: Start = {
     phase: "running",
     step: options.startAt ?? 0,
@@ -233,7 +231,7 @@ export function createRun<TStep extends Step>(
   }
 
   /** A stored Run that cannot be picked up again starts as asked, and its record is wiped. */
-  const startFrom = (adapter: StorageAdapter<StoredWalkthrough>, value: unknown): Start => {
+  const startFrom = (adapter: NonNullable<typeof storage>, value: unknown): Start => {
     const parsed = parseWalkthrough(value);
     if (!parsed.ok) {
       report(parsed.error);
@@ -262,17 +260,36 @@ export function createRun<TStep extends Step>(
     });
   }
 
+  const act = (action: Action) => {
+    if (state.snapshot.phase === "loading") held.push(action);
+    else send({ kind: "act", action });
+  };
+
+  // Only while watched: a Run nothing shows any more must not save over the
+  // record of the one that replaced it.
+  let stopHearingResets: (() => void) | undefined;
+  const unmount = () => {
+    stopHearingResets?.();
+    stopHearingResets = undefined;
+    // Held actions were asked of a Run on screen. Run once its load lands,
+    // they would save from a Run nothing shows, over the record of whichever
+    // Run replaced it. The state stays, as the same Run can be watched again
+    // (StrictMode does this on every mount) and must keep its place.
+    held.length = 0;
+    send({ kind: "unmounted" });
+  };
+
   return {
-    act: (action: Action) => {
-      if (state.snapshot.phase === "loading") held.push(action);
-      else send({ kind: "act", action });
-    },
+    act,
     getSnapshot: (): Snapshot<TStep> => state.snapshot,
     subscribe: (listener) => {
       const first = listeners.size === 0;
       listeners.add(listener);
       try {
-        if (first) send({ kind: "mounted" });
+        if (first) {
+          stopHearingResets = onReset(walkthrough, () => act("reset"));
+          send({ kind: "mounted" });
+        }
         queue.now(() => {
           // Queued with the first look so that `start` precedes anything a
           // subscriber does on seeing it.
@@ -281,13 +298,11 @@ export function createRun<TStep extends Step>(
         });
       } catch (error) {
         listeners.delete(listener);
-        if (listeners.size === 0) send({ kind: "unmounted" });
+        if (listeners.size === 0) unmount();
         throw error;
       }
       return () => {
-        if (listeners.delete(listener) && listeners.size === 0) {
-          send({ kind: "unmounted" });
-        }
+        if (listeners.delete(listener) && listeners.size === 0) unmount();
       };
     },
   };
