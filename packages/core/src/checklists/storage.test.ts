@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createChecklists } from "./checklists";
 import type { ChecklistsStorage } from "./types";
-import { localStorageAdapter } from "../storage/adapter";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
@@ -269,7 +268,7 @@ describe("checklists storage: task statuses", () => {
 
   it("reads the version 2 envelope the old localStorage record wrote", () => {
     localStorage.setItem("app", JSON.stringify({ version: 2, record: { hello: "skipped" } }));
-    const owner = create({ storage: { tasks: localStorageAdapter("app") } });
+    const owner = create({ storage: { tasks: "app" } });
     expect(statuses(owner)).toMatchObject({ hello: "skipped" });
     owner.markDone("invite");
     expect(JSON.parse(localStorage.getItem("app")!)).toEqual(
@@ -307,8 +306,8 @@ describe("checklists storage: task statuses", () => {
     expect(onEvent).not.toHaveBeenCalled();
   });
 
-  it("follows another tab through localStorage", () => {
-    const owner = create({ storage: { tasks: localStorageAdapter("app") } });
+  it("follows another tab through a localStorage key", () => {
+    const owner = create({ storage: { tasks: "app" } });
     const other = JSON.stringify(saved({ invite: "done" }));
     localStorage.setItem("app", other);
     globalThis.dispatchEvent(
@@ -376,6 +375,14 @@ describe("checklists storage: the walkthrough", () => {
 
     owner.stop();
     expect(walkthrough.save).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps it under a localStorage key, picked up by the next owner", () => {
+    create({ storage: { walkthrough: "place" } }).start("tour");
+    expect(JSON.parse(localStorage.getItem("place")!)).toMatchObject({ task: "tour", step: 0 });
+
+    const reloaded = create({ storage: { walkthrough: "place" } });
+    expect(reloaded.getSnapshot().active?.task.id).toBe("tour");
   });
 
   it("wipes it as the walkthrough finishes", () => {

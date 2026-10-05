@@ -1,4 +1,4 @@
-import { localStorageAdapter, reporter, saveTo } from "../storage/adapter";
+import { adapterOf, reporter, saveTo } from "../storage/adapter";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredWalkthrough } from "../storage/records";
 import type {
@@ -7,7 +7,6 @@ import type {
   UnstoredWalkthrough,
   Walkthrough,
   WalkthroughOptions,
-  WalkthroughStore,
 } from "./types";
 
 /**
@@ -46,17 +45,15 @@ export function onReset(walkthrough: Walkthrough, listener: () => void): () => v
  */
 export function storageOf(walkthrough: Walkthrough): StorageAdapter<StoredWalkthrough> | undefined {
   const { storage } = walkthrough;
-  if (typeof storage !== "function") return adapterFor(storage);
+  if (storage === undefined) return undefined;
+  if (typeof storage !== "function") return adapterOf(storage);
   try {
-    return adapterFor(storage());
+    return adapterOf(storage());
   } catch (error) {
     reportOf(walkthrough)(error);
     return undefined;
   }
 }
-
-const adapterFor = (store: WalkthroughStore | undefined) =>
-  typeof store === "string" ? localStorageAdapter(store) : store;
 
 export const reportOf = (walkthrough: Walkthrough) => reporter("walkthrough", walkthrough.onStorageError);
 

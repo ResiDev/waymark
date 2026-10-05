@@ -371,3 +371,6 @@ step shows centred and Next unlocks.
   - A Task's walkthrough cannot have storage: the owner keeps a Task's place.
     The types forbid it, and `createChecklists` throws for an app without
     them.
+- The owner's `storage.tasks` and `storage.walkthrough` take a localStorage key
+  as well as an adapter, as a walkthrough's `storage` does. They take no key
+  function: an owner reads its records once, so one owner serves one user.

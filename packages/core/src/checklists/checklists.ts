@@ -1,7 +1,7 @@
 import { dictionary } from "../dictionary";
 import { createQueue } from "../queue";
 import { createRun } from "../run/run";
-import { loadFrom, reporter, saveTo } from "../storage/adapter";
+import { adapterOf, loadFrom, reporter, saveTo } from "../storage/adapter";
 import {
   DEFAULT_MAX_AGE,
   isCurrent,
@@ -132,7 +132,8 @@ export function createChecklists<
     config.checklists ?? { [DEFAULT_CHECKLIST]: Object.keys(tasks) },
   );
   const { onChange, onEvent, onStorageError, run: runOptions, storage = {} } = config;
-  const { tasks: tasksStorage, walkthrough: walkthroughStorage } = storage;
+  const tasksStorage = storage.tasks === undefined ? undefined : adapterOf(storage.tasks);
+  const walkthroughStorage = storage.walkthrough === undefined ? undefined : adapterOf(storage.walkthrough);
   const maxAge = storage.maxAge ?? DEFAULT_MAX_AGE;
   const reportTasks = reporter("tasks", onStorageError && ((error) => onStorageError(error, "tasks")));
   const reportWalkthrough = reporter(

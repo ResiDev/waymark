@@ -1,22 +1,10 @@
 Events
 
-## DONE Missing Waymarks: what's left
-A lost Waymark, or one searched for 3s without being found (`missing`), shows
-the step centred with a note, and Next unlocks. From 500ms until then
-(`waiting`), the step shows centred without the note, Next locked as usual. A
-step can set its own `missingAfterMs`. Left to do:
+## Missing Waymarks
 - A collapsed run whose Waymark is lost or missing shows its beacon at the
   bottom centre of the screen. Showing it where the Waymark was lost might read better.
 - Maybe later: go back automatically to the nearest earlier click step whose
   Waymark is on the page. Click steps can't advance by themselves, so it can't loop.
-
-## Storage follow-ups
-- Built as `docs/design/storage.md` describes. Left over:
-- A walkthrough's `storage` takes a key function, so a record can name who is
-  signed in. The owner's `storage.tasks` and `storage.walkthrough` take only
-  adapters; let them take a key or a key function too, so both paths match.
-- An owner never unsubscribes from `storage.tasks`, since an owner has no
-  `destroy`. Fine for one owner per page; not for owners made and dropped.
 
 ## Beacon and overlay
 - Beacon styling, or let the app pass in its own beacon.
@@ -42,10 +30,7 @@ step can set its own `missingAfterMs`. Left to do:
 - Other framework adapters. Core already meets Svelte's store contract.
 - Waymarks inside iframes or shadow DOM. Only `root` is searched now.
 
-## Perf tracking
-- Started: `packages/core/src/run/run.perf.ts` runs in Chromium through
-  `pnpm test:perf`, stubs requestAnimationFrame and reports medians in ns. It
-  only checks the figures are sane. Left over:
+## Perf tracking (`packages/core/src/run/run.perf.ts`)
 - Assert ratios, not absolutes: core's own share of a still frame vs bare gBCR,
   moving frame overhead vs bare transform+gBCR. CI machines are too noisy for ns.
 - Also record absolutes to a JSON artifact per run so regressions show as a trend.

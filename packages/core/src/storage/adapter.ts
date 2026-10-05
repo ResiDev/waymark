@@ -63,6 +63,10 @@ const parse = (text: string | null): unknown => {
   }
 };
 
+/** A localStorage key stands for the adapter that keeps the record under it. */
+export const adapterOf = <T>(storage: string | StorageAdapter<T>): StorageAdapter<T> =>
+  typeof storage === "string" ? localStorageAdapter<T>(storage) : storage;
+
 /**
  * Keeps a record in localStorage under `name`, and hears other tabs change it.
  * Outside a browser it stores nothing. It fits any record: core checks what

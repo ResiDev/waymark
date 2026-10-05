@@ -152,14 +152,15 @@ export type ChecklistsEvent<
       snapshot: ChecklistSnapshot<NamedTask<TTasks>>;
     }>;
 
+/** Each record takes a localStorage key, or an adapter. */
 export type ChecklistsStorage = Readonly<{
   /** Saved after each change to a Task's status. */
-  tasks?: StorageAdapter<StoredTasks>;
+  tasks?: string | StorageAdapter<StoredTasks>;
   /**
    * The active Task and where its walkthrough is, saved as it starts, moves,
    * collapses, resumes and stops. Restored once the Task statuses are in.
    */
-  walkthrough?: StorageAdapter<StoredChecklistWalkthrough>;
+  walkthrough?: string | StorageAdapter<StoredChecklistWalkthrough>;
   /** In ms, since the last change. An older walkthrough is not restored. Defaults to a day. */
   maxAge?: number;
 }>;
