@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "paths": {
+      "waymark-core": ["../../packages/core/src/index.ts"],
+      "react-waymark": ["../../packages/react/src/index.ts"]
+    },
+    "types": ["node", "vite/client"]
+  },
+  "include": ["app", "video", "*.ts"]
+}
