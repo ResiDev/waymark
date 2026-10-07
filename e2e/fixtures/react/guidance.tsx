@@ -4,6 +4,7 @@ import {
   defineWalkthrough,
   localStorageAdapter,
   Walkthrough,
+  type BeaconRenderProps,
   type ChecklistsEvent,
   type ReactTask,
   type Snapshot,
@@ -13,7 +14,7 @@ import {
   type StoredWalkthrough,
   type WalkthroughRenderProps,
 } from "react-waymark";
-import { CustomPopover } from "./popover";
+import { CustomBeacon, CustomPopover } from "./popover";
 import { createStore, data, inviteOpen, record, setup, useStore, watched, whatsNewOpen, type AppData } from "./state";
 
 // Between them these walkthroughs use every step shape, so the lab exercises each.
@@ -266,9 +267,10 @@ function WatchLog() {
   return null;
 }
 
-/** Rendered as an element, not called, so the popover is a component of its own and may use hooks. */
+/** Rendered as elements, not called, so each is a component of its own and may use hooks. */
 const customPopover = {
   renderPopover: (props: WalkthroughRenderProps) => <CustomPopover {...props} />,
+  renderBeacon: (props: BeaconRenderProps) => <CustomBeacon {...props} />,
 };
 
 export function Guidance() {

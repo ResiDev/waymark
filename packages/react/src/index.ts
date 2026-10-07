@@ -13,6 +13,7 @@ export { DEFAULT_CHECKLIST, localStorageAdapter } from "waymark-core";
 
 export type {
   AnyReactTask,
+  BeaconRenderProps,
   ChecklistCheckboxProps,
   ChecklistLabels,
   ChecklistPanelProps,

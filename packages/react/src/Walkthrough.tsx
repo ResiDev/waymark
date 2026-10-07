@@ -7,8 +7,9 @@ import {
 import { createPortal } from "react-dom";
 import type { ChecklistSelections, Checklists, Run } from "waymark-core";
 import { withDefaults } from "./labels";
-import { Beacon, DEFAULT_LABELS, DefaultPopover, Dialog, WaymarkShade } from "./view";
+import { BeaconAnchor, DEFAULT_LABELS, DefaultBeacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
+  BeaconRenderProps,
   ChecklistWalkthroughProps,
   GuidanceStep,
   ReactGuidanceTasks,
@@ -58,6 +59,7 @@ export function Walkthrough<
       <ChecklistGuidance
         checklists={props.checklists}
         renderPopover={props.renderPopover}
+        renderBeacon={props.renderBeacon}
         labels={props.labels}
         portal={props.portal ?? true}
       />
@@ -72,6 +74,7 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
   waymarkPadding = 20,
   onEvent,
   renderPopover,
+  renderBeacon,
   labels,
   portal = true,
 }: WalkthroughProps<TStep>) {
@@ -82,6 +85,7 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
       run={run}
       waymarkPadding={waymarkPadding}
       renderPopover={renderPopover}
+      renderBeacon={renderBeacon}
       labels={labels}
       portal={portal}
       dialogRef={dialogRef}
@@ -104,12 +108,16 @@ function ChecklistGuidance<
 >({
   checklists,
   renderPopover,
+  renderBeacon,
   labels,
   portal,
 }: {
   checklists: Checklists<never, TTasks, TSelections>;
   renderPopover?:
     | ChecklistWalkthroughProps<never, TTasks, TSelections>["renderPopover"]
+    | undefined;
+  renderBeacon?:
+    | ChecklistWalkthroughProps<never, TTasks, TSelections>["renderBeacon"]
     | undefined;
   labels?: Partial<WalkthroughLabels> | undefined;
   portal: boolean;
@@ -148,6 +156,7 @@ function ChecklistGuidance<
       skipTask={() => checklists.skip(task.id)}
       waymarkPadding={checklists.waymarkPadding}
       renderPopover={renderPopover}
+      renderBeacon={renderBeacon}
       labels={labels}
       portal={portal}
       dialogRef={dialogRef}
@@ -161,6 +170,7 @@ function RunView<TStep extends WalkthroughStep>({
   skipTask,
   waymarkPadding,
   renderPopover,
+  renderBeacon,
   labels,
   portal,
   dialogRef,
@@ -172,6 +182,7 @@ function RunView<TStep extends WalkthroughStep>({
   renderPopover?:
     | ((props: WalkthroughRenderProps<TStep>) => ReactNode)
     | undefined;
+  renderBeacon?: ((props: BeaconRenderProps<TStep>) => ReactNode) | undefined;
   labels?: Partial<WalkthroughLabels> | undefined;
   portal: boolean;
 }) {
@@ -194,7 +205,7 @@ function RunView<TStep extends WalkthroughStep>({
       snapshot,
       currentStep: snapshot.step,
       placement,
-      hasWaymark: rect !== null,
+      waymarkFound: rect !== null,
       advance,
       previous,
       collapse,
@@ -210,8 +221,17 @@ function RunView<TStep extends WalkthroughStep>({
     );
   };
 
+  const beaconProps: BeaconRenderProps<TStep> = {
+    currentStep: snapshot.step,
+    waymarkFound: rect !== null,
+    resume,
+    exit,
+    labels: text,
+  };
   const view = snapshot.collapsed ? (
-    <Beacon rect={rect} beaconRef={beaconRef} label={text.resume} onResume={resume} />
+    <BeaconAnchor rect={rect} beaconRef={beaconRef}>
+      {renderBeacon?.(beaconProps) ?? <DefaultBeacon {...beaconProps} />}
+    </BeaconAnchor>
   ) : (
     <>
       <WaymarkShade rect={rect} padding={waymarkPadding} />

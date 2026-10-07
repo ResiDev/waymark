@@ -12,12 +12,12 @@ import type { WalkthroughStep } from "./types";
 
 export type UiRefs = Readonly<{
   dialogRef: RefObject<HTMLDivElement>;
-  beaconRef: RefObject<HTMLButtonElement>;
+  beaconRef: RefObject<HTMLDivElement>;
 }>;
 
 export function useUiRefs(): UiRefs & { ui: () => UiElements } {
   const dialogRef = useRef<HTMLDivElement>(null);
-  const beaconRef = useRef<HTMLButtonElement>(null);
+  const beaconRef = useRef<HTMLDivElement>(null);
   const ui = useCallback(() => ({ dialog: dialogRef.current, beacon: beaconRef.current }), []);
   return { dialogRef, beaconRef, ui };
 }

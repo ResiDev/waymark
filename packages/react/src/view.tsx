@@ -12,6 +12,7 @@ import { centerPopover, clamp, placePopover, vertical } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";
 import { useViewportSize } from "./useViewportSize";
 import type {
+  BeaconRenderProps,
   Placement,
   WalkthroughLabels,
   WalkthroughRenderProps,
@@ -259,7 +260,7 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
   currentStep,
   snapshot,
   placement,
-  hasWaymark,
+  waymarkFound,
   arrow,
   previous,
   advance,
@@ -290,11 +291,11 @@ export function DefaultPopover<TStep extends WalkthroughStep>({
         boxShadow: "0 12px 32px rgb(15 23 42 / 0.18)",
         fontSize: 14,
         lineHeight: 1.5,
-        transformOrigin: hasWaymark ? origin(placement, arrow) : undefined,
+        transformOrigin: waymarkFound ? origin(placement, arrow) : undefined,
         ...currentStep.popoverStyle,
       }}
     >
-      {hasWaymark && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
+      {waymarkFound && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
       <div
         style={{
           display: "flex",
@@ -411,47 +412,65 @@ const dot: CSSProperties = {
   background: colors.accent,
 };
 
-export function Beacon({
+/**
+ * Pins the beacon's centre to the Waymark's top-right corner, or the bottom of
+ * the screen without one, kept far enough from the edges that the beacon is
+ * never cut off.
+ */
+export function BeaconAnchor({
   rect,
   beaconRef,
-  label,
-  onResume,
+  children,
 }: {
   rect: Rect | null;
-  beaconRef: RefObject<HTMLButtonElement>;
-  label: string;
-  onResume: () => void;
+  beaconRef: RefObject<HTMLDivElement>;
+  children: ReactNode;
 }) {
+  const size = useMeasuredSize(beaconRef, true);
+  const viewport = useViewportSize();
+  const reachX = size.width / 2;
+  const reachY = size.height / 2;
+  const x = rect ? rect.right : viewport.width / 2;
+  const y = rect ? rect.top : viewport.height - 32;
+  return (
+    <div
+      ref={beaconRef}
+      data-waymark-beacon=""
+      style={{
+        position: "fixed",
+        zIndex: 51,
+        top: clamp(y, reachY, viewport.height - reachY),
+        left: clamp(x, reachX, viewport.width - reachX),
+        width: "max-content",
+        transform: "translate(-50%, -50%)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function DefaultBeacon({ resume, labels }: Pick<BeaconRenderProps, "resume" | "labels">) {
   const pulseRef = useRef<HTMLSpanElement>(null);
   const echoRef = useRef<HTMLSpanElement>(null);
   const [hovered, hover] = useHover();
   useAnimation(pulseRef, PULSE, PULSE_TIMING, !hovered);
   useAnimation(echoRef, PULSE, ECHO_TIMING, !hovered);
 
-  // The pulse's radius at full scale, kept from the screen's edges so the ring is never cut off.
-  const reach = 15;
-  const { width, height } = useViewportSize();
-  const left = rect ? clamp(rect.right, reach, width - reach) : width / 2;
-  const top = rect ? clamp(rect.top, reach, height - reach) : height - 32;
   return (
     <button
-      ref={beaconRef}
       type="button"
-      aria-label={label}
-      title={label}
-      onClick={onResume}
+      aria-label={labels.resume}
+      title={labels.resume}
+      onClick={resume}
       {...hover}
       style={{
-        position: "fixed",
-        zIndex: 51,
-        top,
-        left,
         display: "grid",
         placeItems: "center",
-        width: 24,
-        height: 24,
+        // The dot at the pulse's full scale, so the pulse is measured with the beacon and kept on screen.
+        width: 30,
+        height: 30,
         padding: 0,
-        transform: "translate(-50%, -50%)",
         border: 0,
         borderRadius: "50%",
         background: "transparent",

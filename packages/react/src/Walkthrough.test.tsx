@@ -7,6 +7,7 @@ import {
   defineWalkthrough,
   localStorageAdapter,
   Walkthrough,
+  type BeaconRenderProps,
   type WalkthroughLabels,
   type WalkthroughRenderProps,
 } from "./index";
@@ -72,6 +73,8 @@ const runFrames = async () => {
 
 const beacon = () =>
   document.querySelector<HTMLButtonElement>('button[aria-label="Resume walkthrough"]');
+
+const beaconAnchor = () => document.querySelector<HTMLElement>("[data-waymark-beacon]");
 
 const clickAway = async () => {
   await act(async () => {
@@ -287,18 +290,100 @@ describe("Walkthrough", () => {
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
     await clickAway();
 
-    expect(beacon()!.style).toMatchObject({ left: "120px", top: "20px" });
+    expect(beaconAnchor()!.style).toMatchObject({ left: "120px", top: "20px" });
   });
 
   it("keeps the beacon on screen for a Waymark in the screen's corner", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(30);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(30);
     const target = addTarget("help", "Help");
     target.getBoundingClientRect = () => new DOMRect(window.innerWidth - 60, 0, 60, 40);
     const walkthrough = defineWalkthrough([{ waymark: "help", content: "Help lives here" }]);
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
     await clickAway();
 
-    expect(parseFloat(beacon()!.style.left)).toBeLessThan(window.innerWidth - 10);
-    expect(parseFloat(beacon()!.style.top)).toBeGreaterThan(10);
+    expect(parseFloat(beaconAnchor()!.style.left)).toBeLessThan(window.innerWidth - 10);
+    expect(parseFloat(beaconAnchor()!.style.top)).toBeGreaterThan(10);
+  });
+
+  it("keeps a custom beacon wider than the default whole on screen", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(40);
+    const target = addTarget("help", "Help");
+    target.getBoundingClientRect = () => new DOMRect(window.innerWidth - 60, 0, 60, 40);
+    const walkthrough = defineWalkthrough([{ waymark: "help", content: "Help lives here" }]);
+    await act(async () =>
+      root.render(
+        <Walkthrough walkthrough={walkthrough} renderBeacon={({ resume }) => <button type="button" onClick={resume}>Carry on with help</button>} />,
+      ),
+    );
+    await clickAway();
+
+    expect(beaconAnchor()!.style).toMatchObject({ left: `${window.innerWidth - 60}px`, top: "20px" });
+  });
+
+  it("draws a custom beacon in place of the default, and resumes from it", async () => {
+    addTarget("panel", "Panel");
+    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
+    await act(async () =>
+      root.render(
+        <Walkthrough
+          walkthrough={walkthrough}
+          renderBeacon={({ currentStep, resume }) => (
+            <button type="button" onClick={resume}>
+              Back to: {currentStep.content}
+            </button>
+          )}
+        />,
+      ),
+    );
+    await clickAway();
+
+    expect(beacon()).toBeNull();
+    const custom = beaconAnchor()!.querySelector("button")!;
+    expect(custom).toHaveTextContent("Back to: Use this panel");
+
+    await act(async () => custom.click());
+    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Use this panel");
+  });
+
+  it("doesn't take a click on a custom beacon over its Waymark for a click on the Waymark", async () => {
+    addTarget("panel", "Panel");
+    const walkthrough = defineWalkthrough([
+      { waymark: "panel", advance: "click", content: "Click the panel" },
+      { content: "Done" },
+    ]);
+    await act(async () =>
+      root.render(<Walkthrough walkthrough={walkthrough} renderBeacon={() => <span>Paused</span>} />),
+    );
+    await clickAway();
+
+    await act(async () => {
+      beaconAnchor()!.querySelector("span")!.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, detail: 1, clientX: 60, clientY: 40 }),
+      );
+      await Promise.resolve();
+    });
+    expect(beaconAnchor()).toHaveTextContent("Paused");
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("tells a custom beacon whether it sits on a found Waymark", async () => {
+    addTarget("panel", "Panel");
+    const renderBeacon = vi.fn((_props: BeaconRenderProps) => null);
+    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "On the panel" }, { content: "Anywhere" }]);
+    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} renderBeacon={renderBeacon} />));
+    await clickAway();
+    expect(renderBeacon.mock.lastCall![0].waymarkFound).toBe(true);
+
+    await act(async () => renderBeacon.mock.lastCall![0].resume());
+    await act(async () => buttonNamed("Next")!.click());
+    await clickAway();
+    expect(renderBeacon.mock.lastCall![0]).toMatchObject({
+      waymarkFound: false,
+      currentStep: { content: "Anywhere" },
+      labels: { resume: "Resume walkthrough" },
+    });
   });
 
   it("ends the walkthrough from the close button", async () => {
@@ -566,6 +651,30 @@ describe("Walkthrough with checklists", () => {
     await act(async () => (dialog()!.querySelector("button") as HTMLButtonElement).click());
     expect(owner.getSnapshot().active).toBeNull();
     expect(dialog()).toBeNull();
+  });
+
+  it("draws a custom beacon with the owner's step union, and exits from it", async () => {
+    const owner = setup();
+    await act(async () =>
+      root.render(
+        <Walkthrough
+          checklists={owner}
+          renderBeacon={({ currentStep, exit }) => (
+            <button type="button" onClick={exit}>
+              Stop: {currentStep.meta ? currentStep.meta.helpUrl : "no help"}
+            </button>
+          )}
+        />,
+      ),
+    );
+    await act(async () => owner.start("create-deck"));
+    await clickAway();
+
+    const custom = beaconAnchor()!.querySelector("button")!;
+    expect(custom).toHaveTextContent("Stop: /help");
+    await act(async () => custom.click());
+    expect(owner.getSnapshot().active).toBeNull();
+    expect(beaconAnchor()).toBeNull();
   });
 
   it("offers to skip the task being guided, in every view", async () => {

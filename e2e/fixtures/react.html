@@ -88,6 +88,11 @@
       .custom-popover-actions button { padding: 3px 8px; border: 1px solid #c4b5fd; border-radius: 4px; background: #fff; }
       .custom-popover-actions .primary { margin-left: auto; color: #fff; background: #7c3aed; border-color: #7c3aed; }
       .custom-popover-actions button:disabled { opacity: 0.45; }
+      .custom-beacon { display: flex; border: 2px solid #7c3aed; border-radius: 999px; overflow: hidden; background: #faf5ff; box-shadow: 0 4px 12px rgb(0 0 0 / 0.25); }
+      .custom-beacon[data-found="false"] { border-color: #b45309; }
+      .custom-beacon button { display: flex; gap: 6px; align-items: baseline; padding: 4px 10px; border: 0; background: transparent; color: #4c1d95; font-size: 12px; cursor: pointer; }
+      .custom-beacon button + button { border-left: 1px solid #c4b5fd; }
+      .custom-beacon small { color: #6d28d9; }
 
       /* ---- the lab: above the library's shade (z-index 50) and popover (51), so it stays usable ---- */
       body:has(.lab) { --lab-width: 300px; }

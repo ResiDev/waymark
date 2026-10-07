@@ -1,4 +1,4 @@
-import type { Placement, WalkthroughRenderProps } from "react-waymark";
+import type { BeaconRenderProps, Placement, WalkthroughRenderProps } from "react-waymark";
 
 const arrows: Record<Placement, string> = { above: "▼", below: "▲", left: "▶", right: "◀" };
 
@@ -7,7 +7,7 @@ export function CustomPopover({
   snapshot,
   currentStep,
   placement,
-  hasWaymark,
+  waymarkFound,
   advance,
   previous,
   collapse,
@@ -19,7 +19,7 @@ export function CustomPopover({
   return (
     <div className="custom-popover" data-placement={placement} style={currentStep.popoverStyle}>
       <div className="custom-popover-meta">
-        <span>{hasWaymark ? `${arrows[placement]} ${placement}` : "no waymark: centred"}</span>
+        <span>{waymarkFound ? `${arrows[placement]} ${placement}` : "no waymark: centred"}</span>
         <span className="dots" aria-label={`Step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`}>
           {Array.from({ length: snapshot.stepCount }, (_, index) => (
             <i key={index} data-current={index === snapshot.stepIndex} />
@@ -50,6 +50,21 @@ export function CustomPopover({
           {last ? "Finish" : "Next"}
         </button>
       </div>
+    </div>
+  );
+}
+
+// Uses every beacon render prop, so the lab exercises them.
+export function CustomBeacon({ currentStep, waymarkFound, resume, exit, labels }: BeaconRenderProps) {
+  return (
+    <div className="custom-beacon" data-found={waymarkFound}>
+      <button type="button" onClick={resume} aria-label={labels.resume}>
+        {waymarkFound ? "▶ Resume" : "⚠ Resume (no waymark)"}
+        {currentStep.preferredPlacement !== undefined && <small>{currentStep.preferredPlacement}</small>}
+      </button>
+      <button type="button" onClick={exit} aria-label={labels.close}>
+        ×
+      </button>
     </div>
   );
 }

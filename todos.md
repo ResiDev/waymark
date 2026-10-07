@@ -6,8 +6,7 @@ Events
 - Maybe later: go back automatically to the nearest earlier click step whose
   Waymark is on the page. Click steps can't advance by themselves, so it can't loop.
 
-## Beacon and overlay
-- Beacon styling, or let the app pass in its own beacon.
+## Overlay
 - Overlay clicks: make a click on the shade configurable to block, collapse or
   pass through.
 

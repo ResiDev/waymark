@@ -44,7 +44,8 @@ export type WalkthroughRenderProps<
   snapshot: Running<TStep>;
   currentStep: TStep;
   placement: Placement;
-  hasWaymark: boolean;
+  /** False while the popover is centred: the step has no Waymark, or it is not found yet, lost or missing. */
+  waymarkFound: boolean;
   advance: () => void;
   previous: () => void;
   collapse: () => void;
@@ -56,6 +57,18 @@ export type WalkthroughRenderProps<
   labels: WalkthroughLabels;
 }>;
 
+/** What a collapsed run's beacon is drawn with. It is placed for you: on the Waymark's top-right corner, or the bottom of the screen. */
+export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
+  Readonly<{
+    currentStep: TStep;
+    /** False while the beacon sits at the bottom of the screen: the step has no Waymark, or it is lost or missing. */
+    waymarkFound: boolean;
+    resume: () => void;
+    exit: () => void;
+    /** The app's labels over the defaults; `resume` names the beacon. */
+    labels: WalkthroughLabels;
+  }>;
+
 export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
   Readonly<{
     walkthrough: Walkthrough<TStep>;
@@ -64,6 +77,7 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     waymarkPadding?: number;
     onEvent?: (event: RunEvent<TStep>) => void;
     renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
+    renderBeacon?: (props: BeaconRenderProps<TStep>) => ReactNode;
     labels?: Partial<WalkthroughLabels>;
     /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
     portal?: boolean;
@@ -94,6 +108,7 @@ export type ChecklistWalkthroughProps<
   waymarkPadding?: never;
   onEvent?: never;
   renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
+  renderBeacon?: (props: BeaconRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
   labels?: Partial<WalkthroughLabels>;
   /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
   portal?: boolean;
