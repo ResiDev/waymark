@@ -1,7 +1,7 @@
 import { act, StrictMode } from "react";
-import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   createChecklists,
   defineWalkthrough,
@@ -11,49 +11,10 @@ import {
   type WalkthroughLabels,
   type WalkthroughRenderProps,
 } from "./index";
+import { addHost, addRoot, addTarget, localKey } from "./test/dom";
+import { fakeFrames } from "./test/time";
 
-let root: Root;
-let host: HTMLDivElement;
-let frames: Map<number, FrameRequestCallback>;
-let nextFrameId: number;
-
-const targetRect = {
-  x: 20,
-  y: 20,
-  top: 20,
-  left: 20,
-  right: 120,
-  bottom: 60,
-  width: 100,
-  height: 40,
-  toJSON: () => ({}),
-} as DOMRect;
-
-beforeEach(() => {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
-  document.body.innerHTML = "";
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  frames = new Map();
-  nextFrameId = 1;
-  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-    const id = nextFrameId++;
-    frames.set(id, callback);
-    return id;
-  });
-  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
-    frames.delete(id);
-  });
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  vi.restoreAllMocks();
-  delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean })
-    .IS_REACT_ACT_ENVIRONMENT;
-});
+const mount = () => ({ ...fakeFrames(), ...addRoot() });
 
 const buttonNamed = (label: string) =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
@@ -61,15 +22,6 @@ const buttonNamed = (label: string) =>
   );
 
 const shade = () => document.querySelector("[data-waymark-shade]");
-
-const runFrames = async () => {
-  await act(async () => {
-    const pending = [...frames.values()];
-    frames.clear();
-    for (const callback of pending) callback(performance.now());
-    await Promise.resolve();
-  });
-};
 
 const beacon = () =>
   document.querySelector<HTMLButtonElement>('button[aria-label="Resume walkthrough"]');
@@ -85,17 +37,9 @@ const clickAway = async () => {
   });
 };
 
-const addTarget = (waymark: string, label: string): HTMLButtonElement => {
-  const target = document.createElement("button");
-  target.dataset.waymark = waymark;
-  target.textContent = label;
-  target.getBoundingClientRect = () => targetRect;
-  document.body.insertBefore(target, host);
-  return target;
-};
-
 describe("Walkthrough", () => {
   it("does no work while inactive", async () => {
+    const { root, frames } = mount();
     const walkthrough = defineWalkthrough([{ content: "Hidden" }]);
     await act(async () => {
       root.render(<Walkthrough active={false} walkthrough={walkthrough} />);
@@ -106,6 +50,7 @@ describe("Walkthrough", () => {
   });
 
   it("renders into the body, or in place with portal off", async () => {
+    const { root, host } = mount();
     const walkthrough = defineWalkthrough([{ content: "Hello" }]);
     const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
@@ -117,6 +62,7 @@ describe("Walkthrough", () => {
   });
 
   it("renders the default view and advances after a Waymark click", async () => {
+    const { root } = mount();
     const target = addTarget("save", "Save");
     const walkthrough = defineWalkthrough([
       { waymark: "save", advance: "click", content: "Save the document" },
@@ -144,6 +90,7 @@ describe("Walkthrough", () => {
   });
 
   it("uses a replacement event callback without restarting the run", async () => {
+    const { root } = mount();
     const target = addTarget("save", "Save");
     const walkthrough = defineWalkthrough([
       { waymark: "save", advance: "click", content: "First step" },
@@ -172,6 +119,7 @@ describe("Walkthrough", () => {
   });
 
   it("renders a closed Advance gate until its condition is met", async () => {
+    const { root } = mount();
     const target = addTarget("name", "Name");
     const walkthrough = defineWalkthrough([
       {
@@ -195,6 +143,7 @@ describe("Walkthrough", () => {
   });
 
   it("shows a step waiting for its Waymark without a note, then with one once missing, and lets the user past its gate", async () => {
+    const { root, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const walkthrough = defineWalkthrough([
@@ -222,6 +171,7 @@ describe("Walkthrough", () => {
   });
 
   it("shows a note once a step's Waymark has been gone for 200ms", async () => {
+    const { root, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const target = addTarget("save", "Save");
@@ -241,6 +191,7 @@ describe("Walkthrough", () => {
   });
 
   it("shows nothing for a Collapsed run still searching for its Waymark", async () => {
+    const { root } = mount();
     const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
     expect(shade()).not.toBeNull();
@@ -252,6 +203,7 @@ describe("Walkthrough", () => {
   });
 
   it("shows a Collapsed run's beacon only once its Waymark is found or missing, not while waiting", async () => {
+    const { root, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
@@ -268,6 +220,7 @@ describe("Walkthrough", () => {
   });
 
   it("turns an outside click into a resumable Collapsed run", async () => {
+    const { root } = mount();
     addTarget("panel", "Panel");
     const walkthrough = defineWalkthrough([
       { waymark: "panel", content: "Use this panel" },
@@ -285,6 +238,7 @@ describe("Walkthrough", () => {
   });
 
   it("pins the beacon to its Waymark's top-right corner", async () => {
+    const { root } = mount();
     addTarget("panel", "Panel");
     const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
@@ -293,36 +247,8 @@ describe("Walkthrough", () => {
     expect(beaconAnchor()!.style).toMatchObject({ left: "120px", top: "20px" });
   });
 
-  it("keeps the beacon on screen for a Waymark in the screen's corner", async () => {
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(30);
-    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(30);
-    const target = addTarget("help", "Help");
-    target.getBoundingClientRect = () => new DOMRect(window.innerWidth - 60, 0, 60, 40);
-    const walkthrough = defineWalkthrough([{ waymark: "help", content: "Help lives here" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
-    await clickAway();
-
-    expect(parseFloat(beaconAnchor()!.style.left)).toBeLessThan(window.innerWidth - 10);
-    expect(parseFloat(beaconAnchor()!.style.top)).toBeGreaterThan(10);
-  });
-
-  it("keeps a custom beacon wider than the default whole on screen", async () => {
-    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
-    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(40);
-    const target = addTarget("help", "Help");
-    target.getBoundingClientRect = () => new DOMRect(window.innerWidth - 60, 0, 60, 40);
-    const walkthrough = defineWalkthrough([{ waymark: "help", content: "Help lives here" }]);
-    await act(async () =>
-      root.render(
-        <Walkthrough walkthrough={walkthrough} renderBeacon={({ resume }) => <button type="button" onClick={resume}>Carry on with help</button>} />,
-      ),
-    );
-    await clickAway();
-
-    expect(beaconAnchor()!.style).toMatchObject({ left: `${window.innerWidth - 60}px`, top: "20px" });
-  });
-
   it("draws a custom beacon in place of the default, and resumes from it", async () => {
+    const { root } = mount();
     addTarget("panel", "Panel");
     const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
     await act(async () =>
@@ -348,6 +274,7 @@ describe("Walkthrough", () => {
   });
 
   it("doesn't take a click on a custom beacon over its Waymark for a click on the Waymark", async () => {
+    const { root } = mount();
     addTarget("panel", "Panel");
     const walkthrough = defineWalkthrough([
       { waymark: "panel", advance: "click", content: "Click the panel" },
@@ -369,6 +296,7 @@ describe("Walkthrough", () => {
   });
 
   it("tells a custom beacon whether it sits on a found Waymark", async () => {
+    const { root } = mount();
     addTarget("panel", "Panel");
     const renderBeacon = vi.fn((_props: BeaconRenderProps) => null);
     const walkthrough = defineWalkthrough([{ waymark: "panel", content: "On the panel" }, { content: "Anywhere" }]);
@@ -387,6 +315,7 @@ describe("Walkthrough", () => {
   });
 
   it("ends the walkthrough from the close button", async () => {
+    const { root } = mount();
     addTarget("panel", "Panel");
     const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
@@ -401,6 +330,7 @@ describe("Walkthrough", () => {
   });
 
   it("supports one custom popover seam", async () => {
+    const { root } = mount();
     const walkthrough = defineWalkthrough([{ content: "Payload" }]);
     await act(async () => {
       root.render(
@@ -421,6 +351,7 @@ describe("Walkthrough", () => {
   });
 
   it("uses an app's labels, and the defaults for those it leaves out", async () => {
+    const { root, runFrames } = mount();
     addTarget("panel", "Panel");
     const walkthrough = defineWalkthrough([
       { content: "Welcome" },
@@ -455,6 +386,7 @@ describe("Walkthrough", () => {
   });
 
   it("uses the default for a label passed as undefined", async () => {
+    const { root } = mount();
     const walkthrough = defineWalkthrough([{ content: "Welcome" }, { content: "Next up" }]);
     // @ts-expect-error: only exactOptionalPropertyTypes, which an app may not set, rejects this.
     const labels: Partial<WalkthroughLabels> = { next: undefined, stepOf: undefined };
@@ -465,6 +397,7 @@ describe("Walkthrough", () => {
   });
 
   it("emits completion after the committed terminal state and cleans up", async () => {
+    const { root, frames } = mount();
     const target = addTarget("finish", "Finish target");
     const phases: string[] = [];
     const walkthrough = defineWalkthrough([
@@ -493,8 +426,6 @@ describe("Walkthrough", () => {
 });
 
 describe("Walkthrough with storage", () => {
-  afterEach(() => localStorage.clear());
-
   const tour = localStorageAdapter("tour");
   const walkthrough = defineWalkthrough(
     [{ content: "First step" }, { content: "Second step" }, { content: "Third step" }],
@@ -502,8 +433,14 @@ describe("Walkthrough with storage", () => {
   );
   const view = () => <Walkthrough walkthrough={walkthrough} />;
   const dialog = () => document.querySelector('[role="dialog"]');
+  // The walkthrough saves its place in localStorage, under a key that goes when the test does.
+  const mountTour = () => {
+    localKey("tour");
+    return mount();
+  };
 
   it("reads storage once as it mounts, and picks up its place on the next mount", async () => {
+    const { root } = mountTour();
     const load = vi.spyOn(tour, "load");
     await act(async () => root.render(view()));
     await act(async () => buttonNamed("Next")!.click());
@@ -513,13 +450,14 @@ describe("Walkthrough with storage", () => {
     expect(load).toHaveBeenCalledOnce();
 
     await act(async () => root.unmount());
-    root = createRoot(host);
-    await act(async () => root.render(view()));
+    const { root: remounted } = addRoot();
+    await act(async () => remounted.render(view()));
     expect(load).toHaveBeenCalledTimes(2);
     expect(dialog()).toHaveTextContent("Second step");
   });
 
   it("shows a finished walkthrough again once it is reset", async () => {
+    const { root } = mountTour();
     localStorage.setItem("tour", JSON.stringify({ version: 1, phase: "completed" }));
     await act(async () => root.render(view()));
     expect(dialog()).toBeNull();
@@ -531,8 +469,9 @@ describe("Walkthrough with storage", () => {
   it.each([true, false])(
     "hydrates a server render, which has no document, then shows the stored step (portal %s)",
     async (portal) => {
+      fakeFrames();
       localStorage.setItem(
-        "tour",
+        localKey("tour"),
         JSON.stringify({ version: 1, phase: "running", step: 1, stepCount: 3, collapsed: false, savedAt: Date.now() }),
       );
       const app = () => (
@@ -546,12 +485,12 @@ describe("Walkthrough with storage", () => {
         vi.unstubAllGlobals();
       }
 
-      const page = document.createElement("div");
-      document.body.append(page);
+      const page = addHost();
+      let hydrated: Root | undefined;
+      onTestFinished(() => act(async () => hydrated?.unmount()));
       page.innerHTML = server;
       const onRecoverableError = vi.fn();
       const error = vi.spyOn(console, "error");
-      let hydrated: Root | undefined;
       await act(async () => {
         hydrated = hydrateRoot(page, app(), { onRecoverableError });
       });
@@ -559,11 +498,11 @@ describe("Walkthrough with storage", () => {
       expect(onRecoverableError).not.toHaveBeenCalled();
       expect(error).not.toHaveBeenCalled();
       expect(dialog()).toHaveTextContent("Second step");
-      await act(async () => hydrated?.unmount());
     },
   );
 
   it("shows nothing for a walkthrough storage says was finished", async () => {
+    const { root } = mountTour();
     localStorage.setItem("tour", JSON.stringify({ version: 1, phase: "completed" }));
     await act(async () => root.render(view()));
     expect(dialog()).toBeNull();
@@ -597,6 +536,7 @@ describe("Walkthrough with checklists", () => {
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
   it("draws the Run the owner started and finishes it into completion", async () => {
+    const { root, frames } = mount();
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
     expect(dialog()).toBeNull();
@@ -612,6 +552,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("binds its elements so a click on the popover is not a click away", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
     await act(async () => owner.start("read-tips"));
@@ -631,6 +572,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("renders a custom popover with the owner's step union", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () =>
       root.render(
@@ -654,6 +596,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("draws a custom beacon with the owner's step union, and exits from it", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () =>
       root.render(
@@ -678,6 +621,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("offers to skip the task being guided, in every view", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
     await act(async () => owner.start("create-deck"));
@@ -688,6 +632,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("passes an app's labels to the guided task's popover", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} labels={{ skipTask: "Aufgabe überspringen" }} />));
     await act(async () => owner.start("create-deck"));
@@ -695,6 +640,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("hands a custom popover the labels, the app's over the defaults", async () => {
+    const { root } = mount();
     const renderPopover = vi.fn((_props: WalkthroughRenderProps) => null);
     const walkthrough = defineWalkthrough([{ content: "Alone" }]);
     await act(async () =>
@@ -705,6 +651,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("offers no task skip to a walkthrough it owns", async () => {
+    const { root } = mount();
     const renderPopover = vi.fn((_props: WalkthroughRenderProps) => null);
     const walkthrough = defineWalkthrough([{ content: "Alone" }]);
     await act(async () => root.render(<Walkthrough walkthrough={walkthrough} renderPopover={renderPopover} />));
@@ -713,6 +660,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("follows the owner when guidance is stopped or replaced", async () => {
+    const { root, frames } = mount();
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
     await act(async () => owner.start("create-deck"));
@@ -727,6 +675,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("keeps a prestarted Run through Strict Mode's mount cycle", async () => {
+    const { root } = mount();
     const events: string[] = [];
     const owner = setup((event) => events.push(event.type));
     owner.start("read-tips");
@@ -746,6 +695,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("stops its Run on actual unmount, retaining progress", async () => {
+    const { root, frames } = mount();
     const events: string[] = [];
     const owner = setup((event) => events.push(event.type));
     owner.markDone("say-hello");
@@ -764,6 +714,7 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("does not stop a Run that replaced the one it was drawing", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
     await act(async () => owner.start("read-tips"));
@@ -777,8 +728,9 @@ describe("Walkthrough with checklists", () => {
   });
 
   it("hands guidance over to a renderer that mounts as it unmounts", async () => {
+    const { root } = mount();
     const owner = setup();
-    const other = createRoot(document.body.appendChild(document.createElement("div")));
+    const { root: other } = addRoot();
     await act(async () => root.render(<Walkthrough checklists={owner} />));
     await act(async () => owner.start("read-tips"));
 

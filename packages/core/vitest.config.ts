@@ -3,20 +3,24 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    restoreMocks: true,
     projects: [
       {
+        extends: true,
         test: {
           name: "unit",
           environment: "jsdom",
           include: ["src/**/*.test.ts"],
           exclude: ["src/**/*.browser.test.ts"],
-          setupFiles: ["./vitest.setup.ts"],
+          setupFiles: ["./vitest.setup.ts", "./src/test/leaks.ts"],
         },
       },
       {
+        extends: true,
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.ts"],
+          setupFiles: ["./src/test/leaks.ts"],
           browser: {
             enabled: true,
             headless: true,
@@ -27,6 +31,7 @@ export default defineConfig({
         },
       },
       {
+        extends: true,
         test: {
           name: "perf",
           include: ["src/**/*.perf.ts"],

@@ -1,38 +1,37 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { localStorageAdapter } from "./adapter";
 import type { StoredTasks } from "./records";
 import { createChecklists } from "../checklists/checklists";
-
-afterEach(() => {
-  localStorage.clear();
-  vi.restoreAllMocks();
-});
+import { localKey } from "../test/dom";
 
 const statuses = (owner: { checklists: { main: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } } } }) =>
   Object.fromEntries(owner.checklists.main.getSnapshot().tasks.map((row) => [row.task.id, row.status]));
 
 describe("localStorageAdapter", () => {
   it.each(["constructor", "toString", "__proto__"])("keeps the status of a Task named %s across a reload", (id) => {
+    const key = localKey("setup");
     const create = () =>
-      createChecklists({ tasks: { [id]: {}, other: {} }, storage: { tasks: localStorageAdapter("setup") } });
+      createChecklists({ tasks: { [id]: {}, other: {} }, storage: { tasks: localStorageAdapter(key) } });
     create().skip(id);
     expect(statuses(create())).toEqual({ [id]: "skipped", other: "todo" });
   });
 
   it("writes JSON under its name, and removes the key once nothing is left", () => {
-    const owner = createChecklists({ tasks: { a: {} }, storage: { tasks: localStorageAdapter("setup") } });
+    const key = localKey("setup");
+    const owner = createChecklists({ tasks: { a: {} }, storage: { tasks: localStorageAdapter(key) } });
     owner.markDone("a");
-    expect(JSON.parse(localStorage.getItem("setup")!)).toEqual({ version: 3, tasks: { a: "done" } });
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 3, tasks: { a: "done" } });
     owner.markTodo("a");
-    expect(localStorage.getItem("setup")).toBeNull();
+    expect(localStorage.getItem(key)).toBeNull();
   });
 
   it("hands text that is not JSON on, to be reported as a record Waymark did not write", () => {
-    localStorage.setItem("setup", "not json");
+    const key = localKey("setup");
+    localStorage.setItem(key, "not json");
     const onStorageError = vi.fn();
     const owner = createChecklists({
       tasks: { a: {} },
-      storage: { tasks: localStorageAdapter<StoredTasks>("setup") },
+      storage: { tasks: localStorageAdapter<StoredTasks>(key) },
       onStorageError,
     });
     expect(owner.getSnapshot().storageStatus).toBe("error");

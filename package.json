@@ -17,7 +17,7 @@
     "dev:react": "pnpm --filter waymark-e2e dev:react",
     "shot": "pnpm --filter waymark-e2e shot",
     "size": "pnpm build && pnpm --filter waymark-e2e size",
-    "test:e2e": "pnpm --filter waymark-core test:e2e",
+    "test:e2e": "pnpm -r --filter waymark-core --filter react-waymark test:e2e",
     "check:all": "pnpm check && pnpm test:e2e",
     "test:perf": "pnpm --filter waymark-core test:perf",
     "setup:browser": "pnpm --filter waymark-core exec playwright install chromium"

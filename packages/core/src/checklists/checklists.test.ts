@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { addToBody } from "../test/dom";
 import { createChecklists } from "./checklists";
 import type { StoredTasks } from "../storage/records";
 import type { ChecklistSelections, ChecklistsEvent, Task, TaskMap } from "./types";
@@ -472,7 +473,7 @@ describe("guidance", () => {
     dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(run.getSnapshot()).toMatchObject({ collapsed: false });
     release();
-    document.body.append(dialog);
+    addToBody(dialog);
     dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(run.getSnapshot()).toMatchObject({ collapsed: true });
     stop();
@@ -493,7 +494,8 @@ describe("guidance", () => {
     const owner = setup();
     const a = document.createElement("div");
     const b = document.createElement("div");
-    document.body.append(a, b);
+    addToBody(a);
+    addToBody(b);
     const releaseA = owner.bindUi(() => ({ dialog: a, beacon: null }));
     owner.bindUi(() => ({ dialog: b, beacon: null }));
     owner.start("read-tips");

@@ -1,15 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createRun } from "./run";
 import type { RunEvent } from "./types";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredWalkthrough } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { WalkthroughStore } from "../walkthrough/types";
-
-afterEach(() => {
-  localStorage.clear();
-  vi.useRealTimers();
-});
+import { localKey } from "../test/dom";
+import { fakeTimers } from "../test/time";
 
 const tourIn = (storage: WalkthroughStore, maxAge?: number) =>
   defineWalkthrough([{}, {}, {}], { storage, ...(maxAge === undefined ? {} : { maxAge }) });
@@ -41,7 +38,7 @@ const where = (run: ReturnType<typeof createRun>) => {
 
 describe("run storage", () => {
   it("saves as the step changes, it collapses, and it ends", () => {
-    vi.useFakeTimers({ now: 1_000 });
+    fakeTimers(1_000);
     const walkthrough = held(null);
     const run = createRun(tourIn(walkthrough));
     expect(walkthrough.save).not.toHaveBeenCalled();
@@ -200,7 +197,7 @@ describe("run storage", () => {
   });
 
   it("clears its record when no Run is watching, so the next one starts at the first step", () => {
-    const tour = tourIn("tour");
+    const tour = tourIn(localKey("tour"));
     createRun(tour).act("exit");
 
     tour.reset();
@@ -270,12 +267,13 @@ describe("run storage", () => {
   });
 
   it("keeps a finished tour finished across a reload through localStorage", () => {
-    const first = createRun(tourIn("tour"));
+    const key = localKey("tour");
+    const first = createRun(tourIn(key));
     first.act("advance");
     first.act("advance");
     first.act("advance");
 
-    const reloaded = createRun(tourIn("tour"));
+    const reloaded = createRun(tourIn(key));
     expect(where(reloaded)).toBe("completed");
   });
 });

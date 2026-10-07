@@ -1,51 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { addFarTarget, addTarget, addToBody } from "../test/dom";
+import { fakeFrames } from "../test/time";
 import { createRun } from "./run";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { actions, type RunEvent, type Running } from "./types";
-
-let frames: Map<number, FrameRequestCallback>;
-let nextFrame: number;
-let clock: number;
-
-const flush = (ms = 16) => {
-  clock += ms;
-  const pending = [...frames.values()];
-  frames.clear();
-  for (const callback of pending) callback(clock);
-};
-
-/** A frame that sees the Waymark gone, then one after the 200ms it may be gone before it counts as lost. */
-const flushLost = () => {
-  flush();
-  flush(200);
-};
-
-const addTarget = (waymark: string, rect: Partial<DOMRect> = {}) => {
-  const element = document.createElement("button");
-  element.dataset["waymark"] = waymark;
-  const box = {
-    x: 20,
-    y: 20,
-    top: 20,
-    left: 20,
-    right: 120,
-    bottom: 60,
-    width: 100,
-    height: 40,
-    ...rect,
-  } as DOMRect;
-  element.getBoundingClientRect = () => box;
-  document.body.append(element);
-  return element;
-};
-
-/** A target below jsdom's 768px viewport, with a stand-in for the scroll jsdom lacks. */
-const addFarTarget = (waymark: string) => {
-  const element = addTarget(waymark, { y: 2000, top: 2000, bottom: 2040 });
-  const scroll = vi.fn();
-  element.scrollIntoView = scroll;
-  return { element, scroll };
-};
 
 const clickAt = (node: Element, x: number, y: number) =>
   node.dispatchEvent(
@@ -61,6 +19,7 @@ const watch = (run: {
   getSnapshot: () => unknown;
 }) => {
   const stop = run.subscribe(() => {});
+  onTestFinished(stop);
   return {
     stop,
     get snapshot() {
@@ -77,26 +36,9 @@ const skipFirstCall = (listener: () => void) => {
   };
 };
 
-beforeEach(() => {
-  document.body.innerHTML = "";
-  frames = new Map();
-  nextFrame = 1;
-  clock = 1000;
-  vi.spyOn(performance, "now").mockImplementation(() => clock);
-  vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-    const id = nextFrame++;
-    frames.set(id, callback);
-    return id;
-  });
-  vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
-    frames.delete(id);
-  });
-});
-
-afterEach(() => vi.restoreAllMocks());
-
 describe("createRun", () => {
   it("watches the page only while someone is subscribed", () => {
+    const { frames } = fakeFrames();
     const target = addTarget("save");
     const run = createRun(defineWalkthrough([{ waymark: "save" }]));
 
@@ -117,6 +59,7 @@ describe("createRun", () => {
   });
 
   it("calls a subscriber at once with the current Snapshot, then with each new one", () => {
+    fakeFrames();
     const run = createRun(defineWalkthrough([{}, {}]));
     const listener = vi.fn();
     run.subscribe(listener);
@@ -128,6 +71,7 @@ describe("createRun", () => {
   });
 
   it("calls a subscriber added from inside a listener before subscribe returns", () => {
+    fakeFrames();
     const run = createRun(defineWalkthrough([{}, {}]));
     const inner = vi.fn();
     let calledBeforeReturn = false;
@@ -143,6 +87,7 @@ describe("createRun", () => {
   });
 
   it("does not notify on a look that changes nothing a renderer shows", () => {
+    const { flush } = fakeFrames();
     addTarget("save");
     let ready = false;
     const run = createRun(defineWalkthrough([
@@ -163,6 +108,7 @@ describe("createRun", () => {
   });
 
   it.each(["unsubscribe", "exit", "advance"])("restores authored ARIA attributes on %s", (cleanup) => {
+    fakeFrames();
     const target = addTarget("save");
     target.setAttribute("aria-haspopup", "menu");
     target.setAttribute("aria-expanded", "false");
@@ -180,6 +126,7 @@ describe("createRun", () => {
   });
 
   it("updates expanded state on collapse and resume without losing original values", () => {
+    fakeFrames();
     const target = addTarget("save");
     target.setAttribute("aria-expanded", "");
     const run = createRun(defineWalkthrough([{ waymark: "save" }]));
@@ -196,6 +143,7 @@ describe("createRun", () => {
   });
 
   it("updates ARIA independently of advance-event listeners", () => {
+    const { flush } = fakeFrames();
     const target = addTarget("save");
     const listen = vi.spyOn(target, "addEventListener");
     const run = createRun(defineWalkthrough([
@@ -226,6 +174,7 @@ describe("createRun", () => {
   });
 
   it("replaces event listeners on reset and rejects events queued for the old step visit", () => {
+    const { flush } = fakeFrames();
     const target = addTarget("save");
     const listen = vi.spyOn(target, "addEventListener");
     const run = createRun(defineWalkthrough([
@@ -254,6 +203,7 @@ describe("createRun", () => {
   });
 
   it("attaches a newly found target as collapsed when the run is collapsed", () => {
+    const { flush } = fakeFrames();
     const run = createRun(defineWalkthrough([{ waymark: "save" }]));
     const view = watch(run);
     run.act("collapse");
@@ -267,6 +217,7 @@ describe("createRun", () => {
   });
 
   it("searches for a waymark until it first appears, and reports it lost once it leaves", () => {
+    const { flush, flushLost } = fakeFrames();
     const view = watch(createRun(defineWalkthrough([{ waymark: "save" }])));
     flush();
     expect(view.snapshot.waymark).toEqual({ status: "searching" });
@@ -282,6 +233,7 @@ describe("createRun", () => {
   });
 
   it("waits for a waymark after half a second of searching, with its gate shut and nothing reported", () => {
+    const { flush } = fakeFrames();
     const events: string[] = [];
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]), {
@@ -302,6 +254,7 @@ describe("createRun", () => {
   });
 
   it("calls a waymark missing after three seconds of searching, and lets the user past its gate", () => {
+    const { flush } = fakeFrames();
     const view = watch(createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}])));
     flush(500);
     flush(2499);
@@ -316,6 +269,7 @@ describe("createRun", () => {
   });
 
   it("waits as long as its step's missingAfterMs before calling a waymark missing", () => {
+    const { flush } = fakeFrames();
     const view = watch(createRun(defineWalkthrough([{ waymark: "save", missingAfterMs: 6000 }])));
     flush(5999);
     expect(view.snapshot.waymark.status).toBe("waiting");
@@ -326,6 +280,7 @@ describe("createRun", () => {
   });
 
   it("opens the gate once a waymark has been gone for 200ms, and shuts it again when it returns", () => {
+    const { flush } = fakeFrames();
     const target = addTarget("save");
     const view = watch(createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}])));
     expect(view.snapshot.canAdvance).toBe(false);
@@ -345,6 +300,7 @@ describe("createRun", () => {
   });
 
   it("tells onEvent once when a waymark goes missing, and each time it is lost", () => {
+    const { flush, flushLost } = fakeFrames();
     const events: string[] = [];
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "save" }]), {
@@ -368,9 +324,10 @@ describe("createRun", () => {
   });
 
   it("reports a waymark going missing before an advance in the same frame", () => {
+    const { flush } = fakeFrames();
     const events: string[] = [];
     const view = watch(
-      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => clock >= 4000 } }, {}]), {
+      createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => performance.now() >= 4000 } }, {}]), {
         onEvent: (event) => events.push(event.type),
       }),
     );
@@ -380,6 +337,7 @@ describe("createRun", () => {
   });
 
   it("keeps checking a state condition while its waymark is missing", () => {
+    const { flush } = fakeFrames();
     let ready = false;
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => ready } }, {}])),
@@ -394,6 +352,7 @@ describe("createRun", () => {
   });
 
   it("keeps a met condition's unlock when its waymark is lost and comes back", () => {
+    const { flush, flushLost } = fakeFrames();
     addTarget("save");
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "save", advance: { state: () => true, then: "unlock" } }, {}])),
@@ -412,6 +371,7 @@ describe("createRun", () => {
   });
 
   it("keeps a waymark found, in its last place, while a re-render swaps its element", () => {
+    const { flush } = fakeFrames();
     const events: string[] = [];
     const target = addTarget("save");
     const view = watch(
@@ -435,6 +395,7 @@ describe("createRun", () => {
   });
 
   it("does not count time nobody was watching towards a waymark going missing", () => {
+    const { flush } = fakeFrames();
     const run = createRun(defineWalkthrough([{ waymark: "save" }]));
     watch(run).stop();
     flush(5000);
@@ -446,6 +407,7 @@ describe("createRun", () => {
   });
 
   it("treats a waymark hidden with display: none as gone, not found at 0,0", () => {
+    const { flushLost } = fakeFrames();
     const target = addTarget("save");
     const view = watch(createRun(defineWalkthrough([{ waymark: "save" }])));
     expect(view.snapshot.waymark.status).toBe("found");
@@ -457,8 +419,8 @@ describe("createRun", () => {
   });
 
   it.each(["moved outside root", "renamed"])("replaces a cached target that was %s", (change) => {
-    const root = document.createElement("section");
-    document.body.append(root);
+    const { flush, flushLost } = fakeFrames();
+    const root = addToBody(document.createElement("section"));
     const target = addTarget("save");
     root.append(target);
     const view = watch(createRun(defineWalkthrough([{ waymark: "save" }]), { root }));
@@ -480,8 +442,8 @@ describe("createRun", () => {
   });
 
   it("reuses a valid cached target without searching the root again", () => {
-    const root = document.createElement("section");
-    document.body.append(root);
+    const { flush } = fakeFrames();
+    const root = addToBody(document.createElement("section"));
     root.append(addTarget("save"));
     const query = vi.spyOn(root, "querySelector");
     const view = watch(createRun(defineWalkthrough([{ waymark: "save" }]), { root }));
@@ -497,6 +459,7 @@ describe("createRun", () => {
   it.each([["once", 1], ["always", 3], ["never", 0]] as const)(
     "scrolls to an off-screen waymark %s",
     (scroll, times) => {
+      const { flush } = fakeFrames();
       const far = addFarTarget("far");
       const view = watch(createRun(defineWalkthrough([{ waymark: "far", scroll }])));
 
@@ -509,6 +472,7 @@ describe("createRun", () => {
   );
 
   it("scrolls to each step's off-screen waymark, not only the first step's", () => {
+    const { flush } = fakeFrames();
     const first = addFarTarget("first");
     const second = addFarTarget("second");
     const run = createRun(defineWalkthrough([{ waymark: "first" }, { waymark: "second" }]));
@@ -523,6 +487,7 @@ describe("createRun", () => {
   });
 
   it("scrolls to a waymark found on the look that starts its step's delay", () => {
+    const { flush } = fakeFrames();
     const view = watch(createRun(defineWalkthrough([
       { waymark: "far", advance: { state: (element) => element !== null, delayMs: 50 } }, {},
     ])));
@@ -536,6 +501,7 @@ describe("createRun", () => {
   });
 
   it("does not scroll to a waymark whose step it has just left", () => {
+    const { flush } = fakeFrames();
     const view = watch(createRun(defineWalkthrough([
       { waymark: "far", advance: { state: (element) => element !== null } }, {},
     ])));
@@ -549,6 +515,7 @@ describe("createRun", () => {
   });
 
   it("has no waymark to look for on a step without one", () => {
+    fakeFrames();
     const view = watch(createRun(defineWalkthrough([{}])));
 
     expect(view.snapshot.waymark).toEqual({ status: "absent" });
@@ -556,6 +523,7 @@ describe("createRun", () => {
   });
 
   it("asks for frames only on steps the next look could change", () => {
+    const { frames, flush } = fakeFrames();
     const run = createRun(defineWalkthrough([{}, { waymark: "save" }, {}]));
     const view = watch(run);
     expect(frames.size).toBe(0);
@@ -571,6 +539,7 @@ describe("createRun", () => {
   });
 
   it("keeps the gate shut until an event opens it, and stays put", () => {
+    fakeFrames();
     const target = addTarget("name");
     const view = watch(
       createRun(
@@ -589,6 +558,7 @@ describe("createRun", () => {
   });
 
   it("will not be moved past a shut gate, by command or by key", () => {
+    fakeFrames();
     addTarget("save");
     const run = createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]));
     const view = watch(run);
@@ -601,6 +571,7 @@ describe("createRun", () => {
   });
 
   it("does not take a click on the waymark for the event its step waits for", () => {
+    fakeFrames();
     const target = addTarget("name");
     const view = watch(createRun(defineWalkthrough([
       { waymark: "name", advance: { event: "change" } }, {},
@@ -615,6 +586,7 @@ describe("createRun", () => {
   });
 
   it("needs a click on each step that waits for one", () => {
+    const { flush } = fakeFrames();
     const save = addTarget("save");
     const publish = addTarget("publish", { x: 200, left: 200, right: 300 });
     const view = watch(createRun(defineWalkthrough([
@@ -633,6 +605,7 @@ describe("createRun", () => {
   });
 
   it("checks a step without a waymark without querying the DOM", () => {
+    const { flush } = fakeFrames();
     const root = document.createElement("section");
     const query = vi.spyOn(root, "querySelector");
     const check = vi.fn(() => true);
@@ -647,6 +620,7 @@ describe("createRun", () => {
   });
 
   it("keeps measuring the waymark after its advance check has unlocked", () => {
+    const { flush } = fakeFrames();
     const target = addTarget("ready");
     const measure = vi.spyOn(target, "getBoundingClientRect");
     const check = vi.fn(() => true);
@@ -665,6 +639,7 @@ describe("createRun", () => {
   });
 
   it("checks the element it measured on the same look, and notifies once", () => {
+    const { flush } = fakeFrames();
     const check = vi.fn((element: Element | null) => element !== null);
     const run = createRun(defineWalkthrough([
       { waymark: "later", advance: { state: check } }, {},
@@ -685,6 +660,7 @@ describe("createRun", () => {
   });
 
   it("rejects an advance result when the check itself resets the step", () => {
+    const { flush } = fakeFrames();
     const check = vi.fn(() => true);
     const run = createRun(defineWalkthrough([{ advance: { state: check } }, {}]));
     const view = watch(run);
@@ -701,6 +677,7 @@ describe("createRun", () => {
   });
 
   it("checks a satisfied event's delay without needing a state predicate", () => {
+    const { flush } = fakeFrames();
     const target = addTarget("ready");
     const view = watch(createRun(defineWalkthrough([
       { waymark: "ready", advance: { event: "change", delayMs: 50 } }, {},
@@ -715,6 +692,7 @@ describe("createRun", () => {
   });
 
   it("advances by itself when the condition says so, after its delay", () => {
+    const { flush } = fakeFrames();
     addTarget("ready");
     let ready = false;
     const view = watch(
@@ -741,6 +719,7 @@ describe("createRun", () => {
   });
 
   it("starts the delay again if the condition stops holding before it is due", () => {
+    const { flush } = fakeFrames();
     let ready = true;
     const view = watch(createRun(defineWalkthrough([
       { advance: { state: () => ready, delayMs: 50 } }, {},
@@ -760,6 +739,7 @@ describe("createRun", () => {
   });
 
   it("times each step's delay from its own condition, not the step before's", () => {
+    const { flush } = fakeFrames();
     const save = addTarget("save");
     const view = watch(createRun(defineWalkthrough([
       { waymark: "save", advance: { click: true, delayMs: 50 } },
@@ -780,6 +760,7 @@ describe("createRun", () => {
   });
 
   it("restarts a state check's delay after a spell with no subscribers", () => {
+    const { flush } = fakeFrames();
     const run = createRun(defineWalkthrough([
       { advance: { state: () => true, delayMs: 50 } }, {},
     ]));
@@ -796,6 +777,7 @@ describe("createRun", () => {
   });
 
   it("keeps a click's delay through a spell with no subscribers", () => {
+    const { flush } = fakeFrames();
     const save = addTarget("save");
     const run = createRun(defineWalkthrough([
       { waymark: "save", advance: { click: true, delayMs: 50 } }, {},
@@ -811,6 +793,7 @@ describe("createRun", () => {
   });
 
   it("counts a click in the halo around a waymark as a click on it", () => {
+    fakeFrames();
     addTarget("save");
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]), {
@@ -823,9 +806,9 @@ describe("createRun", () => {
   });
 
   it("collapses on a click away, but not on a click on the walkthrough's own UI", () => {
+    fakeFrames();
     addTarget("panel");
-    const dialog = document.createElement("div");
-    document.body.append(dialog);
+    const dialog = addToBody(document.createElement("div"));
     const view = watch(
       createRun(defineWalkthrough([{ waymark: "panel" }]), {
         ui: () => ({ dialog, beacon: null }),
@@ -840,12 +823,13 @@ describe("createRun", () => {
   });
 
   it.each(["dialog", "beacon", "marked"])("gives %s UI precedence over the target and its padding", (kind) => {
+    fakeFrames();
     const target = addTarget("save");
     const button = document.createElement("button");
     if (kind === "marked") {
       button.dataset["waymarkUi"] = "";
       target.append(button);
-    } else document.body.append(button);
+    } else addToBody(button);
     const run = createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]), {
       waymarkPadding: 20,
       ui: () => ({
@@ -862,9 +846,9 @@ describe("createRun", () => {
   });
 
   it("ignores keyboard click coordinates but accepts keyboard activation of the target", () => {
+    fakeFrames();
     const target = addTarget("save", { x: 0, y: 0, top: 0, left: 0 });
-    const away = document.createElement("button");
-    document.body.append(away);
+    const away = addToBody(document.createElement("button"));
     const run = createRun(defineWalkthrough([{ waymark: "save", advance: "click" }, {}]));
     const view = watch(run);
 
@@ -877,6 +861,7 @@ describe("createRun", () => {
   });
 
   it.each(["altKey", "ctrlKey", "metaKey", "defaultPrevented"])("leaves %s key events alone", (kind) => {
+    fakeFrames();
     const run = createRun(defineWalkthrough([{}, {}]));
     const view = watch(run);
     const event = new KeyboardEvent("keydown", {
@@ -897,11 +882,13 @@ describe("createRun", () => {
   });
 
   it.each(["Escape", "ArrowRight", "ArrowLeft", "Tab"])("leaves %s from other Waymark UI to that UI", (key) => {
+    fakeFrames();
     const dialog = document.createElement("div");
     dialog.append(document.createElement("button"));
     const other = document.createElement("button");
     other.dataset["waymarkUi"] = "";
-    document.body.append(dialog, other);
+    addToBody(dialog);
+    addToBody(other);
     const run = createRun(defineWalkthrough([{}, {}]), { ui: () => ({ dialog, beacon: null }) });
     const view = watch(run);
     const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
@@ -914,11 +901,12 @@ describe("createRun", () => {
   });
 
   it("takes keys from marked content inside its own dialog", () => {
+    fakeFrames();
     const dialog = document.createElement("div");
     const marked = document.createElement("button");
     marked.dataset["waymarkUi"] = "";
     dialog.append(marked);
-    document.body.append(dialog);
+    addToBody(dialog);
     const run = createRun(defineWalkthrough([{}, {}]), { ui: () => ({ dialog, beacon: null }) });
     const view = watch(run);
 
@@ -929,6 +917,7 @@ describe("createRun", () => {
   });
 
   it("takes the arrow keys and Escape", () => {
+    fakeFrames();
     const view = watch(createRun(defineWalkthrough([{}, {}])));
 
     press("ArrowRight");
@@ -945,6 +934,7 @@ describe("createRun", () => {
   });
 
   it("announces what it did, and what it did it to", () => {
+    fakeFrames();
     const events: string[] = [];
     const run = createRun(defineWalkthrough([{ waymark: "a" }, { waymark: "b" }]), {
       onEvent: (event: RunEvent) =>
@@ -965,6 +955,7 @@ describe("createRun", () => {
   });
 
   it("stops watching the page as soon as it ends", () => {
+    const { frames } = fakeFrames();
     const target = addTarget("save");
     const run = createRun(defineWalkthrough([{ waymark: "save" }]));
     watch(run);
@@ -998,6 +989,7 @@ describe("createRun", () => {
   });
 
   it("has already found the waymark by the time it announces the start", () => {
+    fakeFrames();
     addTarget("save");
     const seen: unknown[] = [];
     const run = createRun(defineWalkthrough([{ waymark: "save" }]), {
@@ -1014,6 +1006,7 @@ describe("createRun", () => {
   });
 
   it("finishes announcing a change before obeying an act it caused", () => {
+    fakeFrames();
     const events: string[] = [];
     const run = createRun(defineWalkthrough([{}]), {
       onEvent: (event: RunEvent) => {
@@ -1037,6 +1030,7 @@ describe("createRun", () => {
   });
 
   it("lets every listener see a change before a listener's act moves it on", () => {
+    fakeFrames();
     const run = createRun(defineWalkthrough([{}, {}, {}]));
     const seenByFirst: number[] = [];
     const seenBySecond: number[] = [];
@@ -1054,6 +1048,7 @@ describe("createRun", () => {
   });
 
   it("ignores a condition met on a step the run has since left", () => {
+    fakeFrames();
     const target = addTarget("save");
     const run = createRun(
       defineWalkthrough([
@@ -1081,6 +1076,7 @@ describe("createRun", () => {
   });
 
   it("keeps going when a listener throws, and reports the error after", () => {
+    const { frames } = fakeFrames();
     const events: string[] = [];
     const run = createRun(defineWalkthrough([{}]), {
       onEvent: (event: RunEvent) => events.push(event.type),
@@ -1104,6 +1100,7 @@ describe("createRun", () => {
   });
 
   it("gathers several callback errors into one", () => {
+    fakeFrames();
     const run = createRun(defineWalkthrough([{}]));
     watch(run);
     run.subscribe(skipFirstCall(() => {
@@ -1117,6 +1114,7 @@ describe("createRun", () => {
   });
 
   it("announces start before checking an immediately satisfied condition", () => {
+    const { frames, flush } = fakeFrames();
     const events: string[] = [];
     const check = vi.fn(() => true);
     const run = createRun(
@@ -1133,6 +1131,7 @@ describe("createRun", () => {
   });
 
   it("announces start before anything a subscriber does on its first call", () => {
+    const { frames } = fakeFrames();
     addTarget("save");
     const events: string[] = [];
     const run = createRun(defineWalkthrough([{ waymark: "save" }]), {
@@ -1149,6 +1148,7 @@ describe("createRun", () => {
   });
 
   it("finishes the start handler before running its actions", () => {
+    const { frames } = fakeFrames();
     const seen: string[] = [];
     const run = createRun(defineWalkthrough([{}]), {
       onEvent: (event) => {
@@ -1167,6 +1167,7 @@ describe("createRun", () => {
   });
 
   it("continues observing and restarts the condition delay after a state check throws", () => {
+    const { frames, flush } = fakeFrames();
     const failure = new Error("state check failed");
     const check = vi.fn(() => true);
     const run = createRun(defineWalkthrough([
@@ -1190,6 +1191,7 @@ describe("createRun", () => {
   });
 
   it("reports both check and subscriber errors after scheduling the next frame", () => {
+    const { frames, flush } = fakeFrames();
     const checkError = new Error("check failed");
     const subscriberError = new Error("subscriber failed");
     const check = vi.fn(() => false);
@@ -1215,6 +1217,7 @@ describe("createRun", () => {
   });
 
   it("continues observing after a frame subscriber throws", () => {
+    const { frames, flush, flushLost } = fakeFrames();
     const run = createRun(defineWalkthrough([{ waymark: "later" }]));
     const view = watch(run);
     const stopBroken = run.subscribe(skipFirstCall(() => { throw new Error("renderer"); }));
@@ -1231,6 +1234,7 @@ describe("createRun", () => {
   });
 
   it.each(["subscriber", "start handler"])("cleans up when the initial %s throws", (source) => {
+    const { frames } = fakeFrames();
     const target = addTarget("save");
     const fail = () => { throw new Error("startup failed"); };
     const run = createRun(defineWalkthrough([{ waymark: "save" }]), {

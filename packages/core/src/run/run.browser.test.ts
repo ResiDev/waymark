@@ -1,12 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { page } from "vitest/browser";
 import { createRun } from "./run";
+import { addPage } from "../test/browser";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Run } from "./types";
 import type { ExactStep, Step } from "../walkthrough/types";
 
-
-let stop: (() => void) | undefined;
 
 const running = <TStep extends Step>(run: Run<TStep>) => {
   const snapshot = run.getSnapshot();
@@ -25,12 +24,14 @@ const domRect = (element: Element) => {
   return { x, y, top, right, bottom, left, width, height };
 };
 
+/** Starts a Run on the page, watched until the test ends. */
 const start = <const TStep extends Step>(steps: readonly TStep[], waymarkPadding?: number): Run<TStep> => {
+  addPage();
   const run = createRun(
     defineWalkthrough<TStep>(steps as readonly TStep[] & readonly ExactStep<TStep, Step>[]),
     waymarkPadding === undefined ? {} : { waymarkPadding },
   );
-  stop = run.subscribe(() => {});
+  onTestFinished(run.subscribe(() => {}));
   return run;
 };
 
@@ -45,22 +46,6 @@ const settledScrollY = async () => {
     .toBe(true);
   return last;
 };
-
-beforeEach(() => {
-  document.body.innerHTML = `
-    <main style="padding: 40px">
-      <button data-waymark="save" style="display:block; padding: 8px 12px">Save</button>
-      <input data-waymark="name" style="display:block; margin-top: 8px; padding: 8px 12px" />
-      <div style="height: 3000px"></div>
-      <button data-waymark="footer" style="display:block; padding: 8px 12px">Footer</button>
-    </main>`;
-  window.scrollTo({ top: 0, behavior: "instant" });
-});
-
-afterEach(() => {
-  stop?.();
-  stop = undefined;
-});
 
 const el = (waymark: string) => document.querySelector(`[data-waymark="${waymark}"]`) as HTMLElement;
 

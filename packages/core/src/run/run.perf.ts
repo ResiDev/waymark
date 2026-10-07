@@ -1,5 +1,7 @@
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { createRun } from "./run";
+import { addPerfPage } from "../test/browser";
+import { captureFrames } from "../test/time";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 
 /**
@@ -31,38 +33,11 @@ const measure = (fn: (i: number) => void): number => {
   return samples[Math.floor(REPS / 2)]!;
 };
 
-let captured: FrameRequestCallback | undefined;
-const realRaf = globalThis.requestAnimationFrame;
-const realCancel = globalThis.cancelAnimationFrame;
-
-beforeAll(() => {
-  globalThis.requestAnimationFrame = (cb) => {
-    captured = cb;
-    return 1;
-  };
-  globalThis.cancelAnimationFrame = () => {};
-  document.body.innerHTML = `
-    <main style="padding: 40px">
-      <button data-waymark="save" style="display:block; padding: 8px 12px">Save</button>
-      <div style="height: 3000px"></div>
-    </main>`;
-});
-
-afterAll(() => {
-  globalThis.requestAnimationFrame = realRaf;
-  globalThis.cancelAnimationFrame = realCancel;
-});
-
-const frameOf = (steps: Parameters<typeof defineWalkthrough>[0]) => {
+const frameOf = (runFrame: () => void, steps: Parameters<typeof defineWalkthrough>[0]) => {
   const run = createRun(defineWalkthrough(steps));
   const stop = run.subscribe(() => {});
-  const frame = () => {
-    const cb = captured!;
-    captured = undefined;
-    cb(performance.now());
-  };
-  frame();
-  return { frame, stop, run };
+  runFrame();
+  return { frame: runFrame, stop, run };
 };
 
 const ns = (n: number) => `${n.toFixed(0).padStart(6)} ns`;
@@ -70,6 +45,8 @@ const row = (label: string, n: number, note = "") =>
   `${label.padEnd(34)} ${ns(n)}  ${note}`;
 
 it("measures a frame against the browser primitives", () => {
+  const runFrame = captureFrames();
+  addPerfPage();
   const el = document.querySelector<HTMLElement>('[data-waymark="save"]')!;
   let sink = 0;
 
@@ -89,11 +66,11 @@ it("measures a frame against the browser primitives", () => {
   });
   el.style.paddingLeft = "";
 
-  const still = frameOf([{ waymark: "save" }]);
+  const still = frameOf(runFrame, [{ waymark: "save" }]);
   const stillFrame = measure(still.frame);
   still.stop();
 
-  const moving = frameOf([{ waymark: "save" }]);
+  const moving = frameOf(runFrame, [{ waymark: "save" }]);
   const movingFrame = measure((i) => {
     el.style.transform = `translateY(${i % 10}px)`;
     moving.frame();
@@ -101,7 +78,7 @@ it("measures a frame against the browser primitives", () => {
   moving.stop();
   el.style.transform = "";
 
-  const dirty = frameOf([{ waymark: "save" }]);
+  const dirty = frameOf(runFrame, [{ waymark: "save" }]);
   const dirtyFrame = measure((i) => {
     el.style.paddingLeft = `${12 + (i % 2)}px`;
     dirty.frame();
@@ -109,7 +86,7 @@ it("measures a frame against the browser primitives", () => {
   dirty.stop();
   el.style.paddingLeft = "";
 
-  const checked = frameOf([{ waymark: "save", advance: { state: () => false } }]);
+  const checked = frameOf(runFrame, [{ waymark: "save", advance: { state: () => false } }]);
   const checkedFrame = measure(checked.frame);
   checked.stop();
 

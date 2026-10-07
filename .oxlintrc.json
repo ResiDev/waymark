@@ -134,13 +134,20 @@
         "packages/core/**/*.test.ts",
         "packages/core/**/*.perf.ts",
         "packages/react/**/*.test.ts",
-        "packages/react/**/*.test.tsx"
+        "packages/react/**/*.test.tsx",
+        "packages/*/src/test/**"
       ],
       "rules": {
         "no-restricted-globals": "off",
         "typescript/no-non-null-assertion": "off",
         "typescript/no-unsafe-type-assertion": "off",
         "typescript/strict-void-return": "off"
+      }
+    },
+    {
+      "files": ["packages/*/src/test/leaks.ts"],
+      "rules": {
+        "vitest/no-standalone-expect": "off"
       }
     },
     {

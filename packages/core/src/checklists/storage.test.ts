@@ -1,15 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createChecklists } from "./checklists";
 import type { ChecklistsStorage } from "./types";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
-
-afterEach(() => {
-  localStorage.clear();
-  vi.restoreAllMocks();
-  vi.useRealTimers();
-});
+import { localKey } from "../test/dom";
+import { fakeTimers } from "../test/time";
 
 const tour = defineWalkthrough([{}, {}, {}]);
 
@@ -267,11 +263,12 @@ describe("checklists storage: task statuses", () => {
   });
 
   it("reads the version 2 envelope the old localStorage record wrote", () => {
-    localStorage.setItem("app", JSON.stringify({ version: 2, record: { hello: "skipped" } }));
-    const owner = create({ storage: { tasks: "app" } });
+    const key = localKey("app");
+    localStorage.setItem(key, JSON.stringify({ version: 2, record: { hello: "skipped" } }));
+    const owner = create({ storage: { tasks: key } });
     expect(statuses(owner)).toMatchObject({ hello: "skipped" });
     owner.markDone("invite");
-    expect(JSON.parse(localStorage.getItem("app")!)).toEqual(
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(
       saved({ hello: "skipped", invite: "done" }),
     );
   });
@@ -307,11 +304,12 @@ describe("checklists storage: task statuses", () => {
   });
 
   it("follows another tab through a localStorage key", () => {
-    const owner = create({ storage: { tasks: "app" } });
+    const key = localKey("app");
+    const owner = create({ storage: { tasks: key } });
     const other = JSON.stringify(saved({ invite: "done" }));
-    localStorage.setItem("app", other);
+    localStorage.setItem(key, other);
     globalThis.dispatchEvent(
-      new StorageEvent("storage", { key: "app", newValue: other, storageArea: localStorage }),
+      new StorageEvent("storage", { key, newValue: other, storageArea: localStorage }),
     );
     expect(statuses(owner)).toMatchObject({ invite: "done" });
 
@@ -354,7 +352,7 @@ describe("checklists storage: the walkthrough", () => {
   };
 
   it("saves where the walkthrough is as it starts, moves, collapses and stops", () => {
-    vi.useFakeTimers({ now: 1_000 });
+    fakeTimers(1_000);
     const walkthrough = held<StoredChecklistWalkthrough>(null);
     const owner = create({ storage: { walkthrough } });
 
@@ -378,10 +376,11 @@ describe("checklists storage: the walkthrough", () => {
   });
 
   it("keeps it under a localStorage key, picked up by the next owner", () => {
-    create({ storage: { walkthrough: "place" } }).start("tour");
-    expect(JSON.parse(localStorage.getItem("place")!)).toMatchObject({ task: "tour", step: 0 });
+    const key = localKey("place");
+    create({ storage: { walkthrough: key } }).start("tour");
+    expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ task: "tour", step: 0 });
 
-    const reloaded = create({ storage: { walkthrough: "place" } });
+    const reloaded = create({ storage: { walkthrough: key } });
     expect(reloaded.getSnapshot().active?.task.id).toBe("tour");
   });
 

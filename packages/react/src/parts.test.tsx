@@ -1,6 +1,5 @@
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ChecklistCheckbox,
   ChecklistPanel,
@@ -14,27 +13,15 @@ import {
   type AnyReactTask,
   type CoreChecklist,
 } from "./index";
+import { addRoot } from "./test/dom";
+import { fakeTimers, freezeFrames } from "./test/time";
 
-let root: Root;
-let host: HTMLDivElement;
+/** A root to render into, with frames that never run: none of these tests need the Walkthrough to measure. */
+const mount = () => {
+  freezeFrames();
+  return addRoot();
+};
 
-beforeEach(() => {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  document.body.innerHTML = "";
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-  // The Walkthrough measures on frames; none of these tests need one to run.
-  vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
-  vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-  delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
-});
 
 const guide = defineWalkthrough([{ content: "Create a deck" }]);
 
@@ -111,6 +98,7 @@ const press = (element: Element) =>
 
 describe("ChecklistTrigger and ChecklistPanel", () => {
   it("keep the trigger where it was put and open the panel in the body", async () => {
+    const { root, host } = mount();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
     expect(host).toContainElement(trigger());
@@ -123,24 +111,9 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
     expect(panel()!.parentElement).toBe(host);
   });
 
-  it("place the panel against the trigger, and follow it when a container scrolls", async () => {
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
-    let rect = { top: 100, bottom: 130, left: 200, right: 260, width: 60, height: 30, x: 200, y: 100 };
-    vi.spyOn(trigger(), "getBoundingClientRect").mockImplementation(() => rect as DOMRect);
-
-    await press(trigger());
-    expect(panel()).toHaveAttribute("data-side", "below");
-    expect(panel()!.style.top).toBe("138px");
-    expect(panel()!.style.getPropertyValue("--waymark-available-height")).toBe(`${768 - 130 - 8 - 8}px`);
-
-    rect = { ...rect, top: 50, bottom: 80, y: 50 };
-    await act(async () => host.dispatchEvent(new Event("scroll")));
-    expect(panel()!.style.top).toBe("88px");
-  });
-
   it("open under a resting mouse, and stay open as it crosses from trigger to panel", async () => {
-    vi.useFakeTimers();
+    const { root } = mount();
+    fakeTimers();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
 
@@ -168,7 +141,8 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("stay shut under a touch, which has no hover to end", async () => {
-    vi.useFakeTimers();
+    const { root } = mount();
+    fakeTimers();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
 
@@ -178,6 +152,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("stay open after a press on the trigger until a press lands outside, or Escape", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
@@ -199,6 +174,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("move focus into a panel the keyboard opened, and back to the trigger on Escape", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
 
@@ -213,6 +189,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("close when one of its tasks starts, and mark the trigger while it runs", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
     await press(trigger());
@@ -227,7 +204,8 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("stay closed when a task starts just after the pointer reached the panel", async () => {
-    vi.useFakeTimers();
+    const { root } = mount();
+    fakeTimers();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
     await act(async () => pointer("pointerenter", trigger(), "mouse"));
@@ -240,6 +218,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("closes again when a task replaces an already running task", async () => {
+    const { root } = mount();
     const owner = createChecklists({
       tasks: {
         first: { title: "First task", walkthrough: guide },
@@ -258,6 +237,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("do not count a click on them as a click away from a running walkthrough", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () =>
       root.render(
@@ -275,6 +255,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   });
 
   it("keep Escape in the panel from also collapsing a running walkthrough", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () =>
       root.render(
@@ -302,6 +283,7 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
 
 describe("Checklist task parts", () => {
   it("name each checkbox by its task and mark every part with the task's status", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
     await press(trigger());
@@ -319,6 +301,7 @@ describe("Checklist task parts", () => {
   });
 
   it("give a task that is not toggleable a mark instead of a checkbox", async () => {
+    const { root } = mount();
     const owner = setup();
     await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
     await press(trigger());

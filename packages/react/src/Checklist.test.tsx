@@ -1,7 +1,7 @@
 import { act } from "react";
-import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   Checklist,
   createChecklists,
@@ -10,22 +10,8 @@ import {
   useChecklist,
   type ChecklistLabels,
 } from "./index";
+import { addHost, addRoot, localKey } from "./test/dom";
 
-let root: Root;
-let host: HTMLDivElement;
-
-beforeEach(() => {
-  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  document.body.innerHTML = "";
-  host = document.createElement("div");
-  document.body.append(host);
-  root = createRoot(host);
-});
-
-afterEach(async () => {
-  await act(async () => root.unmount());
-  delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
-});
 
 const guide = defineWalkthrough([{ content: "Create a deck" }]);
 
@@ -59,7 +45,7 @@ const setup = () => {
   return { owner, openPicker };
 };
 
-const rows = () => Array.from(host.querySelectorAll("li"));
+const rows = () => Array.from(document.querySelectorAll("li"));
 const row = (title: string) => rows().find((li) => li.textContent.includes(title))!;
 const BUTTON = "button:not([role=checkbox])";
 const buttons = (li: HTMLElement) =>
@@ -75,6 +61,7 @@ const click = (li: HTMLElement, label: string) =>
 
 describe("Checklist", () => {
   it("shows titles, descriptions, statuses, and the finished count", async () => {
+    const { root, host } = addRoot();
     const { owner } = setup();
     await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
 
@@ -89,6 +76,7 @@ describe("Checklist", () => {
   });
 
   it("shows one primary button according to the task's configuration", async () => {
+    const { root } = addRoot();
     const { owner, openPicker } = setup();
     await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
 
@@ -109,6 +97,7 @@ describe("Checklist", () => {
   });
 
   it("starts, skips, and ticks through the view's commands", async () => {
+    const { root, host } = addRoot();
     const { owner } = setup();
     await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
 
@@ -129,6 +118,7 @@ describe("Checklist", () => {
   });
 
   it("toggles a task with its box, unless the task opts out", async () => {
+    const { root } = addRoot();
     const owner = createChecklists({
       tasks: {
         hello: { title: "Say hello" },
@@ -156,6 +146,7 @@ describe("Checklist", () => {
   });
 
   it("takes labels, styles, and a row renderer", async () => {
+    const { root, host } = addRoot();
     const { owner } = setup();
     await act(async () =>
       root.render(
@@ -188,6 +179,7 @@ describe("Checklist", () => {
   });
 
   it("uses default labels only for the rows it renders itself", async () => {
+    const { root } = addRoot();
     const { owner } = setup();
     await act(async () =>
       root.render(
@@ -198,6 +190,7 @@ describe("Checklist", () => {
   });
 
   it("uses the default for a label passed as undefined", async () => {
+    const { root } = addRoot();
     const { owner } = setup();
     // ReactNode includes undefined, so even exactOptionalPropertyTypes allows this.
     const labels: Partial<ChecklistLabels> = { start: undefined, skip: "Later" };
@@ -208,6 +201,7 @@ describe("Checklist", () => {
 
 describe("useChecklist", () => {
   it("gives custom UI the same snapshot and commands", async () => {
+    const { root, host } = addRoot();
     const { owner } = setup();
     const seen: number[] = [];
     function Panel() {
@@ -233,7 +227,10 @@ describe("useChecklist", () => {
 });
 
 describe("Checklist with storage", () => {
-  afterEach(() => localStorage.clear());
+  /** Progress an earlier visit left in storage, cleared when the test finishes. */
+  const save = (progress: unknown) => {
+    localStorage.setItem(localKey("setup"), JSON.stringify(progress));
+  };
 
   const stored = () =>
     createChecklists({
@@ -242,11 +239,12 @@ describe("Checklist with storage", () => {
     });
 
   it("hydrates a server render, which could not read storage, then shows what storage holds", async () => {
-    localStorage.setItem("setup", JSON.stringify({ version: 3, tasks: { hello: "done" } }));
+    save({ version: 3, tasks: { hello: "done" } });
     const server = renderToString(<Checklist checklist={stored().checklists.main} />);
     expect(server).toContain("0<!-- --> of <!-- -->2<!-- --> done");
     expect(server).toContain('aria-busy="true"');
 
+    const host = addHost();
     host.innerHTML = server;
     const onRecoverableError = vi.fn();
     const owner = stored();
@@ -254,10 +252,10 @@ describe("Checklist with storage", () => {
     await act(async () => {
       hydrated = hydrateRoot(host, <Checklist checklist={owner.checklists.main} />, { onRecoverableError });
     });
+    onTestFinished(() => act(async () => hydrated?.unmount()));
 
     expect(onRecoverableError).not.toHaveBeenCalled();
     expect(host).toHaveTextContent("1 of 2 done");
     expect(host.querySelector('[role="group"]')).toHaveAttribute("aria-busy", "false");
-    await act(async () => hydrated?.unmount());
   });
 });
