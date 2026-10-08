@@ -6,7 +6,7 @@ export const listen =
   (listener: (snapshot: T) => void): (() => void) => {
     listeners.add(listener);
     try {
-      queue.now(() => queue.invoke(() => listener(getSnapshot())));
+      queue.now(() => queue.callApp("subscriber", () => listener(getSnapshot())));
     } catch (error) {
       listeners.delete(listener);
       throw error;

@@ -50,20 +50,20 @@ export function onReset(walkthrough: Walkthrough, listener: () => void): () => v
  * Looked up each time, as a function's key can change with who is signed in.
  * A function that throws is reported, and the walkthrough goes unstored.
  */
-export function storageOf(walkthrough: Walkthrough): StorageAdapter<StoredWalkthrough> | undefined {
+export function storageOf(
+  walkthrough: Walkthrough,
+  reportProblem: ProblemHandler<never>,
+): StorageAdapter<StoredWalkthrough> | undefined {
   const { storage } = walkthrough;
   if (storage === undefined) return undefined;
   if (typeof storage !== "function") return adapterOf(storage);
   try {
     return adapterOf(storage());
   } catch (error) {
-    reportOf(walkthrough)(storageFailed("walkthrough", error));
+    reportProblem(storageFailed("walkthrough", error));
     return undefined;
   }
 }
-
-export const reportOf = <TStep extends Step>(walkthrough: Walkthrough<TStep>): ProblemHandler<TStep> =>
-  problemReporter(walkthrough.onProblem?.bind(walkthrough));
 
 export function checkedWalkthrough<TStep extends Step>(
   steps: readonly TStep[],
@@ -102,8 +102,9 @@ export function checkedWalkthrough<TStep extends Step>(
       // A Run on screen saves its own fresh start; clearing first as well
       // would race that save on an async adapter.
       if (listeners.size === 0) {
-        const adapter = storageOf(walkthrough);
-        if (adapter) saveTo(adapter, null, (error) => reportOf(walkthrough)(storageFailed("walkthrough", error)));
+        const reportProblem = problemReporter(walkthrough.onProblem);
+        const adapter = storageOf(walkthrough, reportProblem);
+        if (adapter) saveTo(adapter, null, (error) => reportProblem(storageFailed("walkthrough", error)));
       }
       for (const listener of listeners) listener();
     },

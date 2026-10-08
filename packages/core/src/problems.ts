@@ -52,14 +52,21 @@ export const recordDropped = (reason: DropReason): WaymarkProblem<never> => ({
   reason,
 });
 
+export const callbackThrew = (callback: CallbackName, error: unknown): WaymarkProblem<never> => ({
+  type: "callbackThrew",
+  callback,
+  error,
+});
+
 /**
- * Without a handler, storage problems are logged and the rest pass quietly;
- * a callback's error is not passed here at all, and is thrown instead.
+ * Without a handler, an error from the app's own functions is thrown, storage
+ * problems are logged, and the rest pass quietly.
  */
 export const problemReporter =
   <TStep extends Step>(onProblem: ProblemHandler<TStep> | undefined): ProblemHandler<TStep> =>
   (problem) => {
     if (onProblem) onProblem(problem);
+    else if (problem.type === "callbackThrew") throw problem.error;
     else if (problem.type === "storageFailed") {
       console.error(`Waymark could not use its ${problem.record} storage.`, problem.error);
     } else if (problem.type === "recordUnreadable") {

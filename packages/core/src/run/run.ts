@@ -76,21 +76,20 @@ export function createRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep> = {},
 ): Run<TStep> {
-  return startRun(walkthrough, options, walkthrough.onProblem?.bind(walkthrough));
+  return startRun(walkthrough, options, problemReporter(walkthrough.onProblem));
 }
 
-/** A checklist's owner hands its Runs its own `onProblem`, in place of the walkthrough's. */
+/** A checklist's owner hands its Runs its own `reportProblem`, in place of the walkthrough's. */
 export function startRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep>,
-  onProblem: ProblemHandler<TStep> | undefined,
+  reportProblem: ProblemHandler<TStep>,
 ): Run<TStep> {
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;
 
-  const storage = storageOf(walkthrough);
+  const storage = storageOf(walkthrough, reportProblem);
   const maxAge = walkthrough.maxAge ?? DEFAULT_MAX_AGE;
-  const reportProblem = problemReporter(onProblem);
   const reportStorageFailure = (error: unknown) => reportProblem(storageFailed("walkthrough", error));
   const asked: Start = {
     phase: "running",
@@ -104,10 +103,7 @@ export function startRun<TStep extends Step>(
   /** Actions asked for while loading, run once the Run has begun. */
   const held: Action[] = [];
 
-  const queue = createQueue(
-    "Run callbacks failed.",
-    onProblem && ((error, callback) => onProblem({ type: "callbackThrew", callback, error })),
-  );
+  const queue = createQueue("Run callbacks failed.", reportProblem);
 
   const obey = (message: Message) => {
     const outcome = apply(state, message, walkthrough);
@@ -141,9 +137,8 @@ export function startRun<TStep extends Step>(
     }
     for (const type of outcome.events) {
       const step = stepAt(walkthrough, from.stepIndex);
-      queue.invoke(
-        () => options.onEvent?.({ type, step, stepIndex: from.stepIndex, snapshot: after }),
-        "onEvent",
+      queue.callApp("onEvent", () =>
+        options.onEvent?.({ type, step, stepIndex: from.stepIndex, snapshot: after }),
       );
     }
   };
@@ -196,7 +191,7 @@ export function startRun<TStep extends Step>(
         holds = checkOf(step)?.(waymark?.element ?? null) === true;
       } catch (error) {
         // Thrown once the look is sent, so the next frame is still scheduled.
-        if (firstThrowThisStep(error, stepGeneration)) queue.fail(error, "stateCheck");
+        if (firstThrowThisStep(error, stepGeneration)) queue.fail("stateCheck", error);
       }
       advance = { holds };
     }
@@ -327,7 +322,7 @@ export function startRun<TStep extends Step>(
           // Queued with the first look so that `start` precedes anything a
           // subscriber does on seeing it.
           if (first) sendRead({ kind: "start" });
-          queue.invoke(() => listener(state.snapshot), "subscriber");
+          queue.callApp("subscriber", () => listener(state.snapshot));
         });
       } catch (error) {
         listeners.delete(listener);

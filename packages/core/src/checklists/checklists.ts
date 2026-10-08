@@ -159,7 +159,13 @@ export function createChecklists<TContext>(
     named,
     config.checklists ?? { [DEFAULT_CHECKLIST]: Object.keys(tasks) },
   );
-  const { onChange, onEvent, onProblem, run: runOptions, storage = {} } = config;
+  const {
+    onChange,
+    onEvent,
+    onProblem,
+    run: runOptions,
+    storage = {},
+  } = config;
   const tasksStorage =
     storage.tasks === undefined ? undefined : adapterOf(storage.tasks);
   const walkthroughStorage =
@@ -232,12 +238,7 @@ export function createChecklists<TContext>(
     createView(name, viewTasks, source),
   );
 
-  const queue = createQueue(
-    "Checklist callbacks failed.",
-    onProblem &&
-      ((error, callback) =>
-        onProblem({ type: "callbackThrew", callback, error })),
-  );
+  const queue = createQueue("Checklist callbacks failed.", reportProblem);
 
   const current = (): State => ({
     record: progress.record(),
@@ -290,7 +291,7 @@ export function createChecklists<TContext>(
         saveTo(tasksStorage, saved, reportTasksStorageFailure),
       );
     }
-    queue.invoke(() => onChange?.(stored), "onChange");
+    queue.callApp("onChange", () => onChange?.(stored));
   };
 
   const saveWalkthrough = (saving: Active | null, from: string | undefined) => {
@@ -314,16 +315,14 @@ export function createChecklists<TContext>(
     completed: readonly View<Named>[],
   ) => {
     for (const event of eventsBetween(before, after, from))
-      queue.invoke(() => onEvent?.(event), "onEvent");
+      queue.callApp("onEvent", () => onEvent?.(event));
     for (const view of completed) {
-      queue.invoke(
-        () =>
-          onEvent?.({
-            type: "checklistComplete",
-            checklist: view.name,
-            snapshot: view.snapshot,
-          }),
-        "onEvent",
+      queue.callApp("onEvent", () =>
+        onEvent?.({
+          type: "checklistComplete",
+          checklist: view.name,
+          snapshot: view.snapshot,
+        }),
       );
     }
   };
@@ -410,7 +409,7 @@ export function createChecklists<TContext>(
           runOptions?.onEvent?.(event);
         },
       },
-      onProblem,
+      reportProblem,
     );
     return run;
   };
@@ -486,7 +485,7 @@ export function createChecklists<TContext>(
       try {
         met = isComplete(context);
       } catch (error) {
-        queue.fail(error, "isComplete");
+        queue.fail("isComplete", error);
         return;
       }
       if (!progress.isReopened(id)) {

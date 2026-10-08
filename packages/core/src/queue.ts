@@ -1,4 +1,5 @@
-import type { CallbackName } from "./problems";
+import { callbackThrew } from "./problems";
+import type { CallbackName, ProblemHandler } from "./problems";
 
 /**
  * Work queued from a callback waits until the current work has finished, so
@@ -7,42 +8,41 @@ import type { CallbackName } from "./problems";
  */
 export type Queue = Readonly<{
   run: (...work: (() => void)[]) => void;
-  /** Unnamed work is Waymark's own, or the problem handler: what it throws is thrown, never passed back. */
-  invoke: (work: () => void, callback?: CallbackName) => void;
+  /** Waymark's own work, or a call to the problem handler: what it throws is thrown, never reported. */
+  invoke: (work: () => void) => void;
+  /** One of the app's functions: what it throws is reported as `callbackThrew`. */
+  callApp: (callback: CallbackName, work: () => void) => void;
   notify: <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => void;
   /**
    * Runs work in place, even inside a drain: Svelte's store contract wants a
    * new subscriber's first call before `subscribe` returns.
    */
   now: (work: () => void) => void;
-  fail: (error: unknown, callback: CallbackName) => void;
+  /** Reports what one of the app's functions threw, where the caller had to catch it itself. */
+  fail: (callback: CallbackName, error: unknown) => void;
 }>;
 
-export function createQueue(
-  failure: string,
-  onThrow?: (error: unknown, callback: CallbackName) => void,
-): Queue {
+export function createQueue(failure: string, reportProblem: ProblemHandler<never>): Queue {
   const queue: (() => void)[] = [];
   let draining = false;
   let errors: unknown[] = [];
 
-  const fail = (error: unknown, callback?: CallbackName) => {
-    if (callback === undefined || onThrow === undefined) {
-      errors.push(error);
-      return;
-    }
-    try {
-      onThrow(error, callback);
-    } catch (thrown) {
-      errors.push(thrown);
-    }
-  };
-
-  const invoke = (work: () => void, callback?: CallbackName) => {
+  const invoke = (work: () => void) => {
     try {
       work();
     } catch (error) {
-      fail(error, callback);
+      errors.push(error);
+    }
+  };
+
+  const fail = (callback: CallbackName, error: unknown) =>
+    invoke(() => reportProblem(callbackThrew(callback, error)));
+
+  const callApp = (callback: CallbackName, work: () => void) => {
+    try {
+      work();
+    } catch (error) {
+      fail(callback, error);
     }
   };
 
@@ -50,7 +50,7 @@ export function createQueue(
     // Copied on purpose: a listener may subscribe or unsubscribe others mid-notify.
     // oxlint-disable-next-line unicorn/no-useless-spread
     for (const listener of [...listeners]) {
-      if (listeners.has(listener)) invoke(() => listener(snapshot), "subscriber");
+      if (listeners.has(listener)) callApp("subscriber", () => listener(snapshot));
     }
   };
 
@@ -76,5 +76,5 @@ export function createQueue(
 
   const now = (work: () => void) => (draining ? work() : run(work));
 
-  return { run, invoke, notify, now, fail };
+  return { run, invoke, callApp, notify, now, fail };
 }

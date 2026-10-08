@@ -362,6 +362,19 @@ describe("update", () => {
     );
   });
 
+  it("sends an error from a subscriber's first call to onProblem", () => {
+    const onProblem = vi.fn();
+    const broken = new Error("broken");
+    const fail = () => {
+      throw broken;
+    };
+    const owner = createChecklists({ tasks: { a: {} }, onProblem });
+    expect(() => owner.subscribe(fail)).not.toThrow();
+    expect(() => owner.checklists.main.subscribe(fail)).not.toThrow();
+    const threw = [{ type: "callbackThrew", callback: "subscriber", error: broken }];
+    expect(onProblem.mock.calls).toEqual([threw, threw]);
+  });
+
   it("sends a missing waymark in a task's Run to the owner's onProblem", () => {
     const { flush } = fakeFrames();
     const onProblem = vi.fn();

@@ -64,7 +64,11 @@ once per step.
 
 ## As built
 
-- The queue routes the errors of work it is told is the app's (`invoke(work,
-  callback)`); its own work and the handler's are thrown as before.
+- `problemReporter` in `problems.ts` holds the defaults, including throwing
+  `callbackThrew`. Each owner, and each standalone walkthrough, makes one
+  reporter and hands it to its queue and its Runs.
+- The queue reports what it runs with `callApp(callback, work)`; what it runs
+  with `invoke(work)`, its own work and calls to the handler, is thrown once
+  the drain is over, never reported.
 - A condition that throws in `update` still records nothing, with a handler or
   without.
