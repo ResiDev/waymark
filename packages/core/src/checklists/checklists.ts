@@ -162,7 +162,7 @@ export function createChecklists<TContext>(
   const {
     onChange,
     onEvent,
-    onProblem,
+    problemHandlers,
     run: runOptions,
     storage = {},
   } = config;
@@ -173,7 +173,7 @@ export function createChecklists<TContext>(
       ? undefined
       : adapterOf(storage.walkthrough);
   const maxAge = storage.maxAge ?? DEFAULT_MAX_AGE;
-  const reportProblem = problemReporter(onProblem);
+  const reportProblem = problemReporter(problemHandlers);
   const reportTasksStorageFailure = (error: unknown) =>
     reportProblem(storageFailed("tasks", error));
   const reportWalkthroughStorageFailure = (error: unknown) =>
@@ -190,9 +190,9 @@ export function createChecklists<TContext>(
       );
     }
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
-    if (!isSteps(walkthrough) && walkthrough.onProblem !== undefined) {
+    if (!isSteps(walkthrough) && walkthrough.problemHandlers !== undefined) {
       throw new Error(
-        `Task "${id}": its walkthrough has its own onProblem, but the owner reports its Runs' problems. Pass onProblem to createChecklists.`,
+        `Task "${id}": its walkthrough has its own problemHandlers, but the owner reports its Runs' problems. Pass problemHandlers to createChecklists.`,
       );
     }
     walkthroughs[id] = isSteps(walkthrough)

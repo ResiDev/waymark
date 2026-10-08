@@ -151,9 +151,9 @@ describe("createChecklists", () => {
     expect(() =>
       createChecklists({
         context: {},
-        tasks: { a: { walkthrough: defineWalkthrough([{}], { onProblem: { waymarkMissing: () => {} } }) as never } },
+        tasks: { a: { walkthrough: defineWalkthrough([{}], { problemHandlers: { waymarkMissing: () => {} } }) as never } },
       }),
-    ).toThrow(/Task "a": its walkthrough has its own onProblem/);
+    ).toThrow(/Task "a": its walkthrough has its own problemHandlers/);
   });
 
   it("shows every task of a selection in its order, with its id and definition", () => {
@@ -305,7 +305,7 @@ describe("update", () => {
     expect(statuses(owner.checklists.all)).toEqual({ a: "todo", b: "todo" });
   });
 
-  it("sends a throwing isComplete to onProblem instead of throwing, and leaves every task todo", () => {
+  it("sends a throwing isComplete to problemHandlers instead of throwing, and leaves every task todo", () => {
     const onProblem = vi.fn();
     const boom = new Error("boom");
     const owner = createChecklists({
@@ -320,14 +320,14 @@ describe("update", () => {
         },
       },
       checklists: { all: ["a", "b"] },
-      onProblem: everyProblem(onProblem),
+      problemHandlers: everyProblem(onProblem),
     });
     expect(() => owner.update({ ready: true })).not.toThrow();
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "callbackThrew", callback: "isComplete", error: boom });
     expect(statuses(owner.checklists.all)).toEqual({ a: "todo", b: "todo" });
   });
 
-  it("sends errors from subscribers, onChange, onEvent and run.onEvent to onProblem, and still applies each change", () => {
+  it("sends errors from subscribers, onChange, onEvent and run.onEvent to problemHandlers, and still applies each change", () => {
     const onProblem = vi.fn();
     const broken = new Error("broken");
     const fail = () => {
@@ -338,7 +338,7 @@ describe("update", () => {
       onChange: fail,
       onEvent: fail,
       run: { onEvent: fail },
-      onProblem: everyProblem(onProblem),
+      problemHandlers: everyProblem(onProblem),
     });
     owner.checklists.main.subscribe(skipFirstCall(fail));
 
@@ -363,23 +363,23 @@ describe("update", () => {
     );
   });
 
-  it("sends an error from a subscriber's first call to onProblem", () => {
+  it("sends an error from a subscriber's first call to problemHandlers", () => {
     const onProblem = vi.fn();
     const broken = new Error("broken");
     const fail = () => {
       throw broken;
     };
-    const owner = createChecklists({ tasks: { a: {} }, onProblem: everyProblem(onProblem) });
+    const owner = createChecklists({ tasks: { a: {} }, problemHandlers: everyProblem(onProblem) });
     expect(() => owner.subscribe(fail)).not.toThrow();
     expect(() => owner.checklists.main.subscribe(fail)).not.toThrow();
     const threw = [{ type: "callbackThrew", callback: "subscriber", error: broken }];
     expect(onProblem.mock.calls).toEqual([threw, threw]);
   });
 
-  it("sends a missing waymark in a task's Run to the owner's onProblem", () => {
+  it("sends a missing waymark in a task's Run to the owner's problemHandlers", () => {
     const { flush } = fakeFrames();
     const onProblem = vi.fn();
-    const owner = createChecklists({ tasks: { a: { walkthrough: guide } }, onProblem: everyProblem(onProblem) });
+    const owner = createChecklists({ tasks: { a: { walkthrough: guide } }, problemHandlers: everyProblem(onProblem) });
     owner.subscribeActive(() => {});
     owner.start("a");
     flush(3000);

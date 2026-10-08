@@ -64,7 +64,7 @@ export type Loading = Readonly<{
 /** A new object only when something in it changed. */
 export type Snapshot<TStep extends Step = Step> = Running<TStep> | Ended | Loading;
 
-/** A Waymark that becomes lost or missing is a problem, not an event: see `onProblem`. */
+/** A Waymark that becomes lost or missing is a problem, not an event: see `problemHandlers`. */
 export type RunEventType = "start" | Action | "finish";
 
 /** `step` and `stepIndex` are the Step the event happened on; `snapshot` is the Run after it. */

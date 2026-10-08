@@ -376,7 +376,7 @@ describe("createChecklists types", () => {
 
   it("types each handler's problem from its key and the walkthrough or the owner's Tasks", () => {
     const tour = defineWalkthrough([{ waymark: "a", meta: { id: 1 } }], {
-      onProblem: {
+      problemHandlers: {
         waymarkMissing: (problem) => {
           expectTypeOf(problem.step.meta).toEqualTypeOf<{ readonly id: 1 }>();
         },
@@ -385,22 +385,22 @@ describe("createChecklists types", () => {
     expectTypeOf(tour).toExtend<Walkthrough>();
     expect(() =>
       createChecklists({
-        // @ts-expect-error the owner hears a Task's problems, so its walkthrough has no onProblem
+        // @ts-expect-error the owner hears a Task's problems, so its walkthrough has no problemHandlers
         tasks: { tour: { walkthrough: tour } },
       }),
-    ).toThrow(/its own onProblem/);
+    ).toThrow(/its own problemHandlers/);
 
     // @ts-expect-error maxAge only means something with storage
     defineWalkthrough([{}], { maxAge: 1000 });
-    // @ts-expect-error without storage, options only give the walkthrough its own onProblem
+    // @ts-expect-error without storage, options only give the walkthrough its own problemHandlers
     defineWalkthrough([{}], {});
     defineWalkthrough([{}], { storage: "tour" });
     // @ts-expect-error not a type of problem
-    defineWalkthrough([{}], { onProblem: { storageFaild: () => {} } });
+    defineWalkthrough([{}], { problemHandlers: { storageFaild: () => {} } });
 
     createChecklists({
       tasks: { "create-deck": { walkthrough: deckSteps } },
-      onProblem: {
+      problemHandlers: {
         waymarkLost: (problem) => {
           expectTypeOf(problem.step.meta).toEqualTypeOf<{ readonly helpUrl: "/help/decks" }>();
         },
@@ -411,7 +411,7 @@ describe("createChecklists types", () => {
     });
     createChecklists({
       tasks: { "create-deck": { walkthrough: deckSteps } },
-      onProblem: everyProblem((problem) => {
+      problemHandlers: everyProblem((problem) => {
         expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
       }),
     });
@@ -420,7 +420,7 @@ describe("createChecklists types", () => {
   it("gives a handler no this, as each is called on its own", () => {
     expectTypeOf<NonNullable<ProblemHandlers["storageFailed"]>>().thisParameter.toBeVoid();
     defineWalkthrough([{}], {
-      onProblem: {
+      problemHandlers: {
         storageFailed() {
           // @ts-expect-error a handler is called on its own, so it has no this
           void this.recordUnreadable;

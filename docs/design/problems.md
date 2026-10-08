@@ -13,8 +13,8 @@ steps changed or because its task was no longer todo went unreported.
 
 ## Handlers by type
 
-`onProblem` takes a handler for each type of problem the app wants to hear,
-and each handler gets the problem of its type from this union:
+`problemHandlers` holds a handler for each type of problem the app wants to
+hear, and each handler gets the problem of its type from this union:
 
 ```ts
 type WaymarkProblem<TStep> =
@@ -27,7 +27,7 @@ type WaymarkProblem<TStep> =
 ```
 
 ```ts
-onProblem: {
+problemHandlers: {
   storageFailed: (problem) => toast(…),
   waymarkMissing: (problem) => analytics.track(…, { step: problem.stepIndex }),
 }
@@ -42,11 +42,12 @@ that does not match its walkthrough is a problem, and is reported once, in one p
   storage, so its Runs and its `reset` share its handlers. `maxAge` still needs
   storage.
 - An owner takes it beside its other options, and hands it to the Runs it
-  starts. A Task's walkthrough cannot have its own `onProblem`, as it cannot
-  have its own storage: the owner reports its Runs' problems, and two sets of
-  handlers for one Run would leave it unclear which hears what. The types
-  forbid it, since `defineWalkthrough` with `onProblem` returns a walkthrough a
-  Task does not take, and `createChecklists` throws for an app without them.
+  starts. A Task's walkthrough cannot have its own `problemHandlers`, as it
+  cannot have its own storage: the owner reports its Runs' problems, and two
+  sets of handlers for one Run would leave it unclear which hears what. The
+  types forbid it, since `defineWalkthrough` with `problemHandlers` returns a
+  walkthrough a Task does not take, and `createChecklists` throws for an app
+  without them.
 
 ## Who decides
 
@@ -54,10 +55,12 @@ Each type decides on its own. A problem goes to the handler for its type, and
 a type without one gets the default. So an app that handles `waymarkMissing`
 for analytics still has its own errors thrown.
 
-The first version took one function for every problem, and passing it switched
-every default off. An app that handled three types in a `switch` stopped
-seeing its unreadable records logged, and one that left out `callbackThrew`
-dropped its own errors without knowing.
+The first version took one function for every problem, `onProblem`, and
+passing it switched every default off. An app that handled three types in a
+`switch` stopped seeing its unreadable records logged, and one that left out
+`callbackThrew` dropped its own errors without knowing. Once it held a handler
+per type it became `problemHandlers`: an option named `on…` is one function,
+as `onEvent` and `onChange` are.
 
 An error from the app's code goes to a `callbackThrew` handler and is not
 thrown. An app that wants it thrown rethrows it. What a handler throws is

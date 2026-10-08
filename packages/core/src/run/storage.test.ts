@@ -99,7 +99,7 @@ describe("run storage", () => {
   ])("starts as asked, wipes and reports a running walkthrough when %s", (_, stored, reason) => {
     const walkthrough = held(stored);
     const onProblem = vi.fn();
-    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, onProblem: everyProblem(onProblem) }), { startAt: 2 });
+    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, problemHandlers: everyProblem(onProblem) }), { startAt: 2 });
     expect(where(run)).toEqual({ step: 2, collapsed: false });
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", record: "walkthrough", reason });
@@ -114,7 +114,7 @@ describe("run storage", () => {
   it("reports a record it cannot read, and starts as asked", () => {
     const onProblem = vi.fn();
     const walkthrough = held({ version: 1, phase: "running", step: 9, stepCount: 3 } as unknown as StoredWalkthrough);
-    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, onProblem: everyProblem(onProblem) }));
+    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, problemHandlers: everyProblem(onProblem) }));
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
       record: "walkthrough",
@@ -157,7 +157,7 @@ describe("run storage", () => {
     const run = createRun(
       defineWalkthrough([{}, {}, {}], {
         storage: { load: () => Promise.reject(offline), save: () => {} },
-        onProblem: everyProblem(onProblem),
+        problemHandlers: everyProblem(onProblem),
       }),
     );
     await Promise.resolve();
@@ -238,12 +238,12 @@ describe("run storage", () => {
     expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
   });
 
-  it("reports a record reset cannot clear to the walkthrough's onProblem", () => {
+  it("reports a record reset cannot clear to the walkthrough's problemHandlers", () => {
     const onProblem = vi.fn();
     const quota = new Error("quota");
     const tour = defineWalkthrough([{}, {}], {
       storage: { load: () => null, save: () => { throw quota; } },
-      onProblem: everyProblem(onProblem),
+      problemHandlers: everyProblem(onProblem),
     });
 
     tour.reset();
@@ -257,7 +257,7 @@ describe("run storage", () => {
       storage: () => {
         throw signedOut;
       },
-      onProblem: everyProblem(onProblem),
+      problemHandlers: everyProblem(onProblem),
     });
 
     expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });

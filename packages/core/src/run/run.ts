@@ -76,7 +76,7 @@ export function createRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep> = {},
 ): Run<TStep> {
-  return startRun(walkthrough, options, problemReporter(walkthrough.onProblem));
+  return startRun(walkthrough, options, problemReporter(walkthrough.problemHandlers));
 }
 
 /** A checklist's owner hands its Runs its own `reportProblem`, in place of the walkthrough's. */

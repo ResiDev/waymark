@@ -186,7 +186,7 @@ export type ChecklistsOptions<
    * one is logged if it is storage's, thrown if it is an error from the app's
    * own functions, and otherwise passes quietly.
    */
-  onProblem?: ProblemHandlers<StepOf<TTasks[keyof TTasks]>>;
+  problemHandlers?: ProblemHandlers<StepOf<TTasks[keyof TTasks]>>;
   onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
   /** Your `onEvent` is called after the owner has handled the event. */
   run?: Omit<

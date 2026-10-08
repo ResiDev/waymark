@@ -34,9 +34,9 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
   if (options?.storage !== undefined) {
     return defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { ...options, storage: options.storage });
   }
-  const onProblem = options?.onProblem;
-  return onProblem
-    ? defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { onProblem })
+  const problemHandlers = options?.problemHandlers;
+  return problemHandlers
+    ? defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { problemHandlers })
     : defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
 }
 

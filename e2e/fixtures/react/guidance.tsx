@@ -244,7 +244,7 @@ export const owner = createChecklists({
     tasks: setup.get().storage === "server" ? serverTasks : shownLocally(TASKS_KEY, stored),
     walkthrough: shownLocally(WALKTHROUGH_KEY, storedWalkthrough),
   },
-  onProblem: everyProblem((problem) => record("owner", describeProblem(problem))),
+  problemHandlers: everyProblem((problem) => record("owner", describeProblem(problem))),
   onEvent: (event) => record("owner", describeEvent(event)),
   run: {
     waymarkPadding: setup.get().padding,
@@ -316,7 +316,7 @@ export const whatsNew = defineWalkthrough(
   ],
   {
     storage: shownLocally(WHATS_NEW_KEY, storedWhatsNew),
-    onProblem: everyProblem((problem) => record("whats-new", describeProblem(problem))),
+    problemHandlers: everyProblem((problem) => record("whats-new", describeProblem(problem))),
   },
 );
 

@@ -14,7 +14,7 @@ import type {
 
 /**
  * `TShape` lets an adapter allow its own Step fields, such as `content`. With
- * `storage` or `onProblem` it can be shown on its own but not handed to a
+ * `storage` or `problemHandlers` it can be shown on its own but not handed to a
  * checklist's Task, whose owner keeps its place and hears its problems.
  */
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
@@ -102,7 +102,7 @@ export function checkedWalkthrough<TStep extends Step>(
       // A Run on screen saves its own fresh start; clearing first as well
       // would race that save on an async adapter.
       if (listeners.size === 0) {
-        const reportProblem = problemReporter(walkthrough.onProblem);
+        const reportProblem = problemReporter(walkthrough.problemHandlers);
         const adapter = storageOf(walkthrough, reportProblem);
         if (adapter) saveTo(adapter, null, (error) => reportProblem(storageFailed("walkthrough", error)));
       }

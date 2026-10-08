@@ -75,7 +75,7 @@ export type WalkthroughStore = string | StorageAdapter<StoredWalkthrough>;
 /**
  * For a walkthrough shown on its own that keeps no place but hears its own
  * problems. It cannot be a checklist's Task, whose problems go to the owner's
- * `onProblem`.
+ * `problemHandlers`.
  */
 export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
   storage?: never;
@@ -84,7 +84,7 @@ export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
    * Handlers for the problems its Runs meet: a Waymark lost or missing, and an
    * error from the app's own functions, which is then not thrown.
    */
-  onProblem: ProblemHandlers<TStep>;
+  problemHandlers: ProblemHandlers<TStep>;
 }>;
 
 export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{
@@ -104,14 +104,14 @@ export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{
    * problem without one is logged if it is storage's, thrown if it is an
    * error from the app's own functions, and otherwise passes quietly.
    */
-  onProblem?: ProblemHandlers<TStep>;
+  problemHandlers?: ProblemHandlers<TStep>;
 }>;
 
 export type Walkthrough<TStep extends Step = Step> = Readonly<{
   steps: readonly TStep[];
   storage?: WalkthroughOptions["storage"];
   maxAge?: number;
-  onProblem?: ProblemHandlers<TStep>;
+  problemHandlers?: ProblemHandlers<TStep>;
   /**
    * Starts it again from its first step, finished or not: a Run on screen
    * starts again now, and with none on screen its stored place, if it has
@@ -122,8 +122,9 @@ export type Walkthrough<TStep extends Step = Step> = Readonly<{
 
 /**
  * A checklist's Task keeps its place in the owner's storage and reports its
- * problems to the owner's `onProblem`, so its walkthrough has neither of its own.
+ * problems to the owner's `problemHandlers`, so its walkthrough has neither of
+ * its own.
  */
 export type UnstoredWalkthrough<TStep extends Step = Step> = Walkthrough<TStep> &
-  Readonly<{ storage?: never; onProblem?: never }>;
+  Readonly<{ storage?: never; problemHandlers?: never }>;
 

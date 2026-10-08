@@ -33,7 +33,7 @@ describe("localStorageAdapter", () => {
     const owner = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter<StoredTasks>(key) },
-      onProblem: everyProblem(onProblem),
+      problemHandlers: everyProblem(onProblem),
     });
     expect(owner.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
@@ -55,7 +55,7 @@ describe("localStorageAdapter", () => {
     const owner = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter("setup") },
-      onProblem: everyProblem(onProblem),
+      problemHandlers: everyProblem(onProblem),
     });
     owner.markDone("a");
     expect(statuses(owner)).toEqual({ a: "done" });

@@ -144,13 +144,13 @@ describe("Walkthrough", () => {
     expect(document.querySelector("button[disabled]")).toBeNull();
   });
 
-  it("reports a missing Waymark and a throwing onEvent to the walkthrough's onProblem", async () => {
+  it("reports a missing Waymark and a throwing onEvent to the walkthrough's problemHandlers", async () => {
     const { root, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const onProblem = vi.fn<(problem: WaymarkProblem) => void>();
     const analyticsDown = new Error("analytics down");
-    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }], { onProblem: everyProblem(onProblem) });
+    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }], { problemHandlers: everyProblem(onProblem) });
 
     await act(async () =>
       root.render(

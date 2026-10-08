@@ -169,13 +169,13 @@ describe("inline steps", () => {
     createChecklists({
       context: initialContext,
       tasks: { deck: { title: "Deck", walkthrough: deckSteps } },
-      onProblem: everyProblem((problem) => {
+      problemHandlers: everyProblem((problem) => {
         expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
         describeProblem(problem);
       }),
     });
     const pressProblem = (problem: WaymarkProblem<{ readonly content: "Press" }>) => problem.type;
-    defineWalkthrough([{ content: "Press" }], { onProblem: everyProblem(pressProblem) });
+    defineWalkthrough([{ content: "Press" }], { problemHandlers: everyProblem(pressProblem) });
   });
 });
 
