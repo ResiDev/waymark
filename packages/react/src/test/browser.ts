@@ -1,7 +1,13 @@
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { onTestFinished } from "vitest";
-import { page } from "vitest/browser";
+import { commands, page } from "vitest/browser";
+
+declare module "vitest/browser" {
+  interface BrowserCommands {
+    setReducedMotion: (reduce: boolean) => Promise<void>;
+  }
+}
 
 /** Renders into a new element in the body, unmounted and removed when the test ends. */
 export const render = (ui: ReactNode) => {
@@ -15,8 +21,11 @@ export const render = (ui: ReactNode) => {
   return host;
 };
 
-/** A fixed 100×40 Waymark button named "Page element", placed by `position`, removed when the test ends. */
-export const addWaymark = (position: Partial<Record<"top" | "right" | "left", string>>) => {
+/**
+ * A 100×40 Waymark button named "Page element", removed when the test ends. Fixed where `position`
+ * says, unless it sets `position: "absolute"` to scroll with the page.
+ */
+export const addWaymark = (position: Partial<Record<"position" | "top" | "right" | "left", string>>) => {
   const waymark = document.createElement("button");
   waymark.type = "button";
   waymark.dataset.waymark = "target";
@@ -31,6 +40,19 @@ export const addWaymark = (position: Partial<Record<"top" | "right" | "left", st
 export const resize = async (width: number, height: number) => {
   onTestFinished(() => page.viewport(900, 600));
   await page.viewport(width, height);
+};
+
+/** Scrolls the window to `y`, and back to the top when the test ends. */
+export const scrollPage = async (y: number) => {
+  onTestFinished(() => window.scrollTo({ top: 0, behavior: "instant" }));
+  window.scrollTo({ top: y, behavior: "instant" });
+  await settle();
+};
+
+/** Lets the page animate until the test ends: browser tests run with reduced motion, so nothing is measured mid-entrance. */
+export const allowMotion = async () => {
+  onTestFinished(() => commands.setReducedMotion(true));
+  await commands.setReducedMotion(false);
 };
 
 /** A few frames, for layout and the Walkthrough's measuring to catch up, on the browser's real clock. */

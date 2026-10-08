@@ -1,5 +1,11 @@
 import { playwright } from '@vitest/browser-playwright';
 import { defineConfig } from 'vitest/config';
+import type { BrowserCommand } from 'vitest/node';
+
+/** Browser tests run with reduced motion; one that checks an animation turns it off for itself. */
+const setReducedMotion: BrowserCommand<[reduce: boolean]> = async ({ page }, reduce) => {
+  await page.emulateMedia({ reducedMotion: reduce ? 'reduce' : 'no-preference' });
+};
 
 export default defineConfig({
   resolve: {
@@ -33,6 +39,7 @@ export default defineConfig({
             provider: playwright({ contextOptions: { reducedMotion: 'reduce' } }),
             instances: [{ browser: 'chromium', viewport: { width: 900, height: 600 } }],
             screenshotFailures: false,
+            commands: { setReducedMotion },
           },
         },
       },

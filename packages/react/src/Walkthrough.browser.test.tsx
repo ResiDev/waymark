@@ -1,8 +1,18 @@
 import { useState } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 import { defineWalkthrough, Walkthrough } from "./index";
-import { addWaymark, centre, onScreen, pastEdges, render, resize, settle } from "./test/browser";
+import {
+  addWaymark,
+  allowMotion,
+  centre,
+  onScreen,
+  pastEdges,
+  render,
+  resize,
+  scrollPage,
+  settle,
+} from "./test/browser";
 
 const dialog = async () => {
   await expect.element(page.getByRole("dialog")).toBeVisible();
@@ -78,6 +88,43 @@ describe("popover", () => {
     await collapse();
     expect(centre(beacon().element())).toEqual({ x: target.right, y: target.top });
   });
+  it("follows its Waymark as the page scrolls", async () => {
+    const waymark = addWaymark({ position: "absolute", left: "20px", top: "200px" });
+    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }]);
+    render(
+      <>
+        <div style={{ height: 3000 }} />
+        <Walkthrough walkthrough={walkthrough} waymarkPadding={0} />
+      </>,
+    );
+    const gap = async () => (await dialog()).getBoundingClientRect().top - waymark.getBoundingClientRect().bottom;
+    expect(await gap()).toBe(8);
+
+    await scrollPage(100);
+    expect(waymark.getBoundingClientRect().top).toBe(100);
+    expect(await gap()).toBe(8);
+  });
+
+  it("keeps Tab and Shift+Tab among its own controls and its Waymark", async () => {
+    addWaymark({ left: "20px", top: "20px" });
+    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Try the page element." }]);
+    render(
+      <>
+        <button type="button" style={{ position: "fixed", left: 600, top: 400 }}>Elsewhere</button>
+        <Walkthrough walkthrough={walkthrough} />
+      </>,
+    );
+    await dialog();
+    const tab = async (key: string) => {
+      await userEvent.keyboard(key);
+      const focused = document.activeElement;
+      return focused?.getAttribute("aria-label") ?? focused?.textContent;
+    };
+
+    const forward = [await tab("{Tab}"), await tab("{Tab}"), await tab("{Tab}"), await tab("{Tab}")];
+    expect(forward).toEqual(["Close", "Finish", "Page element", "Close"]);
+    expect(await tab("{Shift>}{Tab}{/Shift}")).toBe("Page element");
+  });
 });
 
 describe("beacon", () => {
@@ -125,6 +172,69 @@ describe("beacon", () => {
     await collapse();
 
     expect(pastEdges(page.getByRole("button", { name: "Carry on with help" }).element())).toEqual(onScreen);
+  });
+  it("resumes from a click on the beacon over its Waymark, which the Waymark doesn't get", async () => {
+    const waymark = addWaymark({ left: "20px", top: "20px" });
+    const clicked = vi.fn();
+    waymark.addEventListener("click", clicked);
+    const walkthrough = defineWalkthrough([
+      { waymark: "target", scroll: "never", advance: "click", content: "Click the page element" },
+      { content: "Done" },
+    ]);
+    render(<Walkthrough walkthrough={walkthrough} />);
+    await dialog();
+    await collapse();
+
+    await beacon().click();
+    await expect.element(page.getByRole("dialog", { name: "Step 1 of 2" })).toBeVisible();
+    expect(clicked).not.toHaveBeenCalled();
+  });
+
+  it("pulses", async () => {
+    await allowMotion();
+    addWaymark({ left: "400px", top: "300px" });
+    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Somewhere quiet" }]);
+    render(<Walkthrough walkthrough={walkthrough} />);
+    await dialog();
+    await collapse();
+
+    expect(beacon().element().getAnimations({ subtree: true })).not.toEqual([]);
+  });
+
+  it("stays still under reduced motion", async () => {
+    addWaymark({ left: "400px", top: "300px" });
+    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Somewhere quiet" }]);
+    render(<Walkthrough walkthrough={walkthrough} />);
+    await dialog();
+    await collapse();
+
+    expect(beacon().element().getAnimations({ subtree: true })).toEqual([]);
+  });
+});
+
+describe("shade", () => {
+  it("lets clicks through: on the Waymark, to the app and to advance, and around it, to collapse", async () => {
+    const waymark = addWaymark({ left: "20px", top: "20px" });
+    const clicked = vi.fn();
+    waymark.addEventListener("click", clicked);
+    const walkthrough = defineWalkthrough([
+      { waymark: "target", scroll: "never", advance: "click", content: "Click the page element" },
+      { content: "Done" },
+    ]);
+    render(
+      <>
+        <button type="button" style={{ position: "fixed", left: 600, top: 400 }}>Elsewhere</button>
+        <Walkthrough walkthrough={walkthrough} />
+      </>,
+    );
+    await dialog();
+
+    await page.getByRole("button", { name: "Page element" }).click();
+    expect(clicked).toHaveBeenCalledOnce();
+    await expect.element(page.getByRole("dialog", { name: "Step 2 of 2" })).toBeVisible();
+
+    await page.getByRole("button", { name: "Elsewhere" }).click();
+    await expect.element(beacon()).toBeVisible();
   });
 });
 
