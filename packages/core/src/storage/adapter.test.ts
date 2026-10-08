@@ -62,16 +62,16 @@ describe("localStorageAdapter", () => {
 
   it("stops hearing other tabs once unsubscribed", () => {
     const listener = vi.fn();
-    const stop = localStorageAdapter("setup").subscribe!(listener);
+    const stop = localStorageAdapter("other-tab").subscribe!(listener);
     const hear = (key: string | null, newValue: string | null) =>
       globalThis.dispatchEvent(new StorageEvent("storage", { key, newValue, storageArea: localStorage }));
 
-    hear("setup", '{"version":3,"tasks":{}}');
+    hear("other-tab", '{"version":3,"tasks":{}}');
     hear(null, null);
     expect(listener.mock.calls).toEqual([[{ version: 3, tasks: {} }], [null]]);
 
     stop();
-    hear("setup", "{}");
+    hear("other-tab", "{}");
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });
