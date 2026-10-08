@@ -1,3 +1,5 @@
+import type { CallbackName } from "./problems";
+
 /**
  * Work queued from a callback waits until the current work has finished, so
  * every callback of a change sees the state that change produced. A throwing
@@ -5,26 +7,42 @@
  */
 export type Queue = Readonly<{
   run: (...work: (() => void)[]) => void;
-  invoke: (callback: () => void) => void;
+  /** Unnamed work is Waymark's own, or the problem handler: what it throws is thrown, never passed back. */
+  invoke: (work: () => void, callback?: CallbackName) => void;
   notify: <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => void;
   /**
    * Runs work in place, even inside a drain: Svelte's store contract wants a
    * new subscriber's first call before `subscribe` returns.
    */
   now: (work: () => void) => void;
-  fail: (error: unknown) => void;
+  fail: (error: unknown, callback: CallbackName) => void;
 }>;
 
-export function createQueue(failure: string): Queue {
+export function createQueue(
+  failure: string,
+  onThrow?: (error: unknown, callback: CallbackName) => void,
+): Queue {
   const queue: (() => void)[] = [];
   let draining = false;
   let errors: unknown[] = [];
 
-  const invoke = (callback: () => void) => {
-    try {
-      callback();
-    } catch (error) {
+  const fail = (error: unknown, callback?: CallbackName) => {
+    if (callback === undefined || onThrow === undefined) {
       errors.push(error);
+      return;
+    }
+    try {
+      onThrow(error, callback);
+    } catch (thrown) {
+      errors.push(thrown);
+    }
+  };
+
+  const invoke = (work: () => void, callback?: CallbackName) => {
+    try {
+      work();
+    } catch (error) {
+      fail(error, callback);
     }
   };
 
@@ -32,7 +50,7 @@ export function createQueue(failure: string): Queue {
     // Copied on purpose: a listener may subscribe or unsubscribe others mid-notify.
     // oxlint-disable-next-line unicorn/no-useless-spread
     for (const listener of [...listeners]) {
-      if (listeners.has(listener)) invoke(() => listener(snapshot));
+      if (listeners.has(listener)) invoke(() => listener(snapshot), "subscriber");
     }
   };
 
@@ -57,10 +75,6 @@ export function createQueue(failure: string): Queue {
   };
 
   const now = (work: () => void) => (draining ? work() : run(work));
-
-  const fail = (error: unknown) => {
-    errors.push(error);
-  };
 
   return { run, invoke, notify, now, fail };
 }

@@ -51,7 +51,11 @@ _Avoid_: View
 Everything needed to draw a run or a checklist at one moment. A new snapshot appears only when something in it has changed.
 
 **Run event**:
-Something a run did or saw: starting, each action it took, its waymark becoming lost or missing, or finishing. It belongs to the step it happened on.
+Something a run did: starting, each action it took, or finishing. It belongs to the step it happened on.
+
+**Problem**:
+Something that went wrong, reported to one handler: storage that failed or held a record Waymark cannot read, a stored walkthrough dropped, a waymark lost or missing, or an error thrown by the app's own code. Without a handler, the app's errors are thrown and storage problems are logged.
+_Avoid_: Error, since most problems are not thrown; issue
 
 ### Checklists
 

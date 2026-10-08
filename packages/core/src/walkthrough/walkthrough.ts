@@ -1,29 +1,36 @@
-import { adapterOf, reporter, saveTo } from "../storage/adapter";
+import { problemReporter, storageFailed } from "../problems";
+import type { ProblemHandler } from "../problems";
+import { adapterOf, saveTo } from "../storage/adapter";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredWalkthrough } from "../storage/records";
 import type {
   ExactStep,
   Step,
   UnstoredWalkthrough,
+  UnstoredWalkthroughOptions,
   Walkthrough,
   WalkthroughOptions,
 } from "./types";
 
 /**
  * `TShape` lets an adapter allow its own Step fields, such as `content`. With
- * `storage` it can be shown on its own but not handed to a checklist's Task,
- * whose owner keeps its place.
+ * `storage` or `onProblem` it can be shown on its own but not handed to a
+ * checklist's Task, whose owner keeps its place and hears its problems.
  */
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
   steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
 ): UnstoredWalkthrough<NoInfer<TStep>>;
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
   steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
-  options: WalkthroughOptions,
+  options: UnstoredWalkthroughOptions<NoInfer<TStep>>,
+): Walkthrough<NoInfer<TStep>> & Readonly<{ storage?: never }>;
+export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
+  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
+  options: WalkthroughOptions<NoInfer<TStep>>,
 ): Walkthrough<NoInfer<TStep>>;
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
   steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
-  options?: WalkthroughOptions,
+  options?: WalkthroughOptions<NoInfer<TStep>> | UnstoredWalkthroughOptions<NoInfer<TStep>>,
 ): Walkthrough<NoInfer<TStep>> {
   return checkedWalkthrough<TStep>(steps, "", options);
 }
@@ -50,17 +57,18 @@ export function storageOf(walkthrough: Walkthrough): StorageAdapter<StoredWalkth
   try {
     return adapterOf(storage());
   } catch (error) {
-    reportOf(walkthrough)(error);
+    reportOf(walkthrough)(storageFailed("walkthrough", error));
     return undefined;
   }
 }
 
-export const reportOf = (walkthrough: Walkthrough) => reporter("walkthrough", walkthrough.onStorageError);
+export const reportOf = <TStep extends Step>(walkthrough: Walkthrough<TStep>): ProblemHandler<TStep> =>
+  problemReporter(walkthrough.onProblem?.bind(walkthrough));
 
 export function checkedWalkthrough<TStep extends Step>(
   steps: readonly TStep[],
   where: string,
-  options?: WalkthroughOptions,
+  options?: WalkthroughOptions<TStep> | UnstoredWalkthroughOptions<TStep>,
 ): Walkthrough<TStep> {
   if (steps.length === 0) {
     throw new Error(`${where}A walkthrough needs at least one step.`);
@@ -95,7 +103,7 @@ export function checkedWalkthrough<TStep extends Step>(
       // would race that save on an async adapter.
       if (listeners.size === 0) {
         const adapter = storageOf(walkthrough);
-        if (adapter) saveTo(adapter, null, reportOf(walkthrough));
+        if (adapter) saveTo(adapter, null, (error) => reportOf(walkthrough)(storageFailed("walkthrough", error)));
       }
       for (const listener of listeners) listener();
     },

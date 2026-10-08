@@ -22,7 +22,7 @@ import {
   isAuto,
   isClick,
 } from "../walkthrough/walkthrough";
-import type { Action, Location, Rect, RunEventType, Running } from "./types";
+import type { Action, Location, Rect, Running } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
 /**
@@ -268,8 +268,8 @@ function whenDue<TStep extends Step>(
 }
 
 /** Once, as the Waymark goes, not on every frame it stays gone. */
-const goneEvents = (before: Location, after: Location): readonly RunEventType[] =>
-  after !== before && isGone(after) ? [after.status] : NO_EVENTS;
+const newlyGone = (before: Location, after: Location) =>
+  after !== before && isGone(after) ? after.status : undefined;
 
 function observeWaymark<TStep extends Step>(
   state: State<TStep>,
@@ -305,7 +305,8 @@ function observeWaymark<TStep extends Step>(
       : gate(state, snapshot, { waymark });
   return {
     state: { ...located, element: read.element, scrolled, unseenSince },
-    events: goneEvents(snapshot.waymark, waymark),
+    events: NO_EVENTS,
+    waymarkGone: newlyGone(snapshot.waymark, waymark),
     scrollTo,
   };
 }
@@ -339,9 +340,10 @@ function observe<TStep extends Step>(
   const due = observeAdvance(seen.state, read.advance, read.now, walkthrough);
   if (due.state === seen.state) return seen;
   const events = [...seen.events, ...due.events];
+  const { waymarkGone } = seen;
   return due.state.stepGeneration === seen.state.stepGeneration
-    ? { ...due, events, scrollTo: seen.scrollTo }
-    : { ...due, events };
+    ? { ...due, events, waymarkGone, scrollTo: seen.scrollTo }
+    : { ...due, events, waymarkGone };
 }
 
 function start<TStep extends Step>(state: State<TStep>): Outcome<TStep> {

@@ -10,6 +10,7 @@ export type {
   ExactStep,
   Step,
   UnstoredWalkthrough,
+  UnstoredWalkthroughOptions,
   Walkthrough,
   WalkthroughOptions,
   WalkthroughStore,
@@ -55,6 +56,7 @@ export type {
   TaskMap,
   TaskStatus,
 } from "./checklists/types";
+export type { CallbackName, DropReason, WaymarkProblem } from "./problems";
 export type { StorageAdapter } from "./storage/adapter";
 export type {
   StoredChecklistWalkthrough,

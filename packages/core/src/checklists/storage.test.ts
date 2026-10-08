@@ -3,6 +3,7 @@ import { createChecklists } from "./checklists";
 import type { ChecklistsStorage } from "./types";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
+import type { WaymarkProblem } from "../problems";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { localKey } from "../test/dom";
 import { fakeTimers } from "../test/time";
@@ -50,7 +51,7 @@ type Options = Readonly<{
   initial?: StoredTasks;
   onChange?: (stored: StoredTasks) => void;
   onEvent?: (event: { type: string }) => void;
-  onStorageError?: (error: unknown, record: "tasks" | "walkthrough") => void;
+  onProblem?: (problem: WaymarkProblem) => void;
   context?: { met: boolean };
   run?: { onEvent?: (event: { type: string }) => void };
 }>;
@@ -174,20 +175,20 @@ describe("checklists storage: task statuses", () => {
     expect(statuses(owner)).toMatchObject({ hello: "done" });
 
     const failing = later<StoredTasks>();
-    const broken = create({ storage: { tasks: failing.adapter }, onStorageError: () => {} });
+    const broken = create({ storage: { tasks: failing.adapter }, onProblem: () => {} });
     await failing.refuse(new Error("offline"));
     await expect(broken.ready).resolves.toBeUndefined();
   });
 
   it("reports a failed load, starts empty with an error status, and saves nothing", async () => {
     const { adapter, refuse } = later<StoredTasks>();
-    const onStorageError = vi.fn();
-    const owner = create({ storage: { tasks: adapter }, onStorageError });
+    const onProblem = vi.fn();
+    const owner = create({ storage: { tasks: adapter }, onProblem });
     const offline = new Error("offline");
 
     await refuse(offline);
 
-    expect(onStorageError).toHaveBeenCalledExactlyOnceWith(offline, "tasks");
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "storageFailed", record: "tasks", error: offline });
     expect(owner.getSnapshot().storageStatus).toBe("error");
     expect(owner.checklists.home.getSnapshot().storageStatus).toBe("error");
     expect(adapter.save).not.toHaveBeenCalled();
@@ -195,7 +196,7 @@ describe("checklists storage: task statuses", () => {
 
   it("saves no condition over a record it cannot read, until the user changes something", () => {
     const tasks = held({ version: 4, tasks: { hello: "done" } } as unknown as StoredTasks);
-    const owner = create({ storage: { tasks }, onStorageError: () => {}, context: { met: true } });
+    const owner = create({ storage: { tasks }, onProblem: () => {}, context: { met: true } });
     owner.update({ met: true });
     expect(statuses(owner)).toMatchObject({ met: "done" });
     expect(tasks.save).not.toHaveBeenCalled();
@@ -205,17 +206,25 @@ describe("checklists storage: task statuses", () => {
   });
 
   it("reports a record it cannot read, naming a newer version, without overwriting it", () => {
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const tasks = held({ version: 4, tasks: {} } as unknown as StoredTasks);
-    const owner = create({ storage: { tasks }, onStorageError });
+    const owner = create({ storage: { tasks }, onProblem });
     expect(owner.getSnapshot().storageStatus).toBe("error");
-    expect(String(onStorageError.mock.calls[0]?.[0])).toMatch(/version 4.*reads up to 3/);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordUnreadable",
+      record: "tasks",
+      error: expect.objectContaining({ message: expect.stringMatching(/version 4.*reads up to 3/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    });
     expect(tasks.save).not.toHaveBeenCalled();
 
     for (const value of ["text", [], { version: 3 }, { version: 3, tasks: { a: "finished" } }]) {
-      onStorageError.mockClear();
-      create({ storage: { tasks: held(value as unknown as StoredTasks) }, onStorageError });
-      expect(String(onStorageError.mock.calls[0]?.[0])).toMatch(/not one Waymark wrote/);
+      onProblem.mockClear();
+      create({ storage: { tasks: held(value as unknown as StoredTasks) }, onProblem });
+      expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+        type: "recordUnreadable",
+        record: "tasks",
+        error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+      });
     }
   });
 
@@ -236,15 +245,15 @@ describe("checklists storage: task statuses", () => {
   });
 
   it("reports a save that throws or rejects, and carries on", async () => {
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const quota = new Error("quota");
     const owner = create({
       storage: { tasks: { load: () => null, save: () => Promise.reject(quota) } },
-      onStorageError,
+      onProblem,
     });
     owner.markDone("hello");
     await Promise.resolve();
-    expect(onStorageError).toHaveBeenCalledExactlyOnceWith(quota, "tasks");
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "storageFailed", record: "tasks", error: quota });
 
     const thrower = create({
       storage: {
@@ -255,11 +264,11 @@ describe("checklists storage: task statuses", () => {
           },
         },
       },
-      onStorageError,
+      onProblem,
     });
     expect(() => thrower.markDone("hello")).not.toThrow();
     expect(statuses(thrower)).toMatchObject({ hello: "done" });
-    expect(onStorageError).toHaveBeenCalledTimes(2);
+    expect(onProblem).toHaveBeenCalledTimes(2);
   });
 
   it("reads the version 2 envelope the old localStorage record wrote", () => {
@@ -415,22 +424,30 @@ describe("checklists storage: the walkthrough", () => {
   });
 
   it.each([
-    ["its Task is gone", record({ task: "removed" })],
-    ["its Task has no walkthrough", record({ task: "hello" })],
-    ["the walkthrough's steps changed", record({ stepCount: 4 })],
-    ["it is older than maxAge", record({ savedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 })],
-  ])("wipes it rather than restore it when %s", (_, stored) => {
+    ["its Task is gone", record({ task: "removed" }), "unknownTask"],
+    ["its Task has no walkthrough", record({ task: "hello" }), "unknownTask"],
+    ["the walkthrough's steps changed", record({ stepCount: 4 }), "stepsChanged"],
+    ["it is older than maxAge", record({ savedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 }), "expired"],
+  ])("wipes and reports it rather than restore it when %s", (_, stored, reason) => {
     const walkthrough = held(stored);
-    const owner = create({ storage: { walkthrough } });
+    const onProblem = vi.fn();
+    const owner = create({ storage: { walkthrough }, onProblem });
     expect(owner.getSnapshot().active).toBeNull();
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", record: "walkthrough", reason });
   });
 
   it("restores nothing for a Task the statuses say is no longer todo", () => {
     const walkthrough = held(record());
-    const owner = create({ storage: { tasks: held(saved({ tour: "skipped" })), walkthrough } });
+    const onProblem = vi.fn();
+    const owner = create({ storage: { tasks: held(saved({ tour: "skipped" })), walkthrough }, onProblem });
     expect(owner.getSnapshot().active).toBeNull();
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordDropped",
+      record: "walkthrough",
+      reason: "taskNotTodo",
+    });
   });
 
   it("honours a custom maxAge", () => {
@@ -440,10 +457,14 @@ describe("checklists storage: the walkthrough", () => {
   });
 
   it("reports a record it cannot read, and wipes it", () => {
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const walkthrough = held({ version: 1, task: "tour", step: 5, stepCount: 3 } as unknown as StoredChecklistWalkthrough);
-    create({ storage: { walkthrough }, onStorageError });
-    expect(onStorageError).toHaveBeenCalledExactlyOnceWith(expect.any(Error), "walkthrough");
+    create({ storage: { walkthrough }, onProblem });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordUnreadable",
+      record: "walkthrough",
+      error: expect.any(Error), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    });
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
   });
 

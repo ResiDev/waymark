@@ -13,6 +13,7 @@ import {
   type StoredTasks,
   type StoredWalkthrough,
   type WalkthroughRenderProps,
+  type WaymarkProblem,
 } from "react-waymark";
 import { CustomBeacon, CustomPopover } from "./popover";
 import { createStore, data, inviteOpen, record, setup, useStore, watched, whatsNewOpen, type AppData } from "./state";
@@ -146,6 +147,21 @@ const serverTasks: StorageAdapter<StoredTasks> = {
   },
 };
 
+const describeProblem = (problem: WaymarkProblem): string => {
+  switch (problem.type) {
+    case "storageFailed":
+    case "recordUnreadable":
+      return `${problem.type} (${problem.record}): ${String(problem.error)}`;
+    case "recordDropped":
+      return `${problem.type} (${problem.reason})`;
+    case "waymarkLost":
+    case "waymarkMissing":
+      return `${problem.type} on step ${problem.stepIndex + 1}`;
+    default:
+      return `${problem.type} in ${problem.callback}: ${String(problem.error)}`;
+  }
+};
+
 const describeEvent = (event: ChecklistsEvent<any, any>): string => {
   switch (event.type) {
     case "taskStopped":
@@ -227,7 +243,7 @@ export const owner = createChecklists({
     tasks: setup.get().storage === "server" ? serverTasks : shownLocally(TASKS_KEY, stored),
     walkthrough: shownLocally(WALKTHROUGH_KEY, storedWalkthrough),
   },
-  onStorageError: (error, which) => record("owner", `storage error (${which}): ${String(error)}`),
+  onProblem: (problem) => record("owner", describeProblem(problem)),
   onEvent: (event) => record("owner", describeEvent(event)),
   run: {
     waymarkPadding: setup.get().padding,
@@ -297,7 +313,10 @@ export const whatsNew = defineWalkthrough(
     },
     { waymark: "nav-decks", preferredPlacement: "right", content: "Share a deck from the decks page." },
   ],
-  { storage: shownLocally(WHATS_NEW_KEY, storedWhatsNew) },
+  {
+    storage: shownLocally(WHATS_NEW_KEY, storedWhatsNew),
+    onProblem: (problem) => record("whats-new", describeProblem(problem)),
+  },
 );
 
 export function WhatsNew() {

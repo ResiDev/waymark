@@ -28,14 +28,18 @@ describe("localStorageAdapter", () => {
   it("hands text that is not JSON on, to be reported as a record Waymark did not write", () => {
     const key = localKey("setup");
     localStorage.setItem(key, "not json");
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const owner = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter<StoredTasks>(key) },
-      onStorageError,
+      onProblem,
     });
     expect(owner.getSnapshot().storageStatus).toBe("error");
-    expect(String(onStorageError.mock.calls[0]?.[0])).toMatch(/not one Waymark wrote/);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordUnreadable",
+      record: "tasks",
+      error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    });
   });
 
   it("lets core report blocked storage, and keeps progress in memory", () => {
@@ -46,18 +50,16 @@ describe("localStorageAdapter", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw blocked;
     });
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const owner = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter("setup") },
-      onStorageError,
+      onProblem,
     });
     owner.markDone("a");
     expect(statuses(owner)).toEqual({ a: "done" });
-    expect(onStorageError.mock.calls).toEqual([
-      [blocked, "tasks"],
-      [blocked, "tasks"],
-    ]);
+    const failed = { type: "storageFailed", record: "tasks", error: blocked };
+    expect(onProblem.mock.calls).toEqual([[failed], [failed]]);
   });
 
   it("stops hearing other tabs once unsubscribed", () => {

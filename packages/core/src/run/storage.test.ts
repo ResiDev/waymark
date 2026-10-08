@@ -17,6 +17,8 @@ const held = (value: StoredWalkthrough | null) =>
     save: vi.fn<(value: StoredWalkthrough | null) => void>(),
   }) satisfies StorageAdapter<StoredWalkthrough>;
 
+const failed = (error: unknown) => ({ type: "storageFailed", record: "walkthrough", error });
+
 type RunningRecord = Extract<StoredWalkthrough, { phase: "running" }>;
 
 const running = (overrides: Partial<RunningRecord> = {}): RunningRecord => ({
@@ -91,13 +93,15 @@ describe("run storage", () => {
   );
 
   it.each([
-    ["its steps changed", running({ stepCount: 4 })],
-    ["it is older than maxAge", running({ savedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 })],
-  ])("starts as asked and wipes a running walkthrough when %s", (_, stored) => {
+    ["its steps changed", running({ stepCount: 4 }), "stepsChanged"],
+    ["it is older than maxAge", running({ savedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 }), "expired"],
+  ])("starts as asked, wipes and reports a running walkthrough when %s", (_, stored, reason) => {
     const walkthrough = held(stored);
-    const run = createRun(tourIn(walkthrough), { startAt: 2 });
+    const onProblem = vi.fn();
+    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, onProblem }), { startAt: 2 });
     expect(where(run)).toEqual({ step: 2, collapsed: false });
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", record: "walkthrough", reason });
   });
 
   it("honours a custom maxAge", () => {
@@ -107,10 +111,14 @@ describe("run storage", () => {
   });
 
   it("reports a record it cannot read, and starts as asked", () => {
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const walkthrough = held({ version: 1, phase: "running", step: 9, stepCount: 3 } as unknown as StoredWalkthrough);
-    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, onStorageError }));
-    expect(onStorageError).toHaveBeenCalledExactlyOnceWith(expect.any(Error));
+    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, onProblem }));
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordUnreadable",
+      record: "walkthrough",
+      error: expect.any(Error), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    });
     expect(where(run)).toEqual({ step: 0, collapsed: false });
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
   });
@@ -143,17 +151,17 @@ describe("run storage", () => {
   });
 
   it("starts as asked when its load fails", async () => {
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const offline = new Error("offline");
     const run = createRun(
       defineWalkthrough([{}, {}, {}], {
         storage: { load: () => Promise.reject(offline), save: () => {} },
-        onStorageError,
+        onProblem,
       }),
     );
     await Promise.resolve();
     await Promise.resolve();
-    expect(onStorageError).toHaveBeenCalledExactlyOnceWith(offline);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(failed(offline));
     expect(where(run)).toEqual({ step: 0, collapsed: false });
   });
 
@@ -229,31 +237,31 @@ describe("run storage", () => {
     expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
   });
 
-  it("reports a record reset cannot clear to the walkthrough's onStorageError", () => {
-    const onStorageError = vi.fn();
+  it("reports a record reset cannot clear to the walkthrough's onProblem", () => {
+    const onProblem = vi.fn();
     const quota = new Error("quota");
     const tour = defineWalkthrough([{}, {}], {
       storage: { load: () => null, save: () => { throw quota; } },
-      onStorageError,
+      onProblem,
     });
 
     tour.reset();
-    expect(onStorageError).toHaveBeenCalledExactlyOnceWith(quota);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(failed(quota));
   });
 
   it("reports a key function that throws, and runs unstored", () => {
-    const onStorageError = vi.fn();
+    const onProblem = vi.fn();
     const signedOut = new Error("signed out");
     const tour = defineWalkthrough([{}, {}], {
       storage: () => {
         throw signedOut;
       },
-      onStorageError,
+      onProblem,
     });
 
     expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
     tour.reset();
-    expect(onStorageError.mock.calls).toEqual([[signedOut], [signedOut]]);
+    expect(onProblem.mock.calls).toEqual([[failed(signedOut)], [failed(signedOut)]]);
   });
 
   it("starts a watched Run without storage again on reset", () => {

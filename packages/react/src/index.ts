@@ -35,9 +35,11 @@ export type {
   WalkthroughProps,
   WalkthroughRenderProps,
   WalkthroughStep,
+  WaymarkProblem,
 } from "./types";
 export type {
   ActiveTask,
+  CallbackName,
   ChecklistRow,
   ChecklistSelections,
   ChecklistSnapshot,
@@ -48,6 +50,7 @@ export type {
   ChecklistsSnapshot,
   ChecklistsStorage,
   DefaultChecklists,
+  DropReason,
   NamedTask,
   SelectedTask,
   StepOf,
@@ -60,6 +63,7 @@ export type {
   TaskCommands,
   TaskId,
   TaskStatus,
+  UnstoredWalkthroughOptions,
   WalkthroughOptions,
   WalkthroughStore,
   WaymarkEventName,

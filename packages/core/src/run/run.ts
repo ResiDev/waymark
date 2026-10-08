@@ -5,8 +5,10 @@ import type { AdvanceRead, Message, StepRead, WaymarkAria, WaymarkEvents, Waymar
 import { begin, loading, stepAt } from "./state";
 import type { Start, State } from "./state";
 import { loadFrom, saveTo } from "../storage/adapter";
-import { DEFAULT_MAX_AGE, isCurrent, parseWalkthrough, storedWalkthrough } from "../storage/records";
-import { checkOf, onReset, reportOf, selectorOf, storageOf } from "../walkthrough/walkthrough";
+import { DEFAULT_MAX_AGE, parseWalkthrough, staleness, storedWalkthrough } from "../storage/records";
+import { problemReporter, recordDropped, recordUnreadable, storageFailed } from "../problems";
+import type { ProblemHandler } from "../problems";
+import { checkOf, onReset, selectorOf, storageOf } from "../walkthrough/walkthrough";
 import type { Action, Rect, Run, RunOptions, Snapshot, UiElements } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
 
@@ -74,12 +76,22 @@ export function createRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep> = {},
 ): Run<TStep> {
+  return startRun(walkthrough, options, walkthrough.onProblem?.bind(walkthrough));
+}
+
+/** A checklist's owner hands its Runs its own `onProblem`, in place of the walkthrough's. */
+export function startRun<TStep extends Step>(
+  walkthrough: Walkthrough<TStep>,
+  options: RunOptions<TStep>,
+  onProblem: ProblemHandler<TStep> | undefined,
+): Run<TStep> {
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;
 
   const storage = storageOf(walkthrough);
   const maxAge = walkthrough.maxAge ?? DEFAULT_MAX_AGE;
-  const report = reportOf(walkthrough);
+  const reportProblem = problemReporter(onProblem);
+  const reportStorageFailure = (error: unknown) => reportProblem(storageFailed("walkthrough", error));
   const asked: Start = {
     phase: "running",
     step: options.startAt ?? 0,
@@ -92,7 +104,10 @@ export function createRun<TStep extends Step>(
   /** Actions asked for while loading, run once the Run has begun. */
   const held: Action[] = [];
 
-  const queue = createQueue("Run callbacks failed.");
+  const queue = createQueue(
+    "Run callbacks failed.",
+    onProblem && ((error, callback) => onProblem({ type: "callbackThrew", callback, error })),
+  );
 
   const obey = (message: Message) => {
     const outcome = apply(state, message, walkthrough);
@@ -112,21 +127,23 @@ export function createRun<TStep extends Step>(
     // Restoring saves nothing: storage already holds it.
     if (storage && message.kind !== "loaded" && !sameStored(before.snapshot, after)) {
       const saved = storedWalkthrough(after);
-      queue.invoke(() => saveTo(storage, saved, report));
+      queue.invoke(() => saveTo(storage, saved, reportStorageFailure));
     }
 
     // A loading Run takes no actions, so it has no events.
     const from = before.snapshot;
     if (from.phase === "loading") return;
     // After notify, so an onEvent handler sees a renderer that has already redrawn.
+    if (outcome.waymarkGone !== undefined) {
+      const type = outcome.waymarkGone === "lost" ? "waymarkLost" : "waymarkMissing";
+      const step = stepAt(walkthrough, from.stepIndex);
+      queue.invoke(() => reportProblem({ type, step, stepIndex: from.stepIndex }));
+    }
     for (const type of outcome.events) {
-      queue.invoke(() =>
-        options.onEvent?.({
-          type,
-          step: stepAt(walkthrough, from.stepIndex),
-          stepIndex: from.stepIndex,
-          snapshot: after,
-        }),
+      const step = stepAt(walkthrough, from.stepIndex);
+      queue.invoke(
+        () => options.onEvent?.({ type, step, stepIndex: from.stepIndex, snapshot: after }),
+        "onEvent",
       );
     }
   };
@@ -179,7 +196,7 @@ export function createRun<TStep extends Step>(
         holds = checkOf(step)?.(waymark?.element ?? null) === true;
       } catch (error) {
         // Thrown once the look is sent, so the next frame is still scheduled.
-        if (firstThrowThisStep(error, stepGeneration)) queue.fail(error);
+        if (firstThrowThisStep(error, stepGeneration)) queue.fail(error, "stateCheck");
       }
       advance = { holds };
     }
@@ -248,16 +265,18 @@ export function createRun<TStep extends Step>(
   const startFrom = (adapter: NonNullable<typeof storage>, value: unknown): Start => {
     const parsed = parseWalkthrough(value);
     if (!parsed.ok) {
-      report(parsed.error);
+      reportProblem(recordUnreadable("walkthrough", parsed.error));
     } else {
       const saved = parsed.value;
       if (saved === null) return asked;
       if (saved.phase !== "running") return saved;
-      if (isCurrent(saved, walkthrough.steps.length, maxAge)) {
+      const reason = staleness(saved, walkthrough.steps.length, maxAge);
+      if (reason === undefined) {
         return { phase: "running", step: saved.step, collapsed: saved.collapsed, resumed: true };
       }
+      reportProblem(recordDropped(reason));
     }
-    saveTo(adapter, null, report);
+    saveTo(adapter, null, reportStorageFailure);
     return asked;
   };
 
@@ -269,7 +288,7 @@ export function createRun<TStep extends Step>(
       for (const action of held.splice(0)) send({ kind: "act", action });
     };
     loadFrom(storage, arrive, (error) => {
-      report(error);
+      reportStorageFailure(error);
       arrive(null);
     });
   }
@@ -308,7 +327,7 @@ export function createRun<TStep extends Step>(
           // Queued with the first look so that `start` precedes anything a
           // subscriber does on seeing it.
           if (first) sendRead({ kind: "start" });
-          queue.invoke(() => listener(state.snapshot));
+          queue.invoke(() => listener(state.snapshot), "subscriber");
         });
       } catch (error) {
         listeners.delete(listener);

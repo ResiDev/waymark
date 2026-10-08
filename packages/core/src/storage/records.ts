@@ -40,7 +40,7 @@ export type StoredWalkthrough =
 /** `null`: nothing is stored. */
 export type Parsed<T> =
   | Readonly<{ ok: true; value: T | null }>
-  | Readonly<{ ok: false; error: unknown }>;
+  | Readonly<{ ok: false; error: Error }>;
 
 /** A walkthrough record restores for a day after its last change. */
 export const DEFAULT_MAX_AGE = 24 * 60 * 60 * 1000;
@@ -124,12 +124,14 @@ export function parseWalkthrough(value: unknown): Parsed<StoredWalkthrough> {
   return invalid("walkthrough", value, WALKTHROUGH_VERSION);
 }
 
-/** Saved for the walkthrough it was saved from, and recently enough to pick up again. */
-export const isCurrent = (
+export const staleness = (
   saved: Readonly<{ stepCount: number; savedAt: number }>,
   stepCount: number,
   maxAge: number,
-): boolean => saved.stepCount === stepCount && Date.now() - saved.savedAt <= maxAge;
+): "stepsChanged" | "expired" | undefined => {
+  if (saved.stepCount !== stepCount) return "stepsChanged";
+  return Date.now() - saved.savedAt > maxAge ? "expired" : undefined;
+};
 
 export const storedTasks = (tasks: Stored): StoredTasks => ({
   version: TASKS_VERSION,

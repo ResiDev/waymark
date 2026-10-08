@@ -10,6 +10,7 @@ import {
   type BeaconRenderProps,
   type WalkthroughLabels,
   type WalkthroughRenderProps,
+  type WaymarkProblem,
 } from "./index";
 import { addHost, addRoot, addTarget, localKey } from "./test/dom";
 import { fakeFrames } from "./test/time";
@@ -140,6 +141,33 @@ describe("Walkthrough", () => {
     });
 
     expect(document.querySelector("button[disabled]")).toBeNull();
+  });
+
+  it("reports a missing Waymark and a throwing onEvent to the walkthrough's onProblem", async () => {
+    const { root, runFrames } = mount();
+    let clock = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const onProblem = vi.fn<(problem: WaymarkProblem) => void>();
+    const analyticsDown = new Error("analytics down");
+    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }], { onProblem });
+
+    await act(async () =>
+      root.render(
+        <Walkthrough
+          walkthrough={walkthrough}
+          onEvent={() => {
+            throw analyticsDown;
+          }}
+        />,
+      ),
+    );
+    clock += 3000;
+    await runFrames();
+
+    expect(onProblem.mock.calls).toEqual([
+      [{ type: "callbackThrew", callback: "onEvent", error: analyticsDown }],
+      [{ type: "waymarkMissing", step: walkthrough.steps[0], stepIndex: 0 }],
+    ]);
   });
 
   it("shows a step waiting for its Waymark without a note, then with one once missing, and lets the user past its gate", async () => {

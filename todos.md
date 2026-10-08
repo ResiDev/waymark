@@ -14,15 +14,6 @@ Events
 - No READMEs yet, for either package or the repo.
 - Both packages are at 0.0.0.
 
-## One error channel
-- Problems reach an app three ways: `onStorageError` (on a walkthrough's
-  definition, or on an owner), `lost` and `missing` as run events, and errors
-  thrown when an app callback throws. Make one channel
-  whose events are a typed union, with storage failures one member.
-- It would also give a home to things that are not errors but an app may want
-  to know: a walkthrough record dropped as too old, because its steps changed,
-  or because its task is no longer todo. Today these go unreported.
-
 ## Maybe later
 - Hints: beacons on elements, outside any run. The beacon and location code
   covers most of it.

@@ -370,4 +370,33 @@ describe("createChecklists types", () => {
     owner.load(stored);
     expectTypeOf(handler).toBeFunction();
   });
+
+  it("types onProblem's steps from the walkthrough or the owner's Tasks", () => {
+    const tour = defineWalkthrough([{ waymark: "a", meta: { id: 1 } }], {
+      onProblem: (problem) => {
+        if (problem.type === "waymarkMissing") expectTypeOf(problem.step.meta).toEqualTypeOf<{ readonly id: 1 }>();
+      },
+    });
+    expect(() =>
+      createChecklists({
+        // @ts-expect-error the owner hears a Task's problems, so its walkthrough has no onProblem
+        tasks: { tour: { walkthrough: tour } },
+      }),
+    ).toThrow(/its own onProblem/);
+
+    // @ts-expect-error maxAge only means something with storage
+    defineWalkthrough([{}], { maxAge: 1000 });
+
+    createChecklists({
+      tasks: { "create-deck": { walkthrough: deckSteps } },
+      onProblem: (problem) => {
+        if (problem.type === "waymarkLost") {
+          expectTypeOf(problem.step.meta).toEqualTypeOf<{ readonly helpUrl: "/help/decks" }>();
+        }
+        if (problem.type === "recordDropped") {
+          expectTypeOf(problem.reason).toEqualTypeOf<"expired" | "stepsChanged" | "taskNotTodo" | "unknownTask">();
+        }
+      },
+    });
+  });
 });

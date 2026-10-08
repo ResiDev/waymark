@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { addToBody } from "../test/dom";
+import { skipFirstCall } from "../test/listeners";
+import { fakeFrames } from "../test/time";
 import { createChecklists } from "./checklists";
 import type { StoredTasks } from "../storage/records";
 import type { ChecklistSelections, ChecklistsEvent, Task, TaskMap } from "./types";
@@ -145,6 +147,12 @@ describe("createChecklists", () => {
         tasks: { a: { walkthrough: defineWalkthrough([{}], { storage: "a" }) as never } },
       }),
     ).toThrow(/Task "a": its walkthrough has its own storage/);
+    expect(() =>
+      createChecklists({
+        context: {},
+        tasks: { a: { walkthrough: defineWalkthrough([{}], { onProblem: () => {} }) as never } },
+      }),
+    ).toThrow(/Task "a": its walkthrough has its own onProblem/);
   });
 
   it("shows every task of a selection in its order, with its id and definition", () => {
@@ -294,6 +302,79 @@ describe("update", () => {
     });
     expect(() => owner.update({ ready: true })).toThrow("boom");
     expect(statuses(owner.checklists.all)).toEqual({ a: "todo", b: "todo" });
+  });
+
+  it("sends a throwing isComplete to onProblem instead of throwing, and leaves every task todo", () => {
+    const onProblem = vi.fn();
+    const boom = new Error("boom");
+    const owner = createChecklists({
+      context: { ready: false },
+      tasks: {
+        a: { isComplete: (c) => c.ready },
+        b: {
+          isComplete: (c) => {
+            if (c.ready) throw boom;
+            return false;
+          },
+        },
+      },
+      checklists: { all: ["a", "b"] },
+      onProblem,
+    });
+    expect(() => owner.update({ ready: true })).not.toThrow();
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "callbackThrew", callback: "isComplete", error: boom });
+    expect(statuses(owner.checklists.all)).toEqual({ a: "todo", b: "todo" });
+  });
+
+  it("sends errors from subscribers, onChange, onEvent and run.onEvent to onProblem, and still applies each change", () => {
+    const onProblem = vi.fn();
+    const broken = new Error("broken");
+    const fail = () => {
+      throw broken;
+    };
+    const owner = createChecklists({
+      tasks: { a: { walkthrough: single }, b: {} },
+      onChange: fail,
+      onEvent: fail,
+      run: { onEvent: fail },
+      onProblem,
+    });
+    owner.checklists.main.subscribe(skipFirstCall(fail));
+
+    expect(() => owner.markDone("b")).not.toThrow();
+    expect(() => owner.start("a")).not.toThrow();
+    expect(() => owner.getSnapshot().active!.run.act("advance")).not.toThrow();
+    expect(statuses(owner.checklists.main)).toEqual({ a: "done", b: "done" });
+    const threw = (callback: string) => [{ type: "callbackThrew", callback, error: broken }];
+    expect(onProblem.mock.calls).toEqual(
+      [
+        // markDone("b"); onEvent hears taskComplete
+        "subscriber", "onChange", "onEvent",
+        // start("a"); onEvent hears taskStarted
+        "subscriber", "onEvent",
+        // advance; run.onEvent hears advance
+        "onEvent",
+        // the Run finishes; onEvent hears taskStopped, taskComplete and checklistComplete
+        "subscriber", "onChange", "onEvent", "onEvent", "onEvent",
+        // run.onEvent hears finish, after the owner has handled it
+        "onEvent",
+      ].map(threw),
+    );
+  });
+
+  it("sends a missing waymark in a task's Run to the owner's onProblem", () => {
+    const { flush } = fakeFrames();
+    const onProblem = vi.fn();
+    const owner = createChecklists({ tasks: { a: { walkthrough: guide } }, onProblem });
+    owner.subscribeActive(() => {});
+    owner.start("a");
+    flush(3000);
+    flush();
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "waymarkMissing",
+      step: { waymark: "save" },
+      stepIndex: 0,
+    });
   });
 
   it("keeps an unaffected view's snapshot identity", () => {

@@ -45,14 +45,6 @@ export function saveTo<T>(adapter: StorageAdapter<T>, value: T | null, fail: Rep
   }
 }
 
-/** Without a handler, a storage failure is logged rather than lost. */
-export const reporter =
-  (record: string, handle: Report | undefined): Report =>
-  (error) => {
-    if (handle) handle(error);
-    else console.error(`Waymark could not use its ${record} storage.`, error);
-  };
-
 const parse = (text: string | null): unknown => {
   if (text === null) return null;
   try {

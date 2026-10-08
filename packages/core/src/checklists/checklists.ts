@@ -1,12 +1,19 @@
 import { dictionary } from "../dictionary";
 import { createQueue } from "../queue";
-import { createRun } from "../run/run";
-import { adapterOf, loadFrom, reporter, saveTo } from "../storage/adapter";
+import {
+  problemReporter,
+  recordDropped,
+  recordUnreadable,
+  storageFailed,
+} from "../problems";
+import type { DropReason } from "../problems";
+import { startRun } from "../run/run";
+import { adapterOf, loadFrom, saveTo } from "../storage/adapter";
 import {
   DEFAULT_MAX_AGE,
-  isCurrent,
   parseChecklistWalkthrough,
   parseTasks,
+  staleness,
   storedChecklistWalkthrough,
   storedTasks,
 } from "../storage/records";
@@ -48,7 +55,13 @@ const fromView = (checklist: string | undefined) =>
   checklist === undefined ? {} : { checklist };
 
 /** Run events that move the walkthrough to where a reload should pick it up. */
-const MOVES: ReadonlySet<RunEventType> = new Set(["advance", "previous", "reset", "collapse", "resume"]);
+const MOVES: ReadonlySet<RunEventType> = new Set([
+  "advance",
+  "previous",
+  "reset",
+  "collapse",
+  "resume",
+]);
 
 type Moment<TTask extends { readonly id: string }> = Readonly<{
   record: Stored;
@@ -107,7 +120,22 @@ export function createChecklists<
     NoInfer<TShape>,
     NoInfer<TStepShape>
   >,
-): Checklists<TContext, TTasks, TSelections> {
+): Checklists<TContext, TTasks, TSelections>;
+// The body works on the Tasks widened to `Task<TContext>`, as TypeScript cannot
+// follow each Task it hands back to the exact type the caller wrote. It checks
+// this signature against the one above only loosely, so this one reuses the
+// same types with each generic at its constraint.
+export function createChecklists<TContext>(
+  config: ChecklistsConfig<
+    TContext,
+    TaskMap<TContext>,
+    ChecklistSelections<TaskMap<TContext>>
+  >,
+): Checklists<
+  TContext,
+  TaskMap<TContext>,
+  ChecklistSelections<TaskMap<TContext>>
+> {
   type Tasks = TaskMap<TContext>;
   type Selections = ChecklistSelections<Tasks>;
   type Named = NamedTask<Tasks>;
@@ -131,21 +159,19 @@ export function createChecklists<
     named,
     config.checklists ?? { [DEFAULT_CHECKLIST]: Object.keys(tasks) },
   );
-  const { onChange, onEvent, onStorageError, run: runOptions, storage = {} } = config;
-  const tasksStorage = storage.tasks === undefined ? undefined : adapterOf(storage.tasks);
-  const walkthroughStorage = storage.walkthrough === undefined ? undefined : adapterOf(storage.walkthrough);
+  const { onChange, onEvent, onProblem, run: runOptions, storage = {} } = config;
+  const tasksStorage =
+    storage.tasks === undefined ? undefined : adapterOf(storage.tasks);
+  const walkthroughStorage =
+    storage.walkthrough === undefined
+      ? undefined
+      : adapterOf(storage.walkthrough);
   const maxAge = storage.maxAge ?? DEFAULT_MAX_AGE;
-  const reportTasks = reporter("tasks", onStorageError && ((error) => onStorageError(error, "tasks")));
-  const reportWalkthrough = reporter(
-    "walkthrough",
-    onStorageError && ((error) => onStorageError(error, "walkthrough")),
-  );
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every event carries one of these Tasks, so it is the event the handler is typed for.
-  const emit = onEvent as ((event: Event) => void) | undefined;
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every Run's steps come from these Tasks, so its events carry the steps the handler is typed for.
-  const onRunEventOption = runOptions?.onEvent as
-    | ((event: RunEvent) => void)
-    | undefined;
+  const reportProblem = problemReporter(onProblem);
+  const reportTasksStorageFailure = (error: unknown) =>
+    reportProblem(storageFailed("tasks", error));
+  const reportWalkthroughStorageFailure = (error: unknown) =>
+    reportProblem(storageFailed("walkthrough", error));
 
   // Snapshots hand back each Task as written, so checked Walkthroughs live apart.
   const walkthroughs = dictionary<Walkthrough>();
@@ -155,6 +181,12 @@ export function createChecklists<
     if (!isSteps(walkthrough) && walkthrough.storage !== undefined) {
       throw new Error(
         `Task "${id}": its walkthrough has its own storage, but the owner keeps a Task's place. Define it without storage.`,
+      );
+    }
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
+    if (!isSteps(walkthrough) && walkthrough.onProblem !== undefined) {
+      throw new Error(
+        `Task "${id}": its walkthrough has its own onProblem, but the owner reports its Runs' problems. Pass onProblem to createChecklists.`,
       );
     }
     walkthroughs[id] = isSteps(walkthrough)
@@ -176,7 +208,10 @@ export function createChecklists<
    * version, so a condition does not save over them; a change by the user does.
    */
   let storedUnread = false;
-  let ownerSnapshot: ChecklistsSnapshot<Tasks> = { active: null, storageStatus };
+  let ownerSnapshot: ChecklistsSnapshot<Tasks> = {
+    active: null,
+    storageStatus,
+  };
   const ownerListeners = new Set<
     (snapshot: ChecklistsSnapshot<Tasks>) => void
   >();
@@ -197,7 +232,12 @@ export function createChecklists<
     createView(name, viewTasks, source),
   );
 
-  const queue = createQueue("Checklist callbacks failed.");
+  const queue = createQueue(
+    "Checklist callbacks failed.",
+    onProblem &&
+      ((error, callback) =>
+        onProblem({ type: "callbackThrew", callback, error })),
+  );
 
   const current = (): State => ({
     record: progress.record(),
@@ -217,7 +257,11 @@ export function createChecklists<
     // Every snapshot is updated before any callback runs, so a callback that
     // reads another view sees this change too.
     const { changed, completed } = refresh(views, source);
-    if (ownerChanged) ownerSnapshot = { active: after.active, storageStatus: after.storageStatus };
+    if (ownerChanged)
+      ownerSnapshot = {
+        active: after.active,
+        storageStatus: after.storageStatus,
+      };
     // Exited last, once `subscribeActive` listeners have moved off it, so they
     // never see it exit.
     const stopped = moved ? before.active : null;
@@ -242,16 +286,25 @@ export function createChecklists<
     const stored = storedTasks(record);
     if (tasksStorage) {
       const saved = isEmpty(record) ? null : stored;
-      queue.invoke(() => saveTo(tasksStorage, saved, reportTasks));
+      queue.invoke(() =>
+        saveTo(tasksStorage, saved, reportTasksStorageFailure),
+      );
     }
-    queue.invoke(() => onChange?.(stored));
+    queue.invoke(() => onChange?.(stored), "onChange");
   };
 
   const saveWalkthrough = (saving: Active | null, from: string | undefined) => {
     if (walkthroughStorage === undefined) return;
     const saved =
-      saving && storedChecklistWalkthrough(saving.task.id, from, saving.run.getSnapshot());
-    queue.invoke(() => saveTo(walkthroughStorage, saved, reportWalkthrough));
+      saving &&
+      storedChecklistWalkthrough(
+        saving.task.id,
+        from,
+        saving.run.getSnapshot(),
+      );
+    queue.invoke(() =>
+      saveTo(walkthroughStorage, saved, reportWalkthroughStorageFailure),
+    );
   };
 
   const announce = (
@@ -261,14 +314,16 @@ export function createChecklists<
     completed: readonly View<Named>[],
   ) => {
     for (const event of eventsBetween(before, after, from))
-      queue.invoke(() => emit?.(event));
+      queue.invoke(() => onEvent?.(event), "onEvent");
     for (const view of completed) {
-      queue.invoke(() =>
-        emit?.({
-          type: "checklistComplete",
-          checklist: view.name,
-          snapshot: view.snapshot,
-        }),
+      queue.invoke(
+        () =>
+          onEvent?.({
+            type: "checklistComplete",
+            checklist: view.name,
+            snapshot: view.snapshot,
+          }),
+        "onEvent",
       );
     }
   };
@@ -311,7 +366,10 @@ export function createChecklists<
     if (active === null) return;
     const { task, run } = active;
     // A subscriber may release the Run before its finish event reaches us.
-    if (run.getSnapshot().phase === "completed" && task.isComplete === undefined)
+    if (
+      run.getSnapshot().phase === "completed" &&
+      task.isComplete === undefined
+    )
       progress.set(task.id, "done");
     active = null;
     startedFrom = undefined;
@@ -326,7 +384,11 @@ export function createChecklists<
       return;
     }
     const moving = active;
-    if (moving?.run === run && MOVES.has(event.type) && event.snapshot.phase === "running") {
+    if (
+      moving?.run === run &&
+      MOVES.has(event.type) &&
+      event.snapshot.phase === "running"
+    ) {
       queue.run(() => saveWalkthrough(moving, startedFrom));
     }
   };
@@ -335,17 +397,21 @@ export function createChecklists<
     walkthrough: Walkthrough,
     at?: Readonly<{ step: number; collapsed: boolean }>,
   ) => {
-    const run = createRun(walkthrough, {
-      ...runOptions,
-      startAt: at?.step ?? 0,
-      collapsed: at?.collapsed ?? false,
-      resumed: at !== undefined,
-      ui: () => boundUi?.() ?? NO_UI,
-      onEvent: (event) => {
-        onRunEvent(run, event);
-        onRunEventOption?.(event);
+    const run = startRun(
+      walkthrough,
+      {
+        ...runOptions,
+        startAt: at?.step ?? 0,
+        collapsed: at?.collapsed ?? false,
+        resumed: at !== undefined,
+        ui: () => boundUi?.() ?? NO_UI,
+        onEvent: (event) => {
+          onRunEvent(run, event);
+          runOptions?.onEvent?.(event);
+        },
       },
-    });
+      onProblem,
+    );
     return run;
   };
 
@@ -416,7 +482,13 @@ export function createChecklists<
     const settled: string[] = [];
     for (const { id, isComplete } of taskList) {
       if (isComplete === undefined || progress.status(id) === "done") continue;
-      const met = isComplete(context);
+      let met: boolean;
+      try {
+        met = isComplete(context);
+      } catch (error) {
+        queue.fail(error, "isComplete");
+        return;
+      }
       if (!progress.isReopened(id)) {
         if (met) complete.push(id);
       } else if (!met) {
@@ -431,7 +503,8 @@ export function createChecklists<
   // statuses are in. Against the empty record, a met condition would be undone.
   const update = (context: TContext) => {
     lastContext = context;
-    if (storageStatus !== "loading") send(() => checkConditions(context), { persist: !storedUnread });
+    if (storageStatus !== "loading")
+      send(() => checkConditions(context), { persist: !storedUnread });
   };
 
   /** Statuses from storage, put in place silently and not saved back. */
@@ -449,20 +522,29 @@ export function createChecklists<
   const hear = (value: unknown) => {
     const parsed = parseTasks(value);
     if (parsed.ok) replace(parsed.value ?? EMPTY, "ready");
-    else reportTasks(parsed.error);
+    else reportProblem(recordUnreadable("tasks", parsed.error));
   };
 
   const load = whenLoaded(hear);
 
-  const clear = whenLoaded(() => send(() => progress.clear(), { silent: true }));
+  const clear = whenLoaded(() =>
+    send(() => progress.clear(), { silent: true }),
+  );
 
-  /** The Task of a stored walkthrough, if it can be picked up where it was left. */
-  const resumable = (saved: StoredChecklistWalkthrough) => {
+  /** The Task of a stored walkthrough, or why it cannot be picked up where it was left. */
+  const resumable = (
+    saved: StoredChecklistWalkthrough,
+  ): Readonly<{ task: Named; walkthrough: Walkthrough }> | DropReason => {
     const task = named[saved.task];
     const walkthrough = walkthroughs[saved.task];
-    if (task === undefined || walkthrough === undefined) return undefined;
-    if (progress.status(task.id) !== "todo") return undefined;
-    return isCurrent(saved, walkthrough.steps.length, maxAge) ? { task, walkthrough } : undefined;
+    if (task === undefined || walkthrough === undefined) return "unknownTask";
+    if (progress.status(task.id) !== "todo") return "taskNotTodo";
+    return (
+      staleness(saved, walkthrough.steps.length, maxAge) ?? {
+        task,
+        walkthrough,
+      }
+    );
   };
 
   /** The walkthrough record, once read, until the statuses are in to check it against. */
@@ -475,18 +557,25 @@ export function createChecklists<
     const parsed = parseChecklistWalkthrough(unrestored.value);
     unrestored = undefined;
     if (activeChanged || (parsed.ok && parsed.value === null)) return;
-    if (!parsed.ok) reportWalkthrough(parsed.error);
+    if (!parsed.ok)
+      reportProblem(recordUnreadable("walkthrough", parsed.error));
     const saved = parsed.ok ? parsed.value : null;
-    const resumed = saved && resumable(saved);
-    if (!saved || !resumed) {
+    const resumed = saved === null ? undefined : resumable(saved);
+    if (typeof resumed === "string") reportProblem(recordDropped(resumed));
+    if (saved === null || typeof resumed !== "object") {
       queue.run(() => saveWalkthrough(null, undefined));
       return;
     }
-    const from = views.some((view) => view.name === saved.from) ? saved.from : undefined;
+    const from = views.some((view) => view.name === saved.from)
+      ? saved.from
+      : undefined;
     // Silent: a reload does not start the Task again, it picks it up.
     send(
       () => {
-        active = { task: resumed.task, run: createActiveRun(resumed.walkthrough, saved) };
+        active = {
+          task: resumed.task,
+          run: createActiveRun(resumed.walkthrough, saved),
+        };
         startedFrom = from;
       },
       { silent: true, persist: false },
@@ -494,17 +583,23 @@ export function createChecklists<
   };
 
   /** The statuses are in: read, or not. A failure starts every Task todo. */
-  const settleTasks = (parsed: Parsed<Stored>) => {
-    if (!parsed.ok) reportTasks(parsed.error);
-    // `ready` settles even if a listener throws on hearing the statuses.
+  const settleTasks = (read: Parsed<Stored> | "loadFailed") => {
+    // `ready` settles even if a listener or `onProblem` throws on hearing the statuses.
     try {
-      if (parsed.ok) replace(parsed.value ?? EMPTY, "ready");
+      if (read !== "loadFailed" && !read.ok) {
+        reportProblem(recordUnreadable("tasks", read.error));
+      }
+      if (read !== "loadFailed" && read.ok)
+        replace(read.value ?? EMPTY, "ready");
       else replace(EMPTY, "error");
       // Silent: a reload must not announce completion storage already had,
       // and at creation an `onEvent` handler cannot use the owner yet.
       const context = lastContext;
       if (context !== undefined)
-        send(() => checkConditions(context), { silent: true, persist: !storedUnread });
+        send(() => checkConditions(context), {
+          silent: true,
+          persist: !storedUnread,
+        });
       for (const command of held.splice(0)) command();
       restore();
     } finally {
@@ -521,7 +616,13 @@ export function createChecklists<
     loadFrom(
       tasksStorage,
       (value) => settleTasks(parseTasks(value)),
-      (error) => settleTasks({ ok: false, error }),
+      (error) => {
+        try {
+          reportTasksStorageFailure(error);
+        } finally {
+          settleTasks("loadFailed");
+        }
+      },
     );
   }
   if (walkthroughStorage) {
@@ -531,7 +632,7 @@ export function createChecklists<
         unrestored = { value };
         restore();
       },
-      reportWalkthrough,
+      reportWalkthroughStorageFailure,
     );
   }
 
@@ -573,6 +674,5 @@ export function createChecklists<
     load,
     clear,
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the owner is built against its Tasks widened to `Task<TContext>`; these are the exact Tasks and selections it was given.
-  return owner as unknown as Checklists<TContext, TTasks, TSelections>;
+  return owner;
 }

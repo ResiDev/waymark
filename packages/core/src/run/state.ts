@@ -27,6 +27,7 @@ export type State<TStep extends Step = Step> = Readonly<{
 export type Outcome<TStep extends Step = Step> = Readonly<{
   state: State<TStep>;
   events: readonly RunEventType[];
+  waymarkGone?: "lost" | "missing" | undefined;
   scrollTo?: Element | undefined;
 }>;
 

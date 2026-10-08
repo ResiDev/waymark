@@ -9,6 +9,7 @@ import type {
   ChecklistsConfig,
   ExactStep,
   UnstoredWalkthrough,
+  UnstoredWalkthroughOptions,
   Walkthrough,
   WalkthroughOptions,
 } from "waymark-core";
@@ -19,15 +20,21 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
 ): UnstoredWalkthrough<NoInfer<TStep>>;
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
   steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
-  options: WalkthroughOptions,
+  options: UnstoredWalkthroughOptions<NoInfer<TStep>>,
+): Walkthrough<NoInfer<TStep>> & Readonly<{ storage?: never }>;
+export function defineWalkthrough<const TStep extends WalkthroughStep>(
+  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
+  options: WalkthroughOptions<NoInfer<TStep>>,
 ): Walkthrough<NoInfer<TStep>>;
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
   steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
-  options?: WalkthroughOptions,
+  options?: WalkthroughOptions<NoInfer<TStep>> | UnstoredWalkthroughOptions<NoInfer<TStep>>,
 ): Walkthrough<NoInfer<TStep>> {
-  return options
-    ? defineCoreWalkthrough<TStep, WalkthroughStep>(steps, options)
-    : defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
+  if (options?.storage !== undefined) {
+    return defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { ...options, storage: options.storage });
+  }
+  const onProblem = options?.onProblem;
+  return defineCoreWalkthrough<TStep, WalkthroughStep>(steps, onProblem ? { onProblem } : {});
 }
 
 export function createChecklists<

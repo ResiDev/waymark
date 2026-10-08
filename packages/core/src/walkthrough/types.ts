@@ -1,3 +1,4 @@
+import type { WaymarkProblem } from "../problems";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredWalkthrough } from "../storage/records";
 
@@ -71,7 +72,19 @@ export type ExactStep<TStep extends object, TShape> = NoInfer<
 /** Where a standalone walkthrough keeps its place: a localStorage key, or an adapter. */
 export type WalkthroughStore = string | StorageAdapter<StoredWalkthrough>;
 
-export type WalkthroughOptions = Readonly<{
+/** For a walkthrough that keeps no place of its own, shown on its own or as a checklist's Task. */
+export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
+  storage?: never;
+  maxAge?: never;
+  /**
+   * Every problem its Runs meet: a Waymark lost or missing, and an error from
+   * the app's own functions, which is then not thrown. With one, it cannot be
+   * a checklist's Task, whose problems go to the owner's `onProblem`.
+   */
+  onProblem?: (problem: WaymarkProblem<TStep>) => void;
+}>;
+
+export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{
   /**
    * Saved as the step changes, the Run collapses or resumes, and as it ends; a
    * finished walkthrough stays finished until `reset`. A function is called
@@ -83,15 +96,20 @@ export type WalkthroughOptions = Readonly<{
   storage: WalkthroughStore | (() => WalkthroughStore);
   /** In ms, since the last change. An older running walkthrough starts again. Defaults to a day. */
   maxAge?: number;
-  /** Every storage failure, from a Run or from `reset`. Without one, they are logged. */
-  onStorageError?: (error: unknown) => void;
+  /**
+   * Every problem its Runs meet, and storage's from `reset`. Without one,
+   * storage problems are logged, an error from the app's own functions is
+   * thrown, and the rest pass quietly.
+   */
+  onProblem?: (problem: WaymarkProblem<TStep>) => void;
 }>;
 
 export type Walkthrough<TStep extends Step = Step> = Readonly<{
   steps: readonly TStep[];
   storage?: WalkthroughOptions["storage"];
   maxAge?: number;
-  onStorageError?: WalkthroughOptions["onStorageError"];
+  // A method, so a walkthrough of particular steps still fits where any walkthrough does.
+  onProblem?(problem: WaymarkProblem<TStep>): void;
   /**
    * Starts it again from its first step, finished or not: a Run on screen
    * starts again now, and with none on screen its stored place, if it has
@@ -100,7 +118,10 @@ export type Walkthrough<TStep extends Step = Step> = Readonly<{
   reset: () => void;
 }>;
 
-/** A checklist's Task keeps its place in the owner's storage, so its walkthrough has none of its own. */
+/**
+ * A checklist's Task keeps its place in the owner's storage and reports its
+ * problems to the owner's `onProblem`, so its walkthrough has neither of its own.
+ */
 export type UnstoredWalkthrough<TStep extends Step = Step> = Walkthrough<TStep> &
-  Readonly<{ storage?: never }>;
+  Readonly<{ storage?: never; onProblem?: never }>;
 
