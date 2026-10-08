@@ -1,3 +1,7 @@
+## Comments
+
+- Few comments. A comment gives a reason the code has to be this way, when that reason is not obvious from the code itself. Delete comments that only say what the code does.
+
 ## Tests
 
 - Test through what the packages' `index.ts` files export. Never export something only for a test. The one exception is a pure function that could only be reached by faking its inputs, like `placement.ts`; say why in a comment.
