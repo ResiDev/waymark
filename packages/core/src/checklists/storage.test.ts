@@ -450,6 +450,19 @@ describe("checklists storage: the walkthrough", () => {
     });
   });
 
+  it("keeps the record of a Task the handler starts on hearing the stored one was dropped", async () => {
+    const walkthrough = later(record({ stepCount: 4 }));
+    const owner = create({
+      storage: { walkthrough: walkthrough.adapter },
+      onProblem: (problem) => {
+        if (problem.type === "recordDropped") owner.start("tour");
+      },
+    });
+    await walkthrough.answer();
+    expect(owner.getSnapshot().active?.task.id).toBe("tour");
+    expect(walkthrough.adapter.save.mock.lastCall?.[0]?.task).toBe("tour");
+  });
+
   it("honours a custom maxAge", () => {
     const walkthrough = held(record({ savedAt: Date.now() - 60_000 }));
     const owner = create({ storage: { walkthrough, maxAge: 30_000 } });

@@ -534,17 +534,21 @@ export function createChecklists<TContext>(
   /** The Task of a stored walkthrough, or why it cannot be picked up where it was left. */
   const resumable = (
     saved: StoredChecklistWalkthrough,
-  ): Readonly<{ task: Named; walkthrough: Walkthrough }> | DropReason => {
+  ):
+    | Readonly<{ ok: true; task: Named; walkthrough: Walkthrough }>
+    | Readonly<{ ok: false; reason: DropReason }> => {
     const task = named[saved.task];
     const walkthrough = walkthroughs[saved.task];
-    if (task === undefined || walkthrough === undefined) return "unknownTask";
-    if (progress.status(task.id) !== "todo") return "taskNotTodo";
-    return (
-      staleness(saved, walkthrough.steps.length, maxAge) ?? {
-        task,
-        walkthrough,
-      }
-    );
+    if (task === undefined || walkthrough === undefined) {
+      return { ok: false, reason: "unknownTask" };
+    }
+    if (progress.status(task.id) !== "todo") {
+      return { ok: false, reason: "taskNotTodo" };
+    }
+    const reason = staleness(saved, walkthrough.steps.length, maxAge);
+    return reason === undefined
+      ? { ok: true, task, walkthrough }
+      : { ok: false, reason };
   };
 
   /** The walkthrough record, once read, until the statuses are in to check it against. */
@@ -556,14 +560,20 @@ export function createChecklists<TContext>(
     if (storageStatus === "loading" || unrestored === undefined) return;
     const parsed = parseChecklistWalkthrough(unrestored.value);
     unrestored = undefined;
-    if (activeChanged || (parsed.ok && parsed.value === null)) return;
-    if (!parsed.ok)
+    if (activeChanged) return;
+    // Wiped before the handler hears, so a Task it starts keeps its record.
+    const wipe = () => queue.run(() => saveWalkthrough(null, undefined));
+    if (!parsed.ok) {
+      wipe();
       reportProblem(recordUnreadable("walkthrough", parsed.error));
-    const saved = parsed.ok ? parsed.value : null;
-    const resumed = saved === null ? undefined : resumable(saved);
-    if (typeof resumed === "string") reportProblem(recordDropped(resumed));
-    if (saved === null || typeof resumed !== "object") {
-      queue.run(() => saveWalkthrough(null, undefined));
+      return;
+    }
+    const saved = parsed.value;
+    if (saved === null) return;
+    const resume = resumable(saved);
+    if (!resume.ok) {
+      wipe();
+      reportProblem(recordDropped(resume.reason));
       return;
     }
     const from = views.some((view) => view.name === saved.from)
@@ -573,8 +583,8 @@ export function createChecklists<TContext>(
     send(
       () => {
         active = {
-          task: resumed.task,
-          run: createActiveRun(resumed.walkthrough, saved),
+          task: resume.task,
+          run: createActiveRun(resume.walkthrough, saved),
         };
         startedFrom = from;
       },
