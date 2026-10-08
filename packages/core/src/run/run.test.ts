@@ -1190,6 +1190,33 @@ describe("createRun", () => {
     view.stop();
   });
 
+  it("throws each distinct state check error once per step, not on every frame", () => {
+    const { frames, flush } = fakeFrames();
+    let failure: unknown = new TypeError("el is null");
+    const check = vi.fn((): boolean => { throw failure; });
+    const run = createRun(defineWalkthrough([
+      { advance: { state: check } }, {},
+    ]));
+    const view = watch(run);
+
+    expect(() => flush()).toThrow("el is null");
+    expect(() => flush()).not.toThrow();
+    expect(check).toHaveBeenCalledTimes(2);
+    expect(frames.size).toBe(1);
+
+    failure = new RangeError("bad index");
+    expect(() => flush()).toThrow("bad index");
+    failure = new TypeError("el is null");
+    expect(() => flush()).not.toThrow();
+    failure = "not an Error";
+    expect(() => flush()).toThrow("not an Error");
+
+    run.act("reset");
+    failure = new TypeError("el is null");
+    expect(() => flush()).toThrow("el is null");
+    view.stop();
+  });
+
   it("reports both check and subscriber errors after scheduling the next frame", () => {
     const { frames, flush } = fakeFrames();
     const checkError = new Error("check failed");

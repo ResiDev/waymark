@@ -149,6 +149,20 @@ export function createRun<TStep extends Step>(
     return { element, rect, inView: rect !== null && inViewport(rect) };
   };
 
+  // A check that throws would throw every frame; each distinct error once per step is enough to see the bug.
+  let thrownStep: number | undefined;
+  let thrownErrors = new Set<string>();
+  const firstThrowThisStep = (error: unknown, stepGeneration: number): boolean => {
+    if (thrownStep !== stepGeneration) {
+      thrownStep = stepGeneration;
+      thrownErrors = new Set();
+    }
+    const key = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    if (thrownErrors.has(key)) return false;
+    thrownErrors.add(key);
+    return true;
+  };
+
   const sendRead = (...after: Message[]) => {
     const snapshot = state.snapshot;
     if (snapshot.phase !== "running") return;
@@ -165,7 +179,7 @@ export function createRun<TStep extends Step>(
         holds = checkOf(step)?.(waymark?.element ?? null) === true;
       } catch (error) {
         // Thrown once the look is sent, so the next frame is still scheduled.
-        queue.fail(error);
+        if (firstThrowThisStep(error, stepGeneration)) queue.fail(error);
       }
       advance = { holds };
     }
