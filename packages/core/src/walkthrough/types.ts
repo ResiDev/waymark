@@ -72,16 +72,19 @@ export type ExactStep<TStep extends object, TShape> = NoInfer<
 /** Where a standalone walkthrough keeps its place: a localStorage key, or an adapter. */
 export type WalkthroughStore = string | StorageAdapter<StoredWalkthrough>;
 
-/** For a walkthrough that keeps no place of its own, shown on its own or as a checklist's Task. */
+/**
+ * For a walkthrough shown on its own that keeps no place but hears its own
+ * problems. It cannot be a checklist's Task, whose problems go to the owner's
+ * `onProblem`.
+ */
 export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
   storage?: never;
   maxAge?: never;
   /**
    * Every problem its Runs meet: a Waymark lost or missing, and an error from
-   * the app's own functions, which is then not thrown. With one, it cannot be
-   * a checklist's Task, whose problems go to the owner's `onProblem`.
+   * the app's own functions, which is then not thrown.
    */
-  onProblem?: (problem: WaymarkProblem<TStep>) => void;
+  onProblem: (problem: WaymarkProblem<TStep>) => void;
 }>;
 
 export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{

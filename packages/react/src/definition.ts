@@ -34,7 +34,9 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
     return defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { ...options, storage: options.storage });
   }
   const onProblem = options?.onProblem;
-  return defineCoreWalkthrough<TStep, WalkthroughStep>(steps, onProblem ? { onProblem } : {});
+  return onProblem
+    ? defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { onProblem })
+    : defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
 }
 
 export function createChecklists<

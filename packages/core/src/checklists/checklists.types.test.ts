@@ -386,6 +386,9 @@ describe("createChecklists types", () => {
 
     // @ts-expect-error maxAge only means something with storage
     defineWalkthrough([{}], { maxAge: 1000 });
+    // @ts-expect-error without storage, options only give the walkthrough its own onProblem
+    defineWalkthrough([{}], {});
+    defineWalkthrough([{}], { storage: "tour" });
 
     createChecklists({
       tasks: { "create-deck": { walkthrough: deckSteps } },
