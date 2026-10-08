@@ -374,5 +374,5 @@ step shows centred and Next unlocks.
 - The owner's `storage.tasks` and `storage.walkthrough` take a localStorage key
   as well as an adapter, as a walkthrough's `storage` does. They take no key
   function: an owner reads its records once, so one owner serves one user.
-- `onStorageError` became `onProblem`, one handler for every problem, on the
+- `onStorageError` became the `storageFailed` handler in `onProblem`, on the
   definition and on the owner. See [problems.md](problems.md).

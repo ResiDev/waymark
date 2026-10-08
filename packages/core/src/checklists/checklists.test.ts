@@ -3,6 +3,7 @@ import { addToBody } from "../test/dom";
 import { skipFirstCall } from "../test/listeners";
 import { fakeFrames } from "../test/time";
 import { createChecklists } from "./checklists";
+import { everyProblem } from "../problems";
 import type { StoredTasks } from "../storage/records";
 import type { ChecklistSelections, ChecklistsEvent, Task, TaskMap } from "./types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
@@ -150,7 +151,7 @@ describe("createChecklists", () => {
     expect(() =>
       createChecklists({
         context: {},
-        tasks: { a: { walkthrough: defineWalkthrough([{}], { onProblem: () => {} }) as never } },
+        tasks: { a: { walkthrough: defineWalkthrough([{}], { onProblem: { waymarkMissing: () => {} } }) as never } },
       }),
     ).toThrow(/Task "a": its walkthrough has its own onProblem/);
   });
@@ -319,7 +320,7 @@ describe("update", () => {
         },
       },
       checklists: { all: ["a", "b"] },
-      onProblem,
+      onProblem: everyProblem(onProblem),
     });
     expect(() => owner.update({ ready: true })).not.toThrow();
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "callbackThrew", callback: "isComplete", error: boom });
@@ -337,7 +338,7 @@ describe("update", () => {
       onChange: fail,
       onEvent: fail,
       run: { onEvent: fail },
-      onProblem,
+      onProblem: everyProblem(onProblem),
     });
     owner.checklists.main.subscribe(skipFirstCall(fail));
 
@@ -368,7 +369,7 @@ describe("update", () => {
     const fail = () => {
       throw broken;
     };
-    const owner = createChecklists({ tasks: { a: {} }, onProblem });
+    const owner = createChecklists({ tasks: { a: {} }, onProblem: everyProblem(onProblem) });
     expect(() => owner.subscribe(fail)).not.toThrow();
     expect(() => owner.checklists.main.subscribe(fail)).not.toThrow();
     const threw = [{ type: "callbackThrew", callback: "subscriber", error: broken }];
@@ -378,7 +379,7 @@ describe("update", () => {
   it("sends a missing waymark in a task's Run to the owner's onProblem", () => {
     const { flush } = fakeFrames();
     const onProblem = vi.fn();
-    const owner = createChecklists({ tasks: { a: { walkthrough: guide } }, onProblem });
+    const owner = createChecklists({ tasks: { a: { walkthrough: guide } }, onProblem: everyProblem(onProblem) });
     owner.subscribeActive(() => {});
     owner.start("a");
     flush(3000);

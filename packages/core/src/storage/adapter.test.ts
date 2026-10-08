@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { localStorageAdapter } from "./adapter";
 import type { StoredTasks } from "./records";
 import { createChecklists } from "../checklists/checklists";
+import { everyProblem } from "../problems";
 import { localKey } from "../test/dom";
 
 const statuses = (owner: { checklists: { main: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } } } }) =>
@@ -32,7 +33,7 @@ describe("localStorageAdapter", () => {
     const owner = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter<StoredTasks>(key) },
-      onProblem,
+      onProblem: everyProblem(onProblem),
     });
     expect(owner.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
@@ -54,7 +55,7 @@ describe("localStorageAdapter", () => {
     const owner = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter("setup") },
-      onProblem,
+      onProblem: everyProblem(onProblem),
     });
     owner.markDone("a");
     expect(statuses(owner)).toEqual({ a: "done" });

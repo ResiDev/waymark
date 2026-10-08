@@ -192,7 +192,8 @@ export type ChecklistCheckboxProps = ComponentPropsWithoutRef<"button"> &
 export type { Checklist as CoreChecklist } from "waymark-core";
 import type { Checklist as CoreChecklist } from "waymark-core";
 export type { RunEvent, Snapshot, Running, Walkthrough } from "waymark-core";
-import type { WaymarkProblem as CoreProblem } from "waymark-core";
+import type { ProblemHandlers as CoreProblemHandlers, WaymarkProblem as CoreProblem } from "waymark-core";
 
-/** Defaults to any React step, so one handler fits every walkthrough and owner. */
+// These default to any React step, so one set of handlers fits every walkthrough and owner.
 export type WaymarkProblem<TStep extends WalkthroughStep = WalkthroughStep> = CoreProblem<TStep>;
+export type ProblemHandlers<TStep extends WalkthroughStep = WalkthroughStep> = CoreProblemHandlers<TStep>;

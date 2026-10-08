@@ -7,7 +7,7 @@ import type { Start, State } from "./state";
 import { loadFrom, saveTo } from "../storage/adapter";
 import { DEFAULT_MAX_AGE, parseWalkthrough, staleness, storedWalkthrough } from "../storage/records";
 import { problemReporter, recordDropped, recordUnreadable, storageFailed } from "../problems";
-import type { ProblemHandler } from "../problems";
+import type { ReportProblem } from "../problems";
 import { checkOf, onReset, selectorOf, storageOf } from "../walkthrough/walkthrough";
 import type { Action, Rect, Run, RunOptions, Snapshot, UiElements } from "./types";
 import type { Step, Walkthrough } from "../walkthrough/types";
@@ -83,7 +83,7 @@ export function createRun<TStep extends Step>(
 export function startRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep>,
-  reportProblem: ProblemHandler<TStep>,
+  reportProblem: ReportProblem<TStep>,
 ): Run<TStep> {
   const root = options.root ?? document;
   const padding = options.waymarkPadding ?? 0;

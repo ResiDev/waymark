@@ -1,6 +1,7 @@
 import {
   createChecklists as createCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
+  everyProblem as everyCoreProblem,
 } from "waymark-core";
 import type {
   ChecklistSelections,
@@ -13,7 +14,7 @@ import type {
   Walkthrough,
   WalkthroughOptions,
 } from "waymark-core";
-import type { ReactTask, WalkthroughStep } from "./types";
+import type { ProblemHandlers, ReactTask, WalkthroughStep, WaymarkProblem } from "./types";
 
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
   steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
@@ -52,3 +53,8 @@ export function createChecklists<
     config,
   );
 }
+
+/** Core's, with its steps React's unless given, so an untyped handler's problems carry React's. */
+export const everyProblem = <TStep extends WalkthroughStep = WalkthroughStep>(
+  handle: (problem: WaymarkProblem<TStep>) => void,
+): Required<ProblemHandlers<NoInfer<TStep>>> => everyCoreProblem(handle);

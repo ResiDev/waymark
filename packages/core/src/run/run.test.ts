@@ -2,6 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { addFarTarget, addTarget, addToBody } from "../test/dom";
 import { skipFirstCall } from "../test/listeners";
 import { fakeFrames } from "../test/time";
+import { everyProblem } from "../problems";
 import { createRun } from "./run";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { actions, type RunEvent, type Running } from "./types";
@@ -296,7 +297,7 @@ describe("createRun", () => {
     const { flush, flushLost } = fakeFrames();
     const events: string[] = [];
     const view = watch(
-      createRun(defineWalkthrough([{ waymark: "save" }], { onProblem: (problem) => events.push(problem.type) }), {
+      createRun(defineWalkthrough([{ waymark: "save" }], { onProblem: everyProblem((problem) => events.push(problem.type)) }), {
         onEvent: (event) => events.push(event.type),
       }),
     );
@@ -322,7 +323,7 @@ describe("createRun", () => {
     const view = watch(
       createRun(
         defineWalkthrough([{ waymark: "save", advance: { state: () => performance.now() >= 4000 } }, {}], {
-          onProblem: (problem) => events.push(problem.type),
+          onProblem: everyProblem((problem) => events.push(problem.type)),
         }),
         { onEvent: (event) => events.push(event.type) },
       ),
@@ -1281,7 +1282,7 @@ describe("createRun", () => {
     const broken = new Error("broken");
     const onProblem = vi.fn();
     const run = createRun(
-      defineWalkthrough([{ advance: { state: () => { throw broken; } } }], { onProblem }),
+      defineWalkthrough([{ advance: { state: () => { throw broken; } } }], { onProblem: everyProblem(onProblem) }),
       { onEvent: () => { throw broken; } },
     );
     const view = watch(run);
@@ -1302,7 +1303,9 @@ describe("createRun", () => {
   it("sends a state check's error once per step to onProblem too", () => {
     const { flush } = fakeFrames();
     const onProblem = vi.fn();
-    const run = createRun(defineWalkthrough([{ advance: { state: () => { throw new Error("broken"); } } }, {}], { onProblem }));
+    const run = createRun(
+      defineWalkthrough([{ advance: { state: () => { throw new Error("broken"); } } }, {}], { onProblem: everyProblem(onProblem) }),
+    );
     watch(run);
     flush();
     flush();
@@ -1310,17 +1313,28 @@ describe("createRun", () => {
     expect(onProblem).toHaveBeenCalledOnce();
   });
 
-  it("throws what onProblem itself throws, without handing it back", () => {
+  it("throws what a handler itself throws, without handing it back", () => {
     fakeFrames();
-    const onProblem = vi.fn(() => {
+    const callbackThrew = vi.fn(() => {
       throw new Error("handler broke");
     });
-    const run = createRun(defineWalkthrough([{}], { onProblem }));
+    const run = createRun(defineWalkthrough([{}], { onProblem: { callbackThrew } }));
     watch(run);
     run.subscribe(skipFirstCall(() => { throw new Error("renderer broke"); }));
 
     expect(() => run.act("advance")).toThrow("handler broke");
-    expect(onProblem).toHaveBeenCalledOnce();
+    expect(callbackThrew).toHaveBeenCalledOnce();
+  });
+
+  it("leaves a problem with no handler of its own to Waymark's default", () => {
+    fakeFrames();
+    const broken = new Error("broken");
+    const run = createRun(defineWalkthrough([{}], { onProblem: { waymarkMissing: () => {} } }), {
+      onEvent: () => {
+        throw broken;
+      },
+    });
+    expect(() => run.subscribe(() => {})).toThrow(broken);
   });
 
   it("rejects a walkthrough that cannot be run", () => {

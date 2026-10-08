@@ -1,5 +1,5 @@
 import type { Exactly } from "../exact";
-import type { WaymarkProblem } from "../problems";
+import type { ProblemHandlers } from "../problems";
 import type { Run, RunOptions, Snapshot, UiElements } from "../run/types";
 import type { ExactStep, Step, UnstoredWalkthrough, Walkthrough } from "../walkthrough/types";
 import type { StorageAdapter } from "../storage/adapter";
@@ -182,11 +182,11 @@ export type ChecklistsOptions<
   initial?: StoredTasks;
   onChange?: (stored: StoredTasks) => void;
   /**
-   * Every problem the owner and its Runs meet. Given one, an error from the
-   * app's own functions comes here and is not thrown. Without one, storage
-   * problems are logged, those errors are thrown, and the rest pass quietly.
+   * Handlers for the problems the owner and its Runs meet. A problem without
+   * one is logged if it is storage's, thrown if it is an error from the app's
+   * own functions, and otherwise passes quietly.
    */
-  onProblem?: (problem: WaymarkProblem<StepOf<TTasks[keyof TTasks]>>) => void;
+  onProblem?: ProblemHandlers<StepOf<TTasks[keyof TTasks]>>;
   onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
   /** Your `onEvent` is called after the owner has handled the event. */
   run?: Omit<

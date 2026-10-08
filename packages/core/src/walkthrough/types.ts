@@ -1,4 +1,4 @@
-import type { WaymarkProblem } from "../problems";
+import type { ProblemHandlers } from "../problems";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredWalkthrough } from "../storage/records";
 
@@ -81,10 +81,10 @@ export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
   storage?: never;
   maxAge?: never;
   /**
-   * Every problem its Runs meet: a Waymark lost or missing, and an error from
-   * the app's own functions, which is then not thrown.
+   * Handlers for the problems its Runs meet: a Waymark lost or missing, and an
+   * error from the app's own functions, which is then not thrown.
    */
-  onProblem: (problem: WaymarkProblem<TStep>) => void;
+  onProblem: ProblemHandlers<TStep>;
 }>;
 
 export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{
@@ -100,19 +100,18 @@ export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{
   /** In ms, since the last change. An older running walkthrough starts again. Defaults to a day. */
   maxAge?: number;
   /**
-   * Every problem its Runs meet, and storage's from `reset`. Without one,
-   * storage problems are logged, an error from the app's own functions is
-   * thrown, and the rest pass quietly.
+   * Handlers for the problems its Runs meet, and storage's from `reset`. A
+   * problem without one is logged if it is storage's, thrown if it is an
+   * error from the app's own functions, and otherwise passes quietly.
    */
-  onProblem?: (problem: WaymarkProblem<TStep>) => void;
+  onProblem?: ProblemHandlers<TStep>;
 }>;
 
 export type Walkthrough<TStep extends Step = Step> = Readonly<{
   steps: readonly TStep[];
   storage?: WalkthroughOptions["storage"];
   maxAge?: number;
-  // A method, so a walkthrough of particular steps still fits where any walkthrough does.
-  onProblem?(problem: WaymarkProblem<TStep>): void;
+  onProblem?: ProblemHandlers<TStep>;
   /**
    * Starts it again from its first step, finished or not: a Run on screen
    * starts again now, and with none on screen its stored place, if it has

@@ -1,4 +1,4 @@
-export { createChecklists, defineWalkthrough } from "./definition";
+export { createChecklists, defineWalkthrough, everyProblem } from "./definition";
 export { Walkthrough } from "./Walkthrough";
 export { Checklist, useChecklist } from "./Checklist";
 export {
@@ -25,6 +25,7 @@ export type {
   ChecklistWalkthroughProps,
   CoreChecklist,
   Placement,
+  ProblemHandlers,
   ReactGuidanceTasks,
   ReactTask,
   RunEvent,

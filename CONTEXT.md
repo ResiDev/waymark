@@ -54,7 +54,7 @@ Everything needed to draw a run or a checklist at one moment. A new snapshot app
 Something a run did: starting, each action it took, or finishing. It belongs to the step it happened on.
 
 **Problem**:
-Something that went wrong, reported to one handler: storage that failed or held a record Waymark cannot read, a stored walkthrough dropped, a waymark lost or missing, or an error thrown by the app's own code. Without a handler, the app's errors are thrown and storage problems are logged.
+Something that went wrong, reported to the app's handler for its type: storage that failed or held a record Waymark cannot read, a stored walkthrough dropped, a waymark lost or missing, or an error thrown by the app's own code. A type with no handler gets Waymark's default, which throws the app's errors and logs storage problems.
 _Avoid_: Error, since most problems are not thrown; issue
 
 ### Checklists

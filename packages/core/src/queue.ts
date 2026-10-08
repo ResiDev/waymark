@@ -1,5 +1,5 @@
 import { callbackThrew } from "./problems";
-import type { CallbackName, ProblemHandler } from "./problems";
+import type { CallbackName, ReportProblem } from "./problems";
 
 /**
  * Work queued from a callback waits until the current work has finished, so
@@ -22,7 +22,7 @@ export type Queue = Readonly<{
   fail: (callback: CallbackName, error: unknown) => void;
 }>;
 
-export function createQueue(failure: string, reportProblem: ProblemHandler<never>): Queue {
+export function createQueue(failure: string, reportProblem: ReportProblem<never>): Queue {
   const queue: (() => void)[] = [];
   let draining = false;
   let errors: unknown[] = [];

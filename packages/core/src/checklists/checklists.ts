@@ -593,7 +593,7 @@ export function createChecklists<TContext>(
 
   /** The statuses are in: read, or not. A failure starts every Task todo. */
   const settleTasks = (read: Parsed<Stored> | "loadFailed") => {
-    // `ready` settles even if a listener or `onProblem` throws on hearing the statuses.
+    // `ready` settles even if a listener or a problem handler throws on hearing the statuses.
     try {
       if (read !== "loadFailed" && !read.ok) {
         reportProblem(recordUnreadable("tasks", read.error));

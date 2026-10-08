@@ -3,7 +3,8 @@ import { createChecklists } from "./checklists";
 import type { ChecklistsStorage } from "./types";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
-import type { WaymarkProblem } from "../problems";
+import { everyProblem } from "../problems";
+import type { ProblemHandlers } from "../problems";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { localKey } from "../test/dom";
 import { fakeTimers } from "../test/time";
@@ -51,7 +52,7 @@ type Options = Readonly<{
   initial?: StoredTasks;
   onChange?: (stored: StoredTasks) => void;
   onEvent?: (event: { type: string }) => void;
-  onProblem?: (problem: WaymarkProblem) => void;
+  onProblem?: ProblemHandlers;
   context?: { met: boolean };
   run?: { onEvent?: (event: { type: string }) => void };
 }>;
@@ -175,7 +176,7 @@ describe("checklists storage: task statuses", () => {
     expect(statuses(owner)).toMatchObject({ hello: "done" });
 
     const failing = later<StoredTasks>();
-    const broken = create({ storage: { tasks: failing.adapter }, onProblem: () => {} });
+    const broken = create({ storage: { tasks: failing.adapter }, onProblem: { storageFailed: () => {} } });
     await failing.refuse(new Error("offline"));
     await expect(broken.ready).resolves.toBeUndefined();
   });
@@ -183,7 +184,7 @@ describe("checklists storage: task statuses", () => {
   it("reports a failed load, starts empty with an error status, and saves nothing", async () => {
     const { adapter, refuse } = later<StoredTasks>();
     const onProblem = vi.fn();
-    const owner = create({ storage: { tasks: adapter }, onProblem });
+    const owner = create({ storage: { tasks: adapter }, onProblem: everyProblem(onProblem) });
     const offline = new Error("offline");
 
     await refuse(offline);
@@ -196,7 +197,7 @@ describe("checklists storage: task statuses", () => {
 
   it("saves no condition over a record it cannot read, until the user changes something", () => {
     const tasks = held({ version: 4, tasks: { hello: "done" } } as unknown as StoredTasks);
-    const owner = create({ storage: { tasks }, onProblem: () => {}, context: { met: true } });
+    const owner = create({ storage: { tasks }, onProblem: { recordUnreadable: () => {} }, context: { met: true } });
     owner.update({ met: true });
     expect(statuses(owner)).toMatchObject({ met: "done" });
     expect(tasks.save).not.toHaveBeenCalled();
@@ -208,7 +209,7 @@ describe("checklists storage: task statuses", () => {
   it("reports a record it cannot read, naming a newer version, without overwriting it", () => {
     const onProblem = vi.fn();
     const tasks = held({ version: 4, tasks: {} } as unknown as StoredTasks);
-    const owner = create({ storage: { tasks }, onProblem });
+    const owner = create({ storage: { tasks }, onProblem: everyProblem(onProblem) });
     expect(owner.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
@@ -219,7 +220,7 @@ describe("checklists storage: task statuses", () => {
 
     for (const value of ["text", [], { version: 3 }, { version: 3, tasks: { a: "finished" } }]) {
       onProblem.mockClear();
-      create({ storage: { tasks: held(value as unknown as StoredTasks) }, onProblem });
+      create({ storage: { tasks: held(value as unknown as StoredTasks) }, onProblem: everyProblem(onProblem) });
       expect(onProblem).toHaveBeenCalledExactlyOnceWith({
         type: "recordUnreadable",
         record: "tasks",
@@ -228,7 +229,10 @@ describe("checklists storage: task statuses", () => {
     }
   });
 
-  it("logs storage failures when given no handler", () => {
+  it.each<[string, Options]>([
+    ["no handlers", {}],
+    ["handlers for other problems", { onProblem: { waymarkMissing: () => {} } }],
+  ])("logs storage failures when given %s", (_, handlers) => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const blocked = new Error("blocked");
     create({
@@ -240,6 +244,7 @@ describe("checklists storage: task statuses", () => {
           save: () => {},
         },
       },
+      ...handlers,
     });
     expect(error).toHaveBeenCalledWith(expect.stringContaining("tasks"), blocked);
   });
@@ -249,7 +254,7 @@ describe("checklists storage: task statuses", () => {
     const quota = new Error("quota");
     const owner = create({
       storage: { tasks: { load: () => null, save: () => Promise.reject(quota) } },
-      onProblem,
+      onProblem: everyProblem(onProblem),
     });
     owner.markDone("hello");
     await Promise.resolve();
@@ -264,7 +269,7 @@ describe("checklists storage: task statuses", () => {
           },
         },
       },
-      onProblem,
+      onProblem: everyProblem(onProblem),
     });
     expect(() => thrower.markDone("hello")).not.toThrow();
     expect(statuses(thrower)).toMatchObject({ hello: "done" });
@@ -431,7 +436,7 @@ describe("checklists storage: the walkthrough", () => {
   ])("wipes and reports it rather than restore it when %s", (_, stored, reason) => {
     const walkthrough = held(stored);
     const onProblem = vi.fn();
-    const owner = create({ storage: { walkthrough }, onProblem });
+    const owner = create({ storage: { walkthrough }, onProblem: everyProblem(onProblem) });
     expect(owner.getSnapshot().active).toBeNull();
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", record: "walkthrough", reason });
@@ -440,7 +445,7 @@ describe("checklists storage: the walkthrough", () => {
   it("restores nothing for a Task the statuses say is no longer todo", () => {
     const walkthrough = held(record());
     const onProblem = vi.fn();
-    const owner = create({ storage: { tasks: held(saved({ tour: "skipped" })), walkthrough }, onProblem });
+    const owner = create({ storage: { tasks: held(saved({ tour: "skipped" })), walkthrough }, onProblem: everyProblem(onProblem) });
     expect(owner.getSnapshot().active).toBeNull();
     expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
@@ -454,9 +459,7 @@ describe("checklists storage: the walkthrough", () => {
     const walkthrough = later(record({ stepCount: 4 }));
     const owner = create({
       storage: { walkthrough: walkthrough.adapter },
-      onProblem: (problem) => {
-        if (problem.type === "recordDropped") owner.start("tour");
-      },
+      onProblem: { recordDropped: () => owner.start("tour") },
     });
     await walkthrough.answer();
     expect(owner.getSnapshot().active?.task.id).toBe("tour");
@@ -472,7 +475,7 @@ describe("checklists storage: the walkthrough", () => {
   it("reports a record it cannot read, and wipes it", () => {
     const onProblem = vi.fn();
     const walkthrough = held({ version: 1, task: "tour", step: 5, stepCount: 3 } as unknown as StoredChecklistWalkthrough);
-    create({ storage: { walkthrough }, onProblem });
+    create({ storage: { walkthrough }, onProblem: everyProblem(onProblem) });
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
       record: "walkthrough",

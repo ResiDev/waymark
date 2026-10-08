@@ -11,9 +11,10 @@ own code, such as a subscriber or a step's `state` check, was thrown once the
 other callbacks had run. A stored walkthrough dropped as too old, because its
 steps changed or because its task was no longer todo went unreported.
 
-## One handler
+## Handlers by type
 
-`onProblem` takes a typed union:
+`onProblem` takes a handler for each type of problem the app wants to hear,
+and each handler gets the problem of its type from this union:
 
 ```ts
 type WaymarkProblem<TStep> =
@@ -25,50 +26,80 @@ type WaymarkProblem<TStep> =
   | { type: "callbackThrew"; callback: CallbackName; error: unknown };
 ```
 
+```ts
+onProblem: {
+  storageFailed: (problem) => toast(…),
+  waymarkMissing: (problem) => analytics.track(…, { step: problem.stepIndex }),
+}
+```
+
 It replaces `onStorageError`. `lost` and `missing` leave `RunEvent`: a page
 that does not match its walkthrough is a problem, and is reported once, in one place.
 
 ## Where it goes
 
 - A standalone walkthrough takes it on its definition, with or without
-  storage, so its Runs and its `reset` share one handler. `maxAge` still needs
+  storage, so its Runs and its `reset` share its handlers. `maxAge` still needs
   storage.
 - An owner takes it beside its other options, and hands it to the Runs it
   starts. A Task's walkthrough cannot have its own `onProblem`, as it cannot
-  have its own storage: the owner reports its Runs' problems, and two handlers
-  for one Run would leave it unclear which hears what. The types forbid it,
-  since `defineWalkthrough` with `onProblem` returns a walkthrough a Task does
-  not take, and `createChecklists` throws for an app without them.
+  have its own storage: the owner reports its Runs' problems, and two sets of
+  handlers for one Run would leave it unclear which hears what. The types
+  forbid it, since `defineWalkthrough` with `onProblem` returns a walkthrough a
+  Task does not take, and `createChecklists` throws for an app without them.
 
 ## Who decides
 
-Passing `onProblem` means the app handles every problem. An error from its own
-code goes to the handler and is not thrown; an app that wants it thrown
-rethrows it. What the handler throws is thrown, never handed back.
+Each type decides on its own. A problem goes to the handler for its type, and
+a type without one gets the default. So an app that handles `waymarkMissing`
+for analytics still has its own errors thrown.
 
-Without a handler nothing changes from plain JavaScript:
+The first version took one function for every problem, and passing it switched
+every default off. An app that handled three types in a `switch` stopped
+seeing its unreadable records logged, and one that left out `callbackThrew`
+dropped its own errors without knowing.
 
-| Problem | No handler |
+An error from the app's code goes to a `callbackThrew` handler and is not
+thrown. An app that wants it thrown rethrows it. What a handler throws is
+thrown, never handed back.
+
+The defaults change nothing from plain JavaScript:
+
+| Problem | Default |
 | --- | --- |
 | `callbackThrew` | thrown, as before |
 | `storageFailed`, `recordUnreadable` | logged |
 | `recordDropped`, `waymarkLost`, `waymarkMissing` | nothing |
 
-Storage failures are logged rather than thrown even then: they come from the
-user's browser, not a bug, and a save throwing would break whatever click
-caused it.
+Storage failures are logged rather than thrown: they come from the user's
+browser, not a bug, and a save throwing would break whatever click caused it.
 
-A `state` check runs every frame, so a broken one would throw, or reach the
-handler, sixty times a second. Each distinct error, by name and message, goes
+`everyProblem(handle)` gives one function every type, in place of all the
+defaults. An app that handles every type itself can check its handlers with
+`satisfies Required<ProblemHandlers>` and hear from TypeScript when a type is
+added. No alias is exported for that.
+
+A `state` check runs every frame, so a broken one would throw, or reach
+`callbackThrew`, sixty times a second. Each distinct error, by name and message, goes
 once per step.
 
 ## As built
 
-- `problemReporter` in `problems.ts` holds the defaults, including throwing
-  `callbackThrew`. Each owner, and each standalone walkthrough, makes one
-  reporter and hands it to its queue and its Runs.
+- `problems.ts` holds the defaults in one table, one entry per type.
+  `problemReporter` looks up the app's handler for a problem's type, or the
+  default. Each owner, and each standalone walkthrough, makes one reporter and
+  hands it to its queue and its Runs.
+- Each handler in `ProblemHandlers` is declared as a method. As a plain
+  function, a walkthrough of particular steps would no longer fit where any
+  walkthrough does. Its `this` is `void`: the reporter calls each handler on
+  its own, so a method that used `this` would type-check and then throw.
+- Inside `createChecklists` or `defineWalkthrough`, TypeScript cannot learn
+  the steps for `everyProblem`, and from a half-inferred owner it guesses
+  `never`. `NoInfer` on its return type stops the guess, so its problems carry
+  any Step. React's `everyProblem` defaults to React's steps instead, and
+  still takes a handler typed with narrower ones.
 - The queue reports what it runs with `callApp(callback, work)`; what it runs
-  with `invoke(work)`, its own work and calls to the handler, is thrown once
+  with `invoke(work)`, its own work and calls to a handler, is thrown once
   the drain is over, never reported.
-- A condition that throws in `update` still records nothing, with a handler or
-  without.
+- A condition that throws in `update` still records nothing, with a
+  `callbackThrew` handler or without.

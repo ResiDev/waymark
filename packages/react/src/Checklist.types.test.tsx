@@ -3,8 +3,8 @@ import {
   createChecklists as createCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
 } from "waymark-core";
-import { Checklist, createChecklists, defineWalkthrough, useChecklist, Walkthrough } from "./index";
-import type { ReactTask, WalkthroughStep } from "./types";
+import { Checklist, createChecklists, defineWalkthrough, everyProblem, useChecklist, Walkthrough } from "./index";
+import type { ReactTask, WalkthroughStep, WaymarkProblem } from "./types";
 
 
 const initialContext = { hasDeck: false, hasPhoto: false };
@@ -162,6 +162,20 @@ describe("inline steps", () => {
       });
     };
     expectTypeOf(mistakes).toBeFunction();
+  });
+
+  it("gives an untyped everyProblem handler React's problems, and takes one typed with a walkthrough's own steps", () => {
+    const describeProblem = (problem: WaymarkProblem) => problem.type;
+    createChecklists({
+      context: initialContext,
+      tasks: { deck: { title: "Deck", walkthrough: deckSteps } },
+      onProblem: everyProblem((problem) => {
+        expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
+        describeProblem(problem);
+      }),
+    });
+    const pressProblem = (problem: WaymarkProblem<{ readonly content: "Press" }>) => problem.type;
+    defineWalkthrough([{ content: "Press" }], { onProblem: everyProblem(pressProblem) });
   });
 });
 

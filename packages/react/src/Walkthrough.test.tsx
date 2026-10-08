@@ -5,6 +5,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   createChecklists,
   defineWalkthrough,
+  everyProblem,
   localStorageAdapter,
   Walkthrough,
   type BeaconRenderProps,
@@ -149,7 +150,7 @@ describe("Walkthrough", () => {
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const onProblem = vi.fn<(problem: WaymarkProblem) => void>();
     const analyticsDown = new Error("analytics down");
-    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }], { onProblem });
+    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }], { onProblem: everyProblem(onProblem) });
 
     await act(async () =>
       root.render(

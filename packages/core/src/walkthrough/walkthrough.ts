@@ -1,5 +1,5 @@
 import { problemReporter, storageFailed } from "../problems";
-import type { ProblemHandler } from "../problems";
+import type { ReportProblem } from "../problems";
 import { adapterOf, saveTo } from "../storage/adapter";
 import type { StorageAdapter } from "../storage/adapter";
 import type { StoredWalkthrough } from "../storage/records";
@@ -52,7 +52,7 @@ export function onReset(walkthrough: Walkthrough, listener: () => void): () => v
  */
 export function storageOf(
   walkthrough: Walkthrough,
-  reportProblem: ProblemHandler<never>,
+  reportProblem: ReportProblem<never>,
 ): StorageAdapter<StoredWalkthrough> | undefined {
   const { storage } = walkthrough;
   if (storage === undefined) return undefined;

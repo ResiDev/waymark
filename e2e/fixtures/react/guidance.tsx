@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import {
   createChecklists,
   defineWalkthrough,
+  everyProblem,
   localStorageAdapter,
   Walkthrough,
   type BeaconRenderProps,
@@ -243,7 +244,7 @@ export const owner = createChecklists({
     tasks: setup.get().storage === "server" ? serverTasks : shownLocally(TASKS_KEY, stored),
     walkthrough: shownLocally(WALKTHROUGH_KEY, storedWalkthrough),
   },
-  onProblem: (problem) => record("owner", describeProblem(problem)),
+  onProblem: everyProblem((problem) => record("owner", describeProblem(problem))),
   onEvent: (event) => record("owner", describeEvent(event)),
   run: {
     waymarkPadding: setup.get().padding,
@@ -315,7 +316,7 @@ export const whatsNew = defineWalkthrough(
   ],
   {
     storage: shownLocally(WHATS_NEW_KEY, storedWhatsNew),
-    onProblem: (problem) => record("whats-new", describeProblem(problem)),
+    onProblem: everyProblem((problem) => record("whats-new", describeProblem(problem))),
   },
 );
 
