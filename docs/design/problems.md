@@ -5,11 +5,11 @@ Status: built. Replaces the todo "One error channel".
 ## Problem
 
 Problems reached an app three ways. Storage failures went to `onStorageError`,
-on a walkthrough's definition or on an owner. A waymark that was lost or
-missing was a run event, beside `start` and `finish`. An error from the app's
-own code, such as a subscriber or a step's `state` check, was thrown once the
-other callbacks had run. A stored walkthrough dropped as too old, because its
-steps changed or because its task was no longer todo went unreported.
+on a walkthrough's definition or on a checklist controller. A waymark that was
+lost or missing was a run event, beside `start` and `finish`. An error from the
+app's own code, such as a subscriber or a step's `state` check, was thrown once
+the other callbacks had run. A stored walkthrough dropped as too old, because
+its steps changed or because its task was no longer todo went unreported.
 
 ## Handlers by type
 
@@ -41,10 +41,10 @@ that does not match its walkthrough is a problem, and is reported once, in one p
 - A standalone walkthrough takes it on its definition, with or without
   storage, so its Runs and its `reset` share its handlers. `maxAge` still needs
   storage.
-- An owner takes it beside its other options, and hands it to the Runs it
+- A controller takes it beside its other options, and hands it to the Runs it
   starts. A Task's walkthrough cannot have its own `problemHandlers`, as it
-  cannot have its own storage: the owner reports its Runs' problems, and two
-  sets of handlers for one Run would leave it unclear which hears what. The
+  cannot have its own storage: the controller reports its Runs' problems, and
+  two sets of handlers for one Run would leave it unclear which hears what. The
   types forbid it, since `defineWalkthrough` with `problemHandlers` returns a
   walkthrough a Task does not take, and `createChecklists` throws for an app
   without them.
@@ -90,14 +90,14 @@ once per step.
 
 - `problems.ts` holds the defaults in one table, one entry per type.
   `problemReporter` looks up the app's handler for a problem's type, or the
-  default. Each owner, and each standalone walkthrough, makes one reporter and
-  hands it to its queue and its Runs.
+  default. Each controller, and each standalone walkthrough, makes one reporter
+  and hands it to its queue and its Runs.
 - Each handler in `ProblemHandlers` is declared as a method. As a plain
   function, a walkthrough of particular steps would no longer fit where any
   walkthrough does. Its `this` is `void`: the reporter calls each handler on
   its own, so a method that used `this` would type-check and then throw.
 - Inside `createChecklists` or `defineWalkthrough`, TypeScript cannot learn
-  the steps for `everyProblem`, and from a half-inferred owner it guesses
+  the steps for `everyProblem`, and from a half-inferred controller it guesses
   `never`. `NoInfer` on its return type stops the guess, so its problems carry
   any Step. React's `everyProblem` defaults to React's steps instead, and
   still takes a handler typed with narrower ones.

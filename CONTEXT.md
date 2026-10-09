@@ -59,9 +59,9 @@ _Avoid_: Error, since most problems are not thrown; issue
 
 ### Checklists
 
-**Checklists**:
-The owner of one user's named checklists. It holds each task's status, shared by every checklist, and at most one active run; separate owners keep separate records.
-_Avoid_: Onboarding, checklist definition, registry, group
+**Checklist controller**:
+One user's live state across a set of tasks, as a run is one user's live state in a walkthrough. It holds each task's status, shared by every checklist, and at most one active run; separate controllers keep separate records.
+_Avoid_: Owner, Checklists, manager, Onboarding, checklist definition, registry, group
 
 **Checklist**:
 A named, ordered view of tasks and their statuses. It is complete when every task in it is done or skipped.
@@ -90,5 +90,5 @@ A check of application context that determines whether a task is done, whether o
 _Avoid_: Trigger, auto-complete, detection
 
 **Active task**:
-The task whose walkthrough is currently running as a run. At most one task is active across one owner's checklists at a time.
+The task whose walkthrough is currently running as a run. At most one task is active across one checklist controller's checklists at a time.
 _Avoid_: Guiding, current walkthrough, open task

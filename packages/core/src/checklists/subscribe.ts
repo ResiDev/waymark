@@ -44,12 +44,12 @@ export function followActive<TActive extends Readonly<{ run: Run }>>(
     followed?.unsubscribe();
     followed = run === undefined ? undefined : { run, unsubscribe: run.subscribe(deliver) };
   };
-  const unsubscribeOwner = subscribe(() => {
+  const unsubscribeController = subscribe(() => {
     follow();
     deliver();
   });
   return () => {
-    unsubscribeOwner();
+    unsubscribeController();
     followed?.unsubscribe();
     followed = undefined;
   };

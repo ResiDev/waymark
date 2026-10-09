@@ -5,8 +5,8 @@ import { createChecklists } from "../checklists/checklists";
 import { everyProblem } from "../problems";
 import { localKey } from "../test/dom";
 
-const statuses = (owner: { checklists: { main: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } } } }) =>
-  Object.fromEntries(owner.checklists.main.getSnapshot().tasks.map((row) => [row.task.id, row.status]));
+const statuses = (controller: { checklists: { main: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } } } }) =>
+  Object.fromEntries(controller.checklists.main.getSnapshot().tasks.map((row) => [row.task.id, row.status]));
 
 describe("localStorageAdapter", () => {
   it.each(["constructor", "toString", "__proto__"])("keeps the status of a Task named %s across a reload", (id) => {
@@ -19,10 +19,10 @@ describe("localStorageAdapter", () => {
 
   it("writes JSON under its name, and removes the key once nothing is left", () => {
     const key = localKey("setup");
-    const owner = createChecklists({ tasks: { a: {} }, storage: { tasks: localStorageAdapter(key) } });
-    owner.markDone("a");
+    const controller = createChecklists({ tasks: { a: {} }, storage: { tasks: localStorageAdapter(key) } });
+    controller.markDone("a");
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 3, tasks: { a: "done" } });
-    owner.markTodo("a");
+    controller.markTodo("a");
     expect(localStorage.getItem(key)).toBeNull();
   });
 
@@ -30,12 +30,12 @@ describe("localStorageAdapter", () => {
     const key = localKey("setup");
     localStorage.setItem(key, "not json");
     const onProblem = vi.fn();
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter<StoredTasks>(key) },
       problemHandlers: everyProblem(onProblem),
     });
-    expect(owner.getSnapshot().storageStatus).toBe("error");
+    expect(controller.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
       record: "tasks",
@@ -52,13 +52,13 @@ describe("localStorageAdapter", () => {
       throw blocked;
     });
     const onProblem = vi.fn();
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: { a: {} },
       storage: { tasks: localStorageAdapter("setup") },
       problemHandlers: everyProblem(onProblem),
     });
-    owner.markDone("a");
-    expect(statuses(owner)).toEqual({ a: "done" });
+    controller.markDone("a");
+    expect(statuses(controller)).toEqual({ a: "done" });
     const failed = { type: "storageFailed", record: "tasks", error: blocked };
     expect(onProblem.mock.calls).toEqual([[failed], [failed]]);
   });

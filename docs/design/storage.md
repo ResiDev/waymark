@@ -161,8 +161,8 @@ Users of one browser keep apart by putting their id in the name:
 `localStorageAdapter(`app-tasks-${user.id}`)`. A server adapter already knows
 the user from its own auth.
 
-To switch users without a reload, create a new owner. In React, put
-`key={user.id}` on whatever creates it.
+To switch users without a reload, create a new checklist controller. In React,
+put `key={user.id}` on whatever creates it.
 
 ### One adapter per record
 
@@ -187,8 +187,8 @@ again, and most apps will keep the walkthrough record local anyway.
 5. Core restores a walkthrough as it was saved, on the same step, collapsed or
    not.
 
-The owner has `ready: Promise<void>`, resolved once the tasks record is in. With
-localStorage it has already resolved. It resolves on failure too, which is
+The controller has `ready: Promise<void>`, resolved once the tasks record is in.
+With localStorage it has already resolved. It resolves on failure too, which is
 reported through the snapshot and `onStorageError`, so awaiting it never throws.
 It is mainly for tests, and for code that would rather wait than show a loading
 state.
@@ -212,7 +212,7 @@ Events fire once, when the calls run, and describe what really changed. A
 `start` waits too, so a tour started on page load is only shown if its task is
 still todo. Held calls run before the walkthrough record is restored, and a
 record is only restored if no walkthrough has been started or stopped since
-the owner was made, so a held `start` wins, and so does a `stop`.
+the controller was made, so a held `start` wins, and so does a `stop`.
 
 `update(context)` is not held. Only the latest context matters, and rule 4
 checks it.
@@ -221,7 +221,7 @@ checks it.
 
 `ChecklistSnapshot` and `ChecklistsSnapshot` both gain
 `status: "loading" | "ready" | "error"`, so a single checklist view can show
-loading or a failed load without reaching for the owner.
+loading or a failed load without reaching for the controller.
 
 ### Validation
 
@@ -263,7 +263,7 @@ goes to `console.error` instead.
 ### Tabs and devices
 
 When an adapter has `subscribe`, core loads each value it reports the way the
-owner's `load()` does, silently and without saving. A tab or device with an
+controller's `load()` does, silently and without saving. A tab or device with an
 older record can then no longer write it over a newer one.
 
 `localStorageAdapter` implements `subscribe` with the browser's `storage`
@@ -277,9 +277,9 @@ each other. Document it.
 
 ### Clearing
 
-The owner's `clear()` keeps doing what it does. Task statuses go back to todo
-and are saved, and the active run carries on. The walkthrough record follows the
-active run, so it needs no clearing of its own.
+The controller's `clear()` keeps doing what it does. Task statuses go back to
+todo and are saved, and the active run carries on. The walkthrough record
+follows the active run, so it needs no clearing of its own.
 
 Runs get no `clear()`. To show a finished standalone walkthrough again, call
 `act("reset")`. It already restarts a completed or exited run, and saving the
@@ -292,8 +292,8 @@ The server has no localStorage. If it rendered nothing stored and the client's
 first render read localStorage, React would report a hydration mismatch.
 
 - With localStorage, the server renders the loading state and so does the
-  client's first render; localStorage is read straight after. Each checklist
-  and the owner have `getServerSnapshot`, the snapshot from before storage was
+  client's first render; localStorage is read straight after. Each checklist and
+  the controller have `getServerSnapshot`, the snapshot from before storage was
   read, which the React adapter gives `useSyncExternalStore`. The cost is one
   frame of loading state on server-rendered pages only.
 - An app that fetches task statuses on the server passes them as `initial`.
@@ -307,7 +307,7 @@ first render read localStorage, React would report a hydration mismatch.
   `createProgress`.
 - `checklists/types.ts`: the `Persistence` union becomes `storage`, `initial`
   and `onStorageError`. Its "Loaded once at creation" comment goes. Both
-  snapshots gain `status`, and the owner gains `ready`.
+  snapshots gain `status`, and the controller gains `ready`.
 - `checklists/checklists.ts`: handle a promise from `load` at line 98, guard
   `storage?.save` at line 140 while loading, hold commands while loading, keep
   the last context, restore the walkthrough record, and subscribe.
@@ -328,13 +328,13 @@ step shows centred and Next unlocks.
 - A standalone Run has a `loading` phase, `{ phase: "loading", stepCount }`,
   while an async load is pending. `Snapshot` is now `Running | Ended | Loading`,
   so reading `stepIndex` takes a phase check. Its actions wait like the
-  owner's commands.
+  controller's commands.
 - A restored `completed` Run sits on the last step, and a restored `exited` Run
   on the first: the record keeps no step for an ended Run, and `reset` needs one
   for its event.
 - `initial` replaces loading `storage.tasks`, rather than coming first. The
   adapter is still saved to and subscribed to.
-- `onChange`, `initial` and the owner's `load()` all use `StoredTasks`.
+- `onChange`, `initial` and the controller's `load()` all use `StoredTasks`.
   `load()` checks its value like a loaded one; one it cannot read is reported
   and changes nothing.
 - A walkthrough record that cannot be read, or picked up, is wiped by saving
@@ -368,11 +368,12 @@ step shows centred and Next unlocks.
     failure from `reset` reaches it as well as a Run's. `createRun` and
     `<Walkthrough>` no longer take it. A key function that throws is reported
     and the walkthrough runs unstored.
-  - A Task's walkthrough cannot have storage: the owner keeps a Task's place.
-    The types forbid it, and `createChecklists` throws for an app without
+  - A Task's walkthrough cannot have storage: the controller keeps a Task's
+    place. The types forbid it, and `createChecklists` throws for an app without
     them.
-- The owner's `storage.tasks` and `storage.walkthrough` take a localStorage key
-  as well as an adapter, as a walkthrough's `storage` does. They take no key
-  function: an owner reads its records once, so one owner serves one user.
+- The controller's `storage.tasks` and `storage.walkthrough` take a localStorage
+  key as well as an adapter, as a walkthrough's `storage` does. They take no key
+  function: a controller reads its records once, so one controller serves one
+  user.
 - `onStorageError` became the `storageFailed` handler in `problemHandlers`,
-  on the definition and on the owner. See [problems.md](problems.md).
+  on the definition and on the controller. See [problems.md](problems.md).

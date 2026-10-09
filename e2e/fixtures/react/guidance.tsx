@@ -177,7 +177,7 @@ const describeEvent = (event: ChecklistsEvent<any, any>): string => {
   }
 };
 
-export const owner = createChecklists({
+export const controller = createChecklists({
   context: contextOf(data.get()),
   tasks: {
     tour: {
@@ -244,15 +244,15 @@ export const owner = createChecklists({
     tasks: setup.get().storage === "server" ? serverTasks : shownLocally(TASKS_KEY, stored),
     walkthrough: shownLocally(WALKTHROUGH_KEY, storedWalkthrough),
   },
-  problemHandlers: everyProblem((problem) => record("owner", describeProblem(problem))),
-  onEvent: (event) => record("owner", describeEvent(event)),
+  problemHandlers: everyProblem((problem) => record("controller", describeProblem(problem))),
+  onEvent: (event) => record("controller", describeEvent(event)),
   run: {
     waymarkPadding: setup.get().padding,
     onEvent: (event) => record("run", `${event.type} on step ${event.stepIndex + 1}`),
   },
 });
 
-data.subscribe(() => owner.update(contextOf(data.get())));
+data.subscribe(() => controller.update(contextOf(data.get())));
 
 export type AnyTask = ReactTask<any> & { readonly id: string };
 
@@ -269,7 +269,7 @@ export const describeRun = (snapshot: Snapshot): string => {
 function WatchLog() {
   useEffect(() => {
     let last: string | null = null;
-    const stop = owner.subscribeActive(({ active, step }) => {
+    const stop = controller.subscribeActive(({ active, step }) => {
       const line = active && step ? `${active.task.id}: ${describeRun(step)}` : null;
       if (line === last) return;
       last = line;
@@ -294,7 +294,7 @@ export function Guidance() {
   const { popover } = useStore(setup);
   return (
     <>
-      <Walkthrough checklists={owner} {...(popover === "custom" ? customPopover : {})} />
+      <Walkthrough checklists={controller} {...(popover === "custom" ? customPopover : {})} />
       <WatchLog />
     </>
   );

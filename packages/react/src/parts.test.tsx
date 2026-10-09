@@ -75,7 +75,7 @@ const trigger = () => document.querySelector<HTMLButtonElement>("button[aria-exp
 const panel = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="Getting started"]');
 const task = (title: string) =>
   Array.from(panel()!.querySelectorAll("li")).find((li) => li.textContent.includes(title))!;
-const running = (owner: ReturnType<typeof setup>) => owner.getSnapshot().active?.run.getSnapshot();
+const running = (controller: ReturnType<typeof setup>) => controller.getSnapshot().active?.run.getSnapshot();
 
 const pointer = (type: "pointerenter" | "pointerleave", target: Element, pointerType: string) => {
   const event = new MouseEvent(type);
@@ -99,23 +99,23 @@ const press = (element: Element) =>
 describe("ChecklistTrigger and ChecklistPanel", () => {
   it("keep the trigger where it was put and open the panel in the body", async () => {
     const { root, host } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
     expect(host).toContainElement(trigger());
     expect(panel()).toBeNull();
 
     await press(trigger());
     expect(panel()!.parentElement).toBe(document.body);
 
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} portal={false} />));
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} portal={false} />));
     expect(panel()!.parentElement).toBe(host);
   });
 
   it("open under a resting mouse, and stay open as it crosses from trigger to panel", async () => {
     const { root } = mount();
     fakeTimers();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
 
     await act(async () => pointer("pointerenter", trigger(), "mouse"));
     await wait(100);
@@ -143,8 +143,8 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   it("stay shut under a touch, which has no hover to end", async () => {
     const { root } = mount();
     fakeTimers();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
 
     await act(async () => pointer("pointerenter", trigger(), "touch"));
     await wait(1000);
@@ -153,8 +153,8 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
 
   it("stay open after a press on the trigger until a press lands outside, or Escape", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
     expect(trigger()).toHaveAttribute("aria-expanded", "false");
 
     await press(trigger());
@@ -175,8 +175,8 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
 
   it("move focus into a panel the keyboard opened, and back to the trigger on Escape", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
 
     await act(async () => trigger().click());
     expect(document.activeElement).toBe(panel());
@@ -190,11 +190,11 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
 
   it("close when one of its tasks starts, and mark the trigger while it runs", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
     await press(trigger());
 
-    await act(async () => owner.start("create-deck"));
+    await act(async () => controller.start("create-deck"));
     expect(panel()).toBeNull();
     expect(trigger()).toHaveAttribute("data-running");
 
@@ -206,86 +206,86 @@ describe("ChecklistTrigger and ChecklistPanel", () => {
   it("stay closed when a task starts just after the pointer reached the panel", async () => {
     const { root } = mount();
     fakeTimers();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
     await act(async () => pointer("pointerenter", trigger(), "mouse"));
     await wait(150);
     await act(async () => crossToPanel());
 
-    await act(async () => owner.start("create-deck"));
+    await act(async () => controller.start("create-deck"));
     await wait(1000);
     expect(panel()).toBeNull();
   });
 
   it("closes again when a task replaces an already running task", async () => {
     const { root } = mount();
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: {
         first: { title: "First task", walkthrough: guide },
         second: { title: "Second task", walkthrough: guide },
       },
     });
-    await act(async () => root.render(<Popover checklist={owner.checklists.main} />));
+    await act(async () => root.render(<Popover checklist={controller.checklists.main} />));
     await press(trigger());
-    await act(async () => owner.start("first"));
+    await act(async () => controller.start("first"));
     expect(panel()).toBeNull();
 
     await press(trigger());
     await press(task("Second task").querySelector("button:last-child")!);
-    expect(owner.getSnapshot().active?.task.id).toBe("second");
+    expect(controller.getSnapshot().active?.task.id).toBe("second");
     expect(panel()).toBeNull();
   });
 
   it("do not count a click on them as a click away from a running walkthrough", async () => {
     const { root } = mount();
-    const owner = setup();
+    const controller = setup();
     await act(async () =>
       root.render(
         <>
-          <Walkthrough checklists={owner} />
-          <Popover checklist={owner.checklists.home} />
+          <Walkthrough checklists={controller} />
+          <Popover checklist={controller.checklists.home} />
         </>,
       ),
     );
-    await act(async () => owner.start("create-deck"));
+    await act(async () => controller.start("create-deck"));
 
     await press(trigger());
     await press(task("Read the tips"));
-    expect(running(owner)).toMatchObject({ collapsed: false });
+    expect(running(controller)).toMatchObject({ collapsed: false });
   });
 
   it("keep Escape in the panel from also collapsing a running walkthrough", async () => {
     const { root } = mount();
-    const owner = setup();
+    const controller = setup();
     await act(async () =>
       root.render(
         <>
-          <Walkthrough checklists={owner} />
-          <Popover checklist={owner.checklists.home} />
+          <Walkthrough checklists={controller} />
+          <Popover checklist={controller.checklists.home} />
         </>,
       ),
     );
-    await act(async () => owner.start("create-deck"));
+    await act(async () => controller.start("create-deck"));
     await press(trigger());
 
     await act(async () =>
       panel()!.dispatchEvent(escape()),
     );
     expect(panel()).toBeNull();
-    expect(running(owner)).toMatchObject({ collapsed: false });
+    expect(running(controller)).toMatchObject({ collapsed: false });
 
     await act(async () =>
       document.body.dispatchEvent(escape()),
     );
-    expect(running(owner)).toMatchObject({ collapsed: true });
+    expect(running(controller)).toMatchObject({ collapsed: true });
   });
 });
 
 describe("Checklist task parts", () => {
   it("name each checkbox by its task and mark every part with the task's status", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
     await press(trigger());
     const box = task("Read the tips").querySelector('[role="checkbox"]')!;
     expect(box).toHaveAccessibleName("Read the tips");
@@ -302,14 +302,14 @@ describe("Checklist task parts", () => {
 
   it("give a task that is not toggleable a mark instead of a checkbox", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Popover checklist={owner.checklists.home} />));
+    const controller = setup();
+    await act(async () => root.render(<Popover checklist={controller.checklists.home} />));
     await press(trigger());
     const verify = task("Verify your email");
     expect(verify.querySelector('[role="checkbox"]')).toBeNull();
     expect(verify).toHaveTextContent("To do");
 
-    await act(async () => owner.update({ verified: true }));
+    await act(async () => controller.update({ verified: true }));
     expect(task("Verify your email").querySelector('[aria-hidden="true"]')).toHaveAttribute(
       "data-status",
       "done",

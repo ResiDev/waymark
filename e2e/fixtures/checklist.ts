@@ -22,7 +22,7 @@ const TASKS_KEY = "waymark-checklist";
 const readStored = (): StoredTasks | null => JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null");
 const events: ChecklistsEvent<any, any>[] = [];
 
-const owner = createChecklists({
+const controller = createChecklists({
   context,
   tasks: {
     "create-deck": { meta: { title: "Create your first deck" }, walkthrough: createDeck, isComplete: (c) => c.hasDeck },
@@ -48,7 +48,7 @@ const owner = createChecklists({
   run: { waymarkPadding: 8 },
 });
 
-const update = () => owner.update({ hasDeck: hasDeck.checked, hasPhoto: hasPhoto.checked });
+const update = () => controller.update({ hasDeck: hasDeck.checked, hasPhoto: hasPhoto.checked });
 $("#new-deck").addEventListener("click", () => {
   hasDeck.checked = true;
   update();
@@ -70,7 +70,7 @@ const button = (label: string, onClick: () => void, disabled = false) => {
 
 const ui = {
   checklists: $<HTMLDivElement>("#checklists"),
-  owner: $<HTMLDivElement>("#owner"),
+  controller: $<HTMLDivElement>("#controller"),
   status: $<HTMLDivElement>("#status"),
   stored: $<HTMLPreElement>("#stored"),
   log: $<HTMLPreElement>("#log"),
@@ -80,7 +80,7 @@ const ui = {
 
 // Each view's ids are typed per checklist; this one panel draws them all.
 type AnyView = Checklist<{ readonly id: string; readonly [field: string]: unknown }>;
-const views = Object.entries(owner.checklists) as unknown as [string, AnyView][];
+const views = Object.entries(controller.checklists) as unknown as [string, AnyView][];
 const sections = new Map(
   views.map(([name]) => {
     const section = document.createElement("section");
@@ -124,9 +124,9 @@ function renderView(name: string, view: AnyView) {
 // Each subscribe renders at once, then on every change.
 for (const [name, view] of views) view.subscribe(() => renderView(name, view));
 
-ui.owner.append(
-  button("stop", () => owner.stop()),
-  button("clear", () => owner.clear()),
+ui.controller.append(
+  button("stop", () => controller.stop()),
+  button("clear", () => controller.clear()),
   button("reload", () => location.reload()),
 );
 
@@ -154,7 +154,7 @@ function renderLog() {
   ui.log.scrollTop = ui.log.scrollHeight;
 }
 
-owner.bindUi(() => ({ dialog: ui.popover, beacon: null }));
+controller.bindUi(() => ({ dialog: ui.popover, beacon: null }));
 
 const describeRun = (snapshot: Snapshot): string => {
   if (snapshot.phase !== "running") return snapshot.phase;
@@ -165,7 +165,7 @@ const describeRun = (snapshot: Snapshot): string => {
 };
 
 function drawRun() {
-  const active = owner.getSnapshot().active;
+  const active = controller.getSnapshot().active;
   const snapshot = active?.run.getSnapshot();
   ui.status.textContent = active && snapshot ? `${active.task.id}: ${describeRun(snapshot)}` : "Nothing active.";
 
@@ -192,16 +192,16 @@ function drawRun() {
 }
 
 // Not `subscribe`: only a subscribed Run watches the page.
-owner.subscribeActive(drawRun);
+controller.subscribeActive(drawRun);
 
-$("#previous").addEventListener("click", () => owner.getSnapshot().active?.run.act("previous"));
-$("#advance").addEventListener("click", () => owner.getSnapshot().active?.run.act("advance"));
-$("#exit").addEventListener("click", () => owner.getSnapshot().active?.run.act("exit"));
+$("#previous").addEventListener("click", () => controller.getSnapshot().active?.run.act("previous"));
+$("#advance").addEventListener("click", () => controller.getSnapshot().active?.run.act("advance"));
+$("#exit").addEventListener("click", () => controller.getSnapshot().active?.run.act("exit"));
 
 declare global {
   interface Window {
     checklists: {
-      owner: typeof owner;
+      controller: typeof controller;
       update: typeof update;
       events: typeof events;
       stored: () => StoredTasks | null;
@@ -209,4 +209,4 @@ declare global {
   }
 }
 
-window.checklists = { owner, update, events, stored: readStored };
+window.checklists = { controller, update, events, stored: readStored };

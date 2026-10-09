@@ -74,7 +74,7 @@ export type WalkthroughStore = string | StorageAdapter<StoredWalkthrough>;
 
 /**
  * For a walkthrough shown on its own that keeps no place but hears its own
- * problems. It cannot be a checklist's Task, whose problems go to the owner's
+ * problems. It cannot be a checklist's Task, whose problems go to the controller's
  * `problemHandlers`.
  */
 export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
@@ -121,8 +121,8 @@ export type Walkthrough<TStep extends Step = Step> = Readonly<{
 }>;
 
 /**
- * A checklist's Task keeps its place in the owner's storage and reports its
- * problems to the owner's `problemHandlers`, so its walkthrough has neither of
+ * A checklist's Task keeps its place in the controller's storage and reports its
+ * problems to the controller's `problemHandlers`, so its walkthrough has neither of
  * its own.
  */
 export type UnstoredWalkthrough<TStep extends Step = Step> = Walkthrough<TStep> &

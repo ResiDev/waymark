@@ -5,7 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import type { ChecklistSelections, Checklists, Run } from "waymark-core";
+import type { ChecklistController, ChecklistSelections, Run } from "waymark-core";
 import { withDefaults } from "./labels";
 import { BeaconAnchor, DEFAULT_LABELS, DefaultBeacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
 import type {
@@ -37,7 +37,7 @@ const useDrawn = () =>
 export function Walkthrough<TStep extends WalkthroughStep>(
   props: WalkthroughProps<TStep>,
 ): ReactElement | null;
-// Guidance never calls `update`, the one place an owner's context appears, so every owner fits `never`.
+// Guidance never calls `update`, the one place a controller's context appears, so every controller fits `never`.
 export function Walkthrough<
   TTasks extends ReactGuidanceTasks,
   TSelections extends ChecklistSelections<TTasks>,
@@ -94,7 +94,7 @@ function ActiveWalkthrough<TStep extends WalkthroughStep>({
   );
 }
 
-/** Which renderer currently holds each owner's UI binding, so a pending stop can tell a handoff from an unmount. */
+/** Which renderer currently holds each controller's UI binding, so a pending stop can tell a handoff from an unmount. */
 const holders = new WeakMap<object, symbol>();
 
 /**
@@ -112,7 +112,7 @@ function ChecklistGuidance<
   labels,
   portal,
 }: {
-  checklists: Checklists<never, TTasks, TSelections>;
+  checklists: ChecklistController<never, TTasks, TSelections>;
   renderPopover?:
     | ChecklistWalkthroughProps<never, TTasks, TSelections>["renderPopover"]
     | undefined;

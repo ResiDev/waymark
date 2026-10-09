@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { Snapshot, StoredTasks } from "react-waymark";
 import type { Action } from "waymark-core";
 import { App } from "./app";
-import { owner, stored } from "./guidance";
+import { controller, stored } from "./guidance";
 import { Lab } from "./lab";
 import "./tailwind.css";
 import {
@@ -50,8 +50,8 @@ createRoot(document.querySelector("#root")!).render(<Root />);
 declare global {
   interface Window {
     playground: {
-      owner: typeof owner;
-      /** A padding change needs a reload: the owner reads it once, at creation. */
+      controller: typeof controller;
+      /** A padding change needs a reload: the controller reads it once, at creation. */
       setup: (changes?: Partial<Setup>) => Setup;
       navigate: (to: Route) => void;
       data: (changes?: Partial<AppData>) => AppData;
@@ -68,7 +68,7 @@ declare global {
 }
 
 window.playground = {
-  owner,
+  controller,
   setup: (changes) => {
     if (changes) patch(setup, changes);
     return setup.get();
@@ -78,17 +78,17 @@ window.playground = {
     if (changes) patch(data, changes);
     return data.get();
   },
-  act: (action) => owner.getSnapshot().active?.run.act(action),
-  snapshot: () => owner.getSnapshot().active?.run.getSnapshot() ?? null,
+  act: (action) => controller.getSnapshot().active?.run.act(action),
+  snapshot: () => controller.getSnapshot().active?.run.getSnapshot() ?? null,
   watched: () => watched.get(),
   whatsNew: () => whatsNewOpen.set(true),
   log: () => log.get().map((entry) => `${entry.at}ms ${entry.source} ${entry.text}`),
   stored: () => stored.get(),
   reset: () => {
-    owner.stop();
+    controller.stop();
     whatsNewOpen.set(false);
     inviteOpen.set(false);
-    owner.clear();
+    controller.clear();
     data.set(EMPTY_DATA);
     route.set("home");
     log.set([]);

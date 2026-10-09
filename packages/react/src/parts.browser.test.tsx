@@ -3,7 +3,7 @@ import { page } from "vitest/browser";
 import { ChecklistPanel, ChecklistRoot, ChecklistTrigger, createChecklists } from "./index";
 import { onScreen, pastEdges, render, renderInScroller } from "./test/browser";
 
-const owner = () =>
+const controller = () =>
   createChecklists({
     context: {},
     tasks: { "read-tips": { title: "Read the tips" } },
@@ -13,7 +13,7 @@ const owner = () =>
 describe("ChecklistPanel", () => {
   it("sits against its trigger, and follows it when a container scrolls", async () => {
     const scroller = renderInScroller(
-      <ChecklistRoot checklist={owner().checklists.home}>
+      <ChecklistRoot checklist={controller().checklists.home}>
         {() => (
           <>
             <ChecklistTrigger>Getting started</ChecklistTrigger>
@@ -41,7 +41,7 @@ describe("ChecklistPanel", () => {
   it("opens above its trigger when there is no room below, and stays on screen", async () => {
     render(
       <div style={{ position: "fixed", left: 20, bottom: 10 }}>
-        <ChecklistRoot checklist={owner().checklists.home}>
+        <ChecklistRoot checklist={controller().checklists.home}>
           {() => (
             <>
               <ChecklistTrigger>Getting started</ChecklistTrigger>

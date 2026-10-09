@@ -46,7 +46,7 @@ export const setupOptions = {
   copy: ["off", "css", "tailwind"],
   /** `home` unmounts the renderer, and so stops guidance, whenever you leave Home. */
   renderer: ["root", "home", "none"],
-  /** Where task statuses are kept. `server` is the dev server's /api/tasks. The owner reads it once, at creation. */
+  /** Where task statuses are kept. `server` is the dev server's /api/tasks. The controller reads it once, at creation. */
   storage: ["local", "server"],
 } as const;
 
@@ -59,7 +59,7 @@ export type Setup = Readonly<{
   storage: (typeof setupOptions.storage)[number];
   /** The decks page loads for 1.5s first, so its Waymarks mount late. */
   slow: boolean;
-  /** The owner reads it once, at creation. */
+  /** The controller reads it once, at creation. */
   padding: number;
   lab: boolean;
 }>;
@@ -153,7 +153,7 @@ export type Entry = Readonly<{
   id: number;
   /** ms since the page loaded. */
   at: number;
-  source: "owner" | "run" | "waymark" | "whats-new";
+  source: "controller" | "run" | "waymark" | "whats-new";
   text: string;
 }>;
 

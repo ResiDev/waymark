@@ -11,7 +11,7 @@ export type DropReason =
   | "stepsChanged"
   /** Its Task is done or skipped. */
   | "taskNotTodo"
-  /** Its Task is gone from the owner, or no longer has a walkthrough. */
+  /** Its Task is gone from the controller, or no longer has a walkthrough. */
   | "unknownTask";
 
 export type WaymarkProblem<TStep extends Step = Step> =

@@ -15,7 +15,7 @@ import type {
 /**
  * `TShape` lets an adapter allow its own Step fields, such as `content`. With
  * `storage` or `problemHandlers` it can be shown on its own but not handed to a
- * checklist's Task, whose owner keeps its place and hears its problems.
+ * checklist's Task, whose controller keeps its place and hears its problems.
  */
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
   steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],

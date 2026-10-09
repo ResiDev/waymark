@@ -564,27 +564,27 @@ describe("Walkthrough with checklists", () => {
 
   const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
-  it("draws the Run the owner started and finishes it into completion", async () => {
+  it("draws the Run the controller started and finishes it into completion", async () => {
     const { root, frames } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
+    const controller = setup();
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
     expect(dialog()).toBeNull();
 
-    await act(async () => owner.start("read-tips"));
+    await act(async () => controller.start("read-tips"));
     expect(dialog()).toHaveTextContent("Here are the tips");
 
     await act(async () => buttonNamed("Finish")!.click());
     expect(dialog()).toBeNull();
-    expect(owner.getSnapshot().active).toBeNull();
-    expect(owner.checklists.home.getSnapshot().tasks[1]!.status).toBe("done");
+    expect(controller.getSnapshot().active).toBeNull();
+    expect(controller.checklists.home.getSnapshot().tasks[1]!.status).toBe("done");
     expect(frames.size).toBe(0);
   });
 
   it("binds its elements so a click on the popover is not a click away", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
-    await act(async () => owner.start("read-tips"));
+    const controller = setup();
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
+    await act(async () => controller.start("read-tips"));
 
     await act(async () => {
       dialog()!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 1, clientY: 1 }));
@@ -600,13 +600,13 @@ describe("Walkthrough with checklists", () => {
     expect(beacon()).toBeInTheDocument();
   });
 
-  it("renders a custom popover with the owner's step union", async () => {
+  it("renders a custom popover with the controller's step union", async () => {
     const { root } = mount();
-    const owner = setup();
+    const controller = setup();
     await act(async () =>
       root.render(
         <Walkthrough
-          checklists={owner}
+          checklists={controller}
           renderPopover={({ currentStep, exit }) => (
             <button type="button" onClick={exit}>
               {currentStep.content}
@@ -616,21 +616,21 @@ describe("Walkthrough with checklists", () => {
         />,
       ),
     );
-    await act(async () => owner.start("create-deck"));
+    await act(async () => controller.start("create-deck"));
     expect(dialog()).toHaveTextContent("Open the decks page (/help)");
 
     await act(async () => (dialog()!.querySelector("button") as HTMLButtonElement).click());
-    expect(owner.getSnapshot().active).toBeNull();
+    expect(controller.getSnapshot().active).toBeNull();
     expect(dialog()).toBeNull();
   });
 
-  it("draws a custom beacon with the owner's step union, and exits from it", async () => {
+  it("draws a custom beacon with the controller's step union, and exits from it", async () => {
     const { root } = mount();
-    const owner = setup();
+    const controller = setup();
     await act(async () =>
       root.render(
         <Walkthrough
-          checklists={owner}
+          checklists={controller}
           renderBeacon={({ currentStep, exit }) => (
             <button type="button" onClick={exit}>
               Stop: {currentStep.meta ? currentStep.meta.helpUrl : "no help"}
@@ -639,32 +639,32 @@ describe("Walkthrough with checklists", () => {
         />,
       ),
     );
-    await act(async () => owner.start("create-deck"));
+    await act(async () => controller.start("create-deck"));
     await clickAway();
 
     const custom = beaconAnchor()!.querySelector("button")!;
     expect(custom).toHaveTextContent("Stop: /help");
     await act(async () => custom.click());
-    expect(owner.getSnapshot().active).toBeNull();
+    expect(controller.getSnapshot().active).toBeNull();
     expect(beaconAnchor()).toBeNull();
   });
 
   it("offers to skip the task being guided, in every view", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
-    await act(async () => owner.start("create-deck"));
+    const controller = setup();
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
+    await act(async () => controller.start("create-deck"));
     await act(async () => buttonNamed("Skip task")!.click());
     expect(dialog()).toBeNull();
-    expect(owner.checklists.decks.getSnapshot().tasks[0]!.status).toBe("skipped");
-    expect(owner.checklists.home.getSnapshot().tasks[0]!.status).toBe("skipped");
+    expect(controller.checklists.decks.getSnapshot().tasks[0]!.status).toBe("skipped");
+    expect(controller.checklists.home.getSnapshot().tasks[0]!.status).toBe("skipped");
   });
 
   it("passes an app's labels to the guided task's popover", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Walkthrough checklists={owner} labels={{ skipTask: "Aufgabe überspringen" }} />));
-    await act(async () => owner.start("create-deck"));
+    const controller = setup();
+    await act(async () => root.render(<Walkthrough checklists={controller} labels={{ skipTask: "Aufgabe überspringen" }} />));
+    await act(async () => controller.start("create-deck"));
     expect(buttonNamed("Aufgabe überspringen")).toBeDefined();
   });
 
@@ -688,17 +688,17 @@ describe("Walkthrough with checklists", () => {
     expect(renderPopover.mock.calls.every(([props]) => !("skipTask" in props))).toBe(true);
   });
 
-  it("follows the owner when guidance is stopped or replaced", async () => {
+  it("follows the controller when guidance is stopped or replaced", async () => {
     const { root, frames } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
-    await act(async () => owner.start("create-deck"));
+    const controller = setup();
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
+    await act(async () => controller.start("create-deck"));
     expect(dialog()).toHaveTextContent("Open the decks page");
 
-    await act(async () => owner.start("read-tips"));
+    await act(async () => controller.start("read-tips"));
     expect(dialog()).toHaveTextContent("Here are the tips");
 
-    await act(async () => owner.stop());
+    await act(async () => controller.stop());
     expect(dialog()).toBeNull();
     expect(frames.size).toBe(0);
   });
@@ -706,72 +706,72 @@ describe("Walkthrough with checklists", () => {
   it("keeps a prestarted Run through Strict Mode's mount cycle", async () => {
     const { root } = mount();
     const events: string[] = [];
-    const owner = setup((event) => events.push(event.type));
-    owner.start("read-tips");
+    const controller = setup((event) => events.push(event.type));
+    controller.start("read-tips");
     events.length = 0;
 
     await act(async () => {
       root.render(
         <StrictMode>
-          <Walkthrough checklists={owner} />
+          <Walkthrough checklists={controller} />
         </StrictMode>,
       );
     });
 
     expect(dialog()).toHaveTextContent("Here are the tips");
-    expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
+    expect(controller.getSnapshot().active?.task.id).toBe("read-tips");
     expect(events).toEqual([]);
   });
 
   it("stops its Run on actual unmount, retaining progress", async () => {
     const { root, frames } = mount();
     const events: string[] = [];
-    const owner = setup((event) => events.push(event.type));
-    owner.markDone("say-hello");
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
-    await act(async () => owner.start("read-tips"));
-    const { run } = owner.getSnapshot().active!;
+    const controller = setup((event) => events.push(event.type));
+    controller.markDone("say-hello");
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
+    await act(async () => controller.start("read-tips"));
+    const { run } = controller.getSnapshot().active!;
     events.length = 0;
 
     await act(async () => root.render(<div />));
 
-    expect(owner.getSnapshot().active).toBeNull();
+    expect(controller.getSnapshot().active).toBeNull();
     expect(run.getSnapshot().phase).toBe("exited");
     expect(events).toEqual(["taskStopped"]);
-    expect(owner.checklists.home.getSnapshot().tasks[2]!.status).toBe("done");
+    expect(controller.checklists.home.getSnapshot().tasks[2]!.status).toBe("done");
     expect(frames.size).toBe(0);
   });
 
   it("does not stop a Run that replaced the one it was drawing", async () => {
     const { root } = mount();
-    const owner = setup();
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
-    await act(async () => owner.start("read-tips"));
+    const controller = setup();
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
+    await act(async () => controller.start("read-tips"));
 
     // The renderer is removed, and before its pending stop runs the app starts something else.
     act(() => root.render(<div />));
-    owner.start("create-deck");
+    controller.start("create-deck");
     await act(async () => {});
 
-    expect(owner.getSnapshot().active?.task.id).toBe("create-deck");
+    expect(controller.getSnapshot().active?.task.id).toBe("create-deck");
   });
 
   it("hands guidance over to a renderer that mounts as it unmounts", async () => {
     const { root } = mount();
-    const owner = setup();
+    const controller = setup();
     const { root: other } = addRoot();
-    await act(async () => root.render(<Walkthrough checklists={owner} />));
-    await act(async () => owner.start("read-tips"));
+    await act(async () => root.render(<Walkthrough checklists={controller} />));
+    await act(async () => controller.start("read-tips"));
 
     await act(async () => {
       root.render(<div />);
-      other.render(<Walkthrough checklists={owner} />);
+      other.render(<Walkthrough checklists={controller} />);
     });
 
-    expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
+    expect(controller.getSnapshot().active?.task.id).toBe("read-tips");
     expect(dialog()).toHaveTextContent("Here are the tips");
 
     await act(async () => other.unmount());
-    expect(owner.getSnapshot().active).toBeNull();
+    expect(controller.getSnapshot().active).toBeNull();
   });
 });

@@ -26,8 +26,8 @@ import { followActive, listen } from "./subscribe";
 import type {
   ActiveTask,
   Checklist,
+  ChecklistController,
   ChecklistSelections,
-  Checklists,
   ChecklistsConfig,
   ChecklistsEvent,
   ChecklistsSnapshot,
@@ -120,7 +120,7 @@ export function createChecklists<
     NoInfer<TShape>,
     NoInfer<TStepShape>
   >,
-): Checklists<TContext, TTasks, TSelections>;
+): ChecklistController<TContext, TTasks, TSelections>;
 // The body works on the Tasks widened to `Task<TContext>`, as TypeScript cannot
 // follow each Task it hands back to the exact type the caller wrote. It checks
 // this signature against the one above only loosely, so this one reuses the
@@ -131,7 +131,7 @@ export function createChecklists<TContext>(
     TaskMap<TContext>,
     ChecklistSelections<TaskMap<TContext>>
   >,
-): Checklists<
+): ChecklistController<
   TContext,
   TaskMap<TContext>,
   ChecklistSelections<TaskMap<TContext>>
@@ -186,13 +186,13 @@ export function createChecklists<TContext>(
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
     if (!isSteps(walkthrough) && walkthrough.storage !== undefined) {
       throw new Error(
-        `Task "${id}": its walkthrough has its own storage, but the owner keeps a Task's place. Define it without storage.`,
+        `Task "${id}": its walkthrough has its own storage, but the controller keeps a Task's place. Define it without storage.`,
       );
     }
     // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
     if (!isSteps(walkthrough) && walkthrough.problemHandlers !== undefined) {
       throw new Error(
-        `Task "${id}": its walkthrough has its own problemHandlers, but the owner reports its Runs' problems. Pass problemHandlers to createChecklists.`,
+        `Task "${id}": its walkthrough has its own problemHandlers, but the controller reports its Runs' problems. Pass problemHandlers to createChecklists.`,
       );
     }
     walkthroughs[id] = isSteps(walkthrough)
@@ -214,11 +214,11 @@ export function createChecklists<TContext>(
    * version, so a condition does not save over them; a change by the user does.
    */
   let storedUnread = false;
-  let ownerSnapshot: ChecklistsSnapshot<Tasks> = {
+  let controllerSnapshot: ChecklistsSnapshot<Tasks> = {
     active: null,
     storageStatus,
   };
-  const ownerListeners = new Set<
+  const controllerListeners = new Set<
     (snapshot: ChecklistsSnapshot<Tasks>) => void
   >();
   let boundUi: (() => UiElements) | undefined;
@@ -253,13 +253,13 @@ export function createChecklists<TContext>(
     const after = current();
     const moved = after.active !== before.active;
     if (moved) activeChanged = true;
-    const ownerChanged = moved || after.storageStatus !== before.storageStatus;
+    const controllerChanged = moved || after.storageStatus !== before.storageStatus;
 
     // Every snapshot is updated before any callback runs, so a callback that
     // reads another view sees this change too.
     const { changed, completed } = refresh(views, source);
-    if (ownerChanged)
-      ownerSnapshot = {
+    if (controllerChanged)
+      controllerSnapshot = {
         active: after.active,
         storageStatus: after.storageStatus,
       };
@@ -270,7 +270,7 @@ export function createChecklists<TContext>(
       stopped !== null && stopped.run.getSnapshot().phase !== "completed";
 
     for (const view of changed) queue.notify(view.listeners, view.snapshot);
-    if (ownerChanged) queue.notify(ownerListeners, ownerSnapshot);
+    if (controllerChanged) queue.notify(controllerListeners, controllerSnapshot);
     if (flags.persist !== false) {
       if (after.record !== before.record) saveTasks(after.record);
       if (moved) saveWalkthrough(after.active, after.startedFrom);
@@ -602,7 +602,7 @@ export function createChecklists<TContext>(
         replace(read.value ?? EMPTY, "ready");
       else replace(EMPTY, "error");
       // Silent: a reload must not announce completion storage already had,
-      // and at creation an `onEvent` handler cannot use the owner yet.
+      // and at creation an `onEvent` handler cannot use the controller yet.
       const context = lastContext;
       if (context !== undefined)
         send(() => checkConditions(context), {
@@ -620,7 +620,7 @@ export function createChecklists<TContext>(
   if (!readsTasks) settleTasks(parseTasks(config.initial));
   // What a server render shows: it cannot see the browser's storage.
   for (const view of views) view.serverSnapshot = view.snapshot;
-  const serverSnapshot = ownerSnapshot;
+  const serverSnapshot = controllerSnapshot;
   if (readsTasks) {
     loadFrom(
       tasksStorage,
@@ -658,8 +658,8 @@ export function createChecklists<TContext>(
     };
   }
 
-  const subscribe = listen(queue, ownerListeners, () => ownerSnapshot);
-  const owner: Checklists<TContext, Tasks, Selections> = {
+  const subscribe = listen(queue, controllerListeners, () => controllerSnapshot);
+  const controller: ChecklistController<TContext, Tasks, Selections> = {
     checklists,
     start: (id) => start(id),
     stop,
@@ -673,15 +673,15 @@ export function createChecklists<TContext>(
       };
     },
     waymarkPadding: runOptions?.waymarkPadding ?? 0,
-    getSnapshot: () => ownerSnapshot,
+    getSnapshot: () => controllerSnapshot,
     getServerSnapshot: () => serverSnapshot,
     subscribe,
     subscribeActive: (listener) =>
-      followActive(subscribe, () => ownerSnapshot.active, listener),
+      followActive(subscribe, () => controllerSnapshot.active, listener),
     ready,
     update,
     load,
     clear,
   };
-  return owner;
+  return controller;
 }

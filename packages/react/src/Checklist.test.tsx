@@ -17,7 +17,7 @@ const guide = defineWalkthrough([{ content: "Create a deck" }]);
 
 const setup = () => {
   const openPicker = vi.fn();
-  const owner = createChecklists({
+  const controller = createChecklists({
     context: { hasDeck: false, hasPhoto: false },
     tasks: {
       "create-deck": {
@@ -42,7 +42,7 @@ const setup = () => {
       home: ["create-deck", "add-photo", "read-tips", "understand-sharing", "say-hello"],
     },
   });
-  return { owner, openPicker };
+  return { controller, openPicker };
 };
 
 const rows = () => Array.from(document.querySelectorAll("li"));
@@ -62,23 +62,23 @@ const click = (li: HTMLElement, label: string) =>
 describe("Checklist", () => {
   it("shows titles, descriptions, statuses, and the finished count", async () => {
     const { root, host } = addRoot();
-    const { owner } = setup();
-    await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
+    const { controller } = setup();
+    await act(async () => root.render(<Checklist checklist={controller.checklists.home} />));
 
     expect(host.querySelector('[role="group"]')).toHaveTextContent("0 of 5 done");
     expect(rows()).toHaveLength(5);
     expect(row("Create your first deck")).toHaveTextContent("Decks group the cards");
     expect(row("Create your first deck")).toHaveTextContent("To do");
 
-    await act(async () => owner.update({ hasDeck: true, hasPhoto: false }));
+    await act(async () => controller.update({ hasDeck: true, hasPhoto: false }));
     expect(row("Create your first deck")).toHaveTextContent("Done");
     expect(host.querySelector('[role="group"]')).toHaveTextContent("1 of 5 done");
   });
 
   it("shows one primary button according to the task's configuration", async () => {
     const { root } = addRoot();
-    const { owner, openPicker } = setup();
-    await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
+    const { controller, openPicker } = setup();
+    await act(async () => root.render(<Checklist checklist={controller.checklists.home} />));
 
     expect(buttons(row("Read the tips"))).toEqual(["Show me", "Skip"]);
     // Action wins over the walkthrough button.
@@ -89,20 +89,20 @@ describe("Checklist", () => {
 
     await click(row("Add a profile photo"), "Choose photo");
     expect(openPicker).toHaveBeenCalledOnce();
-    expect(owner.getSnapshot().active).toBeNull();
+    expect(controller.getSnapshot().active).toBeNull();
     expect(row("Add a profile photo")).toHaveTextContent("To do");
 
-    await act(async () => owner.markDone("read-tips"));
+    await act(async () => controller.markDone("read-tips"));
     expect(buttons(row("Read the tips"))).toEqual(["Show me again"]);
   });
 
   it("starts, skips, and ticks through the view's commands", async () => {
     const { root, host } = addRoot();
-    const { owner } = setup();
-    await act(async () => root.render(<Checklist checklist={owner.checklists.home} />));
+    const { controller } = setup();
+    await act(async () => root.render(<Checklist checklist={controller.checklists.home} />));
 
     await click(row("Read the tips"), "Show me");
-    expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
+    expect(controller.getSnapshot().active?.task.id).toBe("read-tips");
     expect(row("Read the tips")).toHaveAttribute("aria-current", "step");
     expect(row("Read the tips").querySelector(BUTTON)).toBeDisabled();
     // Views never draw guidance.
@@ -119,13 +119,13 @@ describe("Checklist", () => {
 
   it("toggles a task with its box, unless the task opts out", async () => {
     const { root } = addRoot();
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: {
         hello: { title: "Say hello" },
         verify: { title: "Verify your email", toggleable: false },
       },
     });
-    await act(async () => root.render(<Checklist checklist={owner.checklists.main} />));
+    await act(async () => root.render(<Checklist checklist={controller.checklists.main} />));
     const hello = box(row("Say hello"))!;
     expect(hello).toHaveAccessibleName("Say hello");
     expect(hello).toHaveAttribute("aria-checked", "false");
@@ -147,11 +147,11 @@ describe("Checklist", () => {
 
   it("takes labels, styles, and a row renderer", async () => {
     const { root, host } = addRoot();
-    const { owner } = setup();
+    const { controller } = setup();
     await act(async () =>
       root.render(
         <Checklist
-          checklist={owner.checklists.home}
+          checklist={controller.checklists.home}
           style={{ background: "black" }}
           rowStyle={{ padding: 0 }}
           labels={{ start: "Guide me", skip: "Later" }}
@@ -175,15 +175,15 @@ describe("Checklist", () => {
     expect(row("Understand sharing").querySelector("button")).toBeNull();
 
     await click(row("Custom read-tips"), "Custom read-tips todo");
-    expect(owner.getSnapshot().active?.task.id).toBe("read-tips");
+    expect(controller.getSnapshot().active?.task.id).toBe("read-tips");
   });
 
   it("uses default labels only for the rows it renders itself", async () => {
     const { root } = addRoot();
-    const { owner } = setup();
+    const { controller } = setup();
     await act(async () =>
       root.render(
-        <Checklist checklist={owner.checklists.home} labels={{ start: "Guide me", skip: "Later" }} />,
+        <Checklist checklist={controller.checklists.home} labels={{ start: "Guide me", skip: "Later" }} />,
       ),
     );
     expect(buttons(row("Read the tips"))).toEqual(["Guide me", "Later"]);
@@ -191,10 +191,10 @@ describe("Checklist", () => {
 
   it("uses the default for a label passed as undefined", async () => {
     const { root } = addRoot();
-    const { owner } = setup();
+    const { controller } = setup();
     // ReactNode includes undefined, so even exactOptionalPropertyTypes allows this.
     const labels: Partial<ChecklistLabels> = { start: undefined, skip: "Later" };
-    await act(async () => root.render(<Checklist checklist={owner.checklists.home} labels={labels} />));
+    await act(async () => root.render(<Checklist checklist={controller.checklists.home} labels={labels} />));
     expect(buttons(row("Read the tips"))).toEqual(["Show me", "Later"]);
   });
 });
@@ -202,10 +202,10 @@ describe("Checklist", () => {
 describe("useChecklist", () => {
   it("gives custom UI the same snapshot and commands", async () => {
     const { root, host } = addRoot();
-    const { owner } = setup();
+    const { controller } = setup();
     const seen: number[] = [];
     function Panel() {
-      const { snapshot, markDone } = useChecklist(owner.checklists.home);
+      const { snapshot, markDone } = useChecklist(controller.checklists.home);
       seen.push(snapshot.finishedCount);
       return (
         <button type="button" onClick={() => markDone("say-hello")}>
@@ -221,7 +221,7 @@ describe("useChecklist", () => {
 
     // Alters nothing visible, so the snapshot keeps its identity and nothing re-renders.
     seen.length = 0;
-    await act(async () => owner.update({ hasDeck: false, hasPhoto: false }));
+    await act(async () => controller.update({ hasDeck: false, hasPhoto: false }));
     expect(seen).toEqual([]);
   });
 });
@@ -247,10 +247,10 @@ describe("Checklist with storage", () => {
     const host = addHost();
     host.innerHTML = server;
     const onRecoverableError = vi.fn();
-    const owner = stored();
+    const controller = stored();
     let hydrated: Root | undefined;
     await act(async () => {
-      hydrated = hydrateRoot(host, <Checklist checklist={owner.checklists.main} />, { onRecoverableError });
+      hydrated = hydrateRoot(host, <Checklist checklist={controller.checklists.main} />, { onRecoverableError });
     });
     onTestFinished(() => act(async () => hydrated?.unmount()));
 

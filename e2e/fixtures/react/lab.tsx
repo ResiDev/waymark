@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { actions } from "waymark-core";
-import { owner, stored, storedWalkthrough, storedWhatsNew, whatsNew } from "./guidance";
+import { controller, stored, storedWalkthrough, storedWhatsNew, whatsNew } from "./guidance";
 import {
   data,
   EMPTY_DATA,
@@ -51,7 +51,7 @@ function Choice<K extends keyof typeof setupOptions>({
 }: {
   name: K;
   setup: Setup;
-  /** For what the owner reads once, at creation. */
+  /** For what the controller reads once, at creation. */
   reload?: boolean;
 }) {
   return (
@@ -92,7 +92,7 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
         <input type="checkbox" name="slow" checked={current.slow} onChange={() => patch(setup, { slow: !current.slow })} />
         slow decks page
       </label>
-      <label title="The owner reads its Run options once, at creation, so this reloads the page.">
+      <label title="The controller reads its Run options once, at creation, so this reloads the page.">
         padding{" "}
         <input
           type="number"
@@ -112,7 +112,7 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
 }
 
 function GuidancePanel() {
-  const { active } = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const { active } = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const line = useStore(watched);
   const status = active === null
     ? "Nothing active."
@@ -129,8 +129,8 @@ function GuidancePanel() {
         ))}
       </div>
       <div>
-        <button type="button" onClick={() => owner.stop()}>
-          owner.stop()
+        <button type="button" onClick={() => controller.stop()}>
+          controller.stop()
         </button>
         <button type="button" onClick={() => whatsNewOpen.set(true)}>
           what's new
@@ -167,7 +167,7 @@ function DataPanel() {
 
 function ProgressPanel() {
   const { storage } = useStore(setup);
-  const { storageStatus } = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const { storageStatus } = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const tasks = useStore(stored);
   const walkthrough = useStore(storedWalkthrough);
   const whatsNewRecord = useStore(storedWhatsNew);
@@ -183,8 +183,8 @@ function ProgressPanel() {
       <div>what's new</div>
       <pre data-testid="stored-whats-new">{JSON.stringify(whatsNewRecord)}</pre>
       <div>
-        <button type="button" onClick={() => owner.clear()}>
-          owner.clear()
+        <button type="button" onClick={() => controller.clear()}>
+          controller.clear()
         </button>
         <button type="button" onClick={() => data.set(EMPTY_DATA)}>
           reset app data

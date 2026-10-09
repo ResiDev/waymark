@@ -1,12 +1,12 @@
 import { Checklist, useChecklist, type ChecklistRowProps, type CoreChecklist } from "react-waymark";
 import { ChecklistPopover as CssPopover } from "../../../packages/react/registry/checklist-popover/css/checklist-popover";
 import { ChecklistPopover as TailwindPopover } from "../../../packages/react/registry/checklist-popover/tailwind/checklist-popover";
-import { owner, type AnyTask } from "./guidance";
+import { controller, type AnyTask } from "./guidance";
 import { setup, useStore } from "./state";
 
 export function HomeChecklist() {
   const { list } = useStore(setup);
-  const home = owner.checklists.home;
+  const home = controller.checklists.home;
   if (list === "styled") {
     return (
       <Checklist
@@ -102,7 +102,7 @@ function HeadlessChecklist<TTask extends AnyTask>({ checklist }: { checklist: Co
 }
 
 export function DecksBanner() {
-  const { snapshot, start, skip } = useChecklist(owner.checklists.decks);
+  const { snapshot, start, skip } = useChecklist(controller.checklists.decks);
   const row = snapshot.tasks[0];
   if (!row || row.status !== "todo") return null;
   return (
@@ -120,7 +120,7 @@ export function DecksBanner() {
 
 export function HeaderChecklist() {
   const { copy } = useStore(setup);
-  if (copy === "css") return <CssPopover checklist={owner.checklists.home} />;
-  if (copy === "tailwind") return <TailwindPopover checklist={owner.checklists.home} />;
+  if (copy === "css") return <CssPopover checklist={controller.checklists.home} />;
+  if (copy === "tailwind") return <TailwindPopover checklist={controller.checklists.home} />;
   return null;
 }

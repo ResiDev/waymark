@@ -18,7 +18,7 @@ it("closes when a task starts from inside the panel, under StrictMode and a rend
   fakeTimers();
   vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
   const { root } = addRoot();
-  const owner = createChecklists({
+  const controller = createChecklists({
     tasks: { tour: { title: "Take the tour", walkthrough: defineWalkthrough([{ content: "Hello" }]) } },
     checklists: { home: ["tour"] },
   });
@@ -26,8 +26,8 @@ it("closes when a task starts from inside the panel, under StrictMode and a rend
   await act(async () =>
     root.render(
       <StrictMode>
-        <Walkthrough checklists={owner} />
-        <ChecklistRoot checklist={owner.checklists.home}>
+        <Walkthrough checklists={controller} />
+        <ChecklistRoot checklist={controller.checklists.home}>
           {({ start }) => (
             <>
               <ChecklistTrigger>Getting started</ChecklistTrigger>
@@ -61,6 +61,6 @@ it("closes when a task starts from inside the panel, under StrictMode and a rend
   });
   await act(async () => vi.advanceTimersByTime(1000));
 
-  expect(owner.getSnapshot().active?.task.id).toBe("tour");
+  expect(controller.getSnapshot().active?.task.id).toBe("tour");
   expect(panel()).toBeNull();
 });

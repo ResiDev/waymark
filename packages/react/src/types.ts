@@ -1,8 +1,8 @@
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import type {
   ChecklistRow,
+  ChecklistController,
   ChecklistSelections,
-  Checklists,
   ChecklistSnapshot,
   NamedTask,
   RunEvent,
@@ -51,7 +51,7 @@ export type WalkthroughRenderProps<
   collapse: () => void;
   reset: () => void;
   exit: () => void;
-  /** Only when guiding a Checklists Task. */
+  /** Only when guiding a checklist controller's Task. */
   skipTask?: () => void;
   /** The app's labels over the defaults. */
   labels: WalkthroughLabels;
@@ -83,7 +83,7 @@ export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
     portal?: boolean;
   }>;
 
-/** Admits any other field: it reads Tasks an owner already holds, whatever else they carry. */
+/** Admits any other field: it reads Tasks a controller already holds, whatever else they carry. */
 export type ReactGuidanceTasks = Readonly<
   Record<
     string,
@@ -96,13 +96,13 @@ export type ReactGuidanceTasks = Readonly<
 
 export type GuidanceStep<TTasks> = Extract<StepOf<NamedTask<TTasks>>, WalkthroughStep>;
 
-/** Stops the owner's active Run when removed. */
+/** Stops the controller's active Run when removed. */
 export type ChecklistWalkthroughProps<
   TContext,
   TTasks extends ReactGuidanceTasks,
   TSelections extends ChecklistSelections<TTasks>,
 > = Readonly<{
-  checklists: Checklists<TContext, TTasks, TSelections>;
+  checklists: ChecklistController<TContext, TTasks, TSelections>;
   walkthrough?: never;
   active?: never;
   waymarkPadding?: never;
@@ -194,6 +194,6 @@ import type { Checklist as CoreChecklist } from "waymark-core";
 export type { RunEvent, Snapshot, Running, Walkthrough } from "waymark-core";
 import type { ProblemHandlers as CoreProblemHandlers, WaymarkProblem as CoreProblem } from "waymark-core";
 
-// These default to any React step, so one set of handlers fits every walkthrough and owner.
+// These default to any React step, so one set of handlers fits every walkthrough and controller.
 export type WaymarkProblem<TStep extends WalkthroughStep = WalkthroughStep> = CoreProblem<TStep>;
 export type ProblemHandlers<TStep extends WalkthroughStep = WalkthroughStep> = CoreProblemHandlers<TStep>;

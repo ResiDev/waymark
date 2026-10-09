@@ -14,7 +14,7 @@ const deckSteps = defineWalkthrough([{ content: "Open decks", meta: { helpUrl: "
 const photoSteps = defineWalkthrough([{ content: "Pick a photo", waymark: "avatar" }]);
 const addPhoto = { title: "Add a photo", walkthrough: photoSteps } satisfies ReactTask<AppContext>;
 
-const owner = createChecklists({
+const controller = createChecklists({
   context: initialContext,
   tasks: {
     "create-deck": { title: "Create a deck", walkthrough: deckSteps, isComplete: (c) => c.hasDeck },
@@ -25,26 +25,26 @@ const owner = createChecklists({
 });
 
 describe("Walkthrough prop shapes", () => {
-  it("accepts either a walkthrough or an owner, never both", () => {
+  it("accepts either a walkthrough or a controller, never both", () => {
     const elements = {
       owned: <Walkthrough walkthrough={deckSteps} />,
-      driven: <Walkthrough checklists={owner} />,
+      driven: <Walkthrough checklists={controller} />,
       // @ts-expect-error one shape at a time
-      both: <Walkthrough walkthrough={deckSteps} checklists={owner} />,
-      // @ts-expect-error padding is an owner option in the checklists shape
-      padding: <Walkthrough checklists={owner} waymarkPadding={12} />,
-      // @ts-expect-error Run events are an owner option in the checklists shape
-      events: <Walkthrough checklists={owner} onEvent={() => {}} />,
-      // @ts-expect-error active has no meaning for owner-driven guidance
-      active: <Walkthrough checklists={owner} active={false} />,
+      both: <Walkthrough walkthrough={deckSteps} checklists={controller} />,
+      // @ts-expect-error padding is a controller option in the checklists shape
+      padding: <Walkthrough checklists={controller} waymarkPadding={12} />,
+      // @ts-expect-error Run events are a controller option in the checklists shape
+      events: <Walkthrough checklists={controller} onEvent={() => {}} />,
+      // @ts-expect-error active has no meaning for controller-driven guidance
+      active: <Walkthrough checklists={controller} active={false} />,
     };
     expect(Object.keys(elements)).toHaveLength(6);
   });
 
-  it("infers the step union from the owner for custom popovers", () => {
+  it("infers the step union from the controller for custom popovers", () => {
     const element = (
       <Walkthrough
-        checklists={owner}
+        checklists={controller}
         renderPopover={({ currentStep }) => {
           expectTypeOf(currentStep.content).toEqualTypeOf<"Open decks" | "Press new" | "Pick a photo">();
           // Only some steps carry meta or a waymark; narrow first.
@@ -58,7 +58,7 @@ describe("Walkthrough prop shapes", () => {
     expect(element).toBeTruthy();
   });
 
-  it("rejects owners whose walkthroughs have no React content", () => {
+  it("rejects controllers whose walkthroughs have no React content", () => {
     const plain = createCoreChecklists({
       context: {},
       tasks: { save: { walkthrough: defineCoreWalkthrough([{ waymark: "save" }]) } },
@@ -183,10 +183,10 @@ describe("Checklist and useChecklist", () => {
   it("types views over their selected React tasks", () => {
     const plain = createCoreChecklists({ context: {}, tasks: { a: {} }, checklists: { all: ["a"] } });
     const elements = {
-      decks: <Checklist checklist={owner.checklists.decks} />,
+      decks: <Checklist checklist={controller.checklists.decks} />,
       home: (
         <Checklist
-        checklist={owner.checklists.home}
+        checklist={controller.checklists.home}
         renderRow={({ task, start }) => {
           expectTypeOf(task.id).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
           expectTypeOf(start).parameter(0).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
@@ -202,7 +202,7 @@ describe("Checklist and useChecklist", () => {
 
     // Never called: hooks need a component.
     const Headless = () => {
-      const { start } = useChecklist(owner.checklists.decks);
+      const { start } = useChecklist(controller.checklists.decks);
       expectTypeOf(start).parameter(0).toEqualTypeOf<"create-deck">();
       return null;
     };

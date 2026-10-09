@@ -40,7 +40,7 @@ export const inviteTour = defineWalkthrough(
 /**
  * Act 2. Started by the app the first time someone opens their own projects.
  * A Task in a checklist no one sees, so its popover has a Skip button and the
- * owner reports the skip.
+ * controller reports the skip.
  */
 let step = 0;
 const of = (index: number) => `Step ${index + 1} of 3 · Views tour`;

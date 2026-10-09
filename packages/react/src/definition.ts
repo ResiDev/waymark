@@ -4,8 +4,8 @@ import {
   everyProblem as everyCoreProblem,
 } from "waymark-core";
 import type {
+  ChecklistController,
   ChecklistSelections,
-  Checklists,
   DefaultChecklists,
   ChecklistsConfig,
   ExactStep,
@@ -48,7 +48,7 @@ export function createChecklists<
   const TSelections extends ChecklistSelections<TTasks> = DefaultChecklists<TTasks>,
 >(
   config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>,
-): Checklists<TContext, TTasks, TSelections> {
+): ChecklistController<TContext, TTasks, TSelections> {
   return createCoreChecklists<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>(
     config,
   );

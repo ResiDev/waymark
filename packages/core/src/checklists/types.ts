@@ -171,24 +171,24 @@ export type ChecklistsOptions<
   TSelections extends ChecklistSelections<TTasks>,
 > = Readonly<{
   /**
-   * Until a Promise from `tasks.load` settles, the owner is `loading`: it holds
+   * Until a Promise from `tasks.load` settles, the controller is `loading`: it holds
    * commands and runs them in order once the statuses are in.
    */
   storage?: ChecklistsStorage;
   /**
    * Task statuses already in hand, such as ones fetched for a server render.
-   * Given these, the owner does not load `storage.tasks`; it still saves to it.
+   * Given these, the controller does not load `storage.tasks`; it still saves to it.
    */
   initial?: StoredTasks;
   onChange?: (stored: StoredTasks) => void;
   /**
-   * Handlers for the problems the owner and its Runs meet. A problem without
+   * Handlers for the problems the controller and its Runs meet. A problem without
    * one is logged if it is storage's, thrown if it is an error from the app's
    * own functions, and otherwise passes quietly.
    */
   problemHandlers?: ProblemHandlers<StepOf<TTasks[keyof TTasks]>>;
   onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
-  /** Your `onEvent` is called after the owner has handled the event. */
+  /** Your `onEvent` is called after the controller has handled the event. */
   run?: Omit<
     RunOptions<StepOf<TTasks[keyof TTasks]>>,
     "startAt" | "collapsed" | "resumed" | "ui"
@@ -214,7 +214,7 @@ export type ActiveSnapshot<TTasks> = Readonly<{
   step: Snapshot<StepOf<TTasks[keyof TTasks]>> | null;
 }>;
 
-export type Checklists<
+export type ChecklistController<
   TContext,
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,

@@ -41,11 +41,11 @@ export type {
 export type {
   ActiveTask,
   CallbackName,
+  ChecklistController,
   ChecklistRow,
   ChecklistSelections,
   ChecklistSnapshot,
   ChecklistViews,
-  Checklists,
   ChecklistsEvent,
   ChecklistsOptions,
   ChecklistsSnapshot,

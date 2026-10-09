@@ -79,7 +79,7 @@ export function createRun<TStep extends Step>(
   return startRun(walkthrough, options, problemReporter(walkthrough.problemHandlers));
 }
 
-/** A checklist's owner hands its Runs its own `reportProblem`, in place of the walkthrough's. */
+/** A checklist controller hands its Runs its own `reportProblem`, in place of the walkthrough's. */
 export function startRun<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
   options: RunOptions<TStep>,

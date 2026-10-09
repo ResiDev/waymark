@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Checklist } from "react-waymark";
 import { DecksBanner, HeaderChecklist, HomeChecklist } from "./checklists";
-import { Guidance, owner, WhatsNew } from "./guidance";
+import { Guidance, controller, WhatsNew } from "./guidance";
 import {
   data,
   inviteOpen,
@@ -222,7 +222,7 @@ function Settings() {
           {app.emailVerified ? "Unverify" : "Pretend I clicked the link"}
         </button>
       </section>
-      <Checklist checklist={owner.checklists.settings} />
+      <Checklist checklist={controller.checklists.settings} />
     </>
   );
 }

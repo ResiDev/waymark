@@ -14,7 +14,7 @@ const single = defineWalkthrough([{}]);
 const context = { hasDeck: false, hasPhoto: false };
 type Context = typeof context;
 
-/** An event from any owner in this file: `Task<never>` accepts a condition on any context. */
+/** An event from any controller in this file: `Task<never>` accepts a condition on any context. */
 type AnyEvent = ChecklistsEvent<TaskMap<never>, ChecklistSelections<TaskMap<never>>>;
 
 /** Task statuses as storage holds them. */
@@ -61,26 +61,26 @@ describe("createChecklists", () => {
     "supports %s as both a task id and checklist name",
     (name) => {
       const onChange = vi.fn<(stored: StoredTasks) => void>();
-      const owner = createChecklists({
+      const controller = createChecklists({
         context: {},
         tasks: { [name]: { walkthrough: single } },
         checklists: { [name]: [name] },
         onChange,
       });
-      const view = owner.checklists[name]!;
-      expect(Object.hasOwn(owner.checklists, name)).toBe(true);
+      const view = controller.checklists[name]!;
+      expect(Object.hasOwn(controller.checklists, name)).toBe(true);
       expect(view.getSnapshot().tasks[0]).toMatchObject({ task: { id: name }, status: "todo" });
 
       view.start(name);
-      expect(owner.getSnapshot().active?.task.id).toBe(name);
+      expect(controller.getSnapshot().active?.task.id).toBe(name);
       view.skip(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       const stored = onChange.mock.calls[0]![0];
       expect(Object.hasOwn(stored.tasks, name)).toBe(true);
       expect(stored.tasks[name]).toBe("skipped");
 
-      owner.clear();
-      owner.load(JSON.parse(JSON.stringify(stored)) as StoredTasks);
+      controller.clear();
+      controller.load(JSON.parse(JSON.stringify(stored)) as StoredTasks);
       expect(view.getSnapshot().tasks[0]!.status).toBe("skipped");
       view.markDone(name);
       expect(view.getSnapshot().tasks[0]!.status).toBe("done");
@@ -89,37 +89,37 @@ describe("createChecklists", () => {
   );
 
   it("works without a context", () => {
-    const owner = createChecklists({ tasks: { hello: {} }, checklists: { home: ["hello"] } });
-    owner.update({});
-    owner.checklists.home.markDone("hello");
-    expect(owner.checklists.home.getSnapshot().complete).toBe(true);
+    const controller = createChecklists({ tasks: { hello: {} }, checklists: { home: ["hello"] } });
+    controller.update({});
+    controller.checklists.home.markDone("hello");
+    expect(controller.checklists.home.getSnapshot().complete).toBe(true);
   });
 
   it("checks no condition at creation when given no context", () => {
     // Typed for a context it was not given, so a condition must not see a made-up one.
-    const owner = createChecklists<{ user: { plan: string } }>({
+    const controller = createChecklists<{ user: { plan: string } }>({
       tasks: { upgrade: { isComplete: (c) => c.user.plan === "pro" } },
     });
-    expect(statuses(owner.checklists.main)).toEqual({ upgrade: "todo" });
+    expect(statuses(controller.checklists.main)).toEqual({ upgrade: "todo" });
 
-    owner.update({ user: { plan: "pro" } });
-    expect(statuses(owner.checklists.main)).toEqual({ upgrade: "done" });
+    controller.update({ user: { plan: "pro" } });
+    expect(statuses(controller.checklists.main)).toEqual({ upgrade: "done" });
   });
 
   it("has one checklist, main, of every task in order when it names none", () => {
     const onChange = vi.fn();
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: { tour: { walkthrough: single }, hello: {}, invite: {} },
       onChange,
     });
-    expect(Object.keys(owner.checklists)).toEqual(["main"]);
-    expect(owner.checklists.main.getSnapshot().tasks.map((row) => row.task.id)).toEqual([
+    expect(Object.keys(controller.checklists)).toEqual(["main"]);
+    expect(controller.checklists.main.getSnapshot().tasks.map((row) => row.task.id)).toEqual([
       "tour",
       "hello",
       "invite",
     ]);
 
-    owner.checklists.main.skip("hello");
+    controller.checklists.main.skip("hello");
     expect(onChange).toHaveBeenLastCalledWith(saved({ hello: "skipped" }));
   });
 
@@ -157,14 +157,14 @@ describe("createChecklists", () => {
   });
 
   it("shows every task of a selection in its order, with its id and definition", () => {
-    const owner = setup();
-    const rows = owner.checklists.home.getSnapshot().tasks;
+    const controller = setup();
+    const rows = controller.checklists.home.getSnapshot().tasks;
     expect(rows.map((row) => row.task.id)).toEqual(["add-photo", "create-deck", "read-tips", "say-hello"]);
     const deck = rows[1]!.task;
     if (deck.id !== "create-deck") throw new Error("expected create-deck");
     expect(deck.walkthrough).toBe(guide);
     expect(rows[1]!.status).toBe("todo");
-    expect(owner.checklists.decks.getSnapshot()).toMatchObject({
+    expect(controller.checklists.decks.getSnapshot()).toMatchObject({
       finishedCount: 0,
       taskCount: 1,
       complete: false,
@@ -175,27 +175,27 @@ describe("createChecklists", () => {
   it("records matching conditions at creation, saving but announcing nothing", () => {
     const onChange = vi.fn();
     const onEvent = vi.fn();
-    const owner = setup({ context: { hasDeck: true, hasPhoto: false }, onChange, onEvent });
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "done" });
-    expect(owner.checklists.decks.getSnapshot().complete).toBe(true);
+    const controller = setup({ context: { hasDeck: true, hasPhoto: false }, onChange, onEvent });
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "done" });
+    expect(controller.checklists.decks.getSnapshot().complete).toBe(true);
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "create-deck": "done" }));
     expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("does not save the record it starts from", () => {
     const onChange = vi.fn();
-    const owner = setup({ initial: saved({ "read-tips": "done", "say-hello": "skipped" }), onChange });
+    const controller = setup({ initial: saved({ "read-tips": "done", "say-hello": "skipped" }), onChange });
     expect(onChange).not.toHaveBeenCalled();
-    expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "done", "say-hello": "skipped" });
+    expect(statuses(controller.checklists.home)).toMatchObject({ "read-tips": "done", "say-hello": "skipped" });
 
-    owner.markDone("say-hello");
+    controller.markDone("say-hello");
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "read-tips": "done", "say-hello": "done" }));
   });
 
   it("preserves unknown ids across local changes", () => {
     const onChange = vi.fn();
-    const owner = setup({ initial: saved({ zeta: "done", gone: "skipped", old: "reopened" }), onChange });
-    owner.checklists.decks.skip("create-deck");
+    const controller = setup({ initial: saved({ zeta: "done", gone: "skipped", old: "reopened" }), onChange });
+    controller.checklists.decks.skip("create-deck");
     expect(onChange).toHaveBeenLastCalledWith(saved({
       zeta: "done",
       gone: "skipped",
@@ -209,24 +209,24 @@ describe("update", () => {
   it("records done in every view, once, and announces task then checklist completion", () => {
     const onChange = vi.fn();
     const onEvent = vi.fn();
-    const owner = setup({ onChange, onEvent });
+    const controller = setup({ onChange, onEvent });
     const home = vi.fn();
     const decks = vi.fn();
-    owner.checklists.home.subscribe(home);
-    owner.checklists.decks.subscribe(decks);
+    controller.checklists.home.subscribe(home);
+    controller.checklists.decks.subscribe(decks);
     home.mockClear();
     decks.mockClear();
 
-    owner.update({ hasDeck: true, hasPhoto: false });
+    controller.update({ hasDeck: true, hasPhoto: false });
 
-    expect(statuses(owner.checklists.home)["create-deck"]).toBe("done");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("done");
+    expect(statuses(controller.checklists.home)["create-deck"]).toBe("done");
+    expect(statuses(controller.checklists.decks)["create-deck"]).toBe("done");
     expect(home).toHaveBeenCalledOnce();
     expect(decks).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "create-deck": "done" }));
     expect(types(onEvent)).toEqual(["taskComplete:create-deck", "checklistComplete:decks"]);
     const complete = onEvent.mock.calls[1]![0] as Extract<AnyEvent, { type: "checklistComplete" }>;
-    expect(complete.snapshot).toBe(owner.checklists.decks.getSnapshot());
+    expect(complete.snapshot).toBe(controller.checklists.decks.getSnapshot());
     expect(complete.snapshot.finishedCount).toBe(1);
   });
 
@@ -234,7 +234,7 @@ describe("update", () => {
     const seen: string[] = [];
     const onEvent = vi.fn();
     const onChange = vi.fn();
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: { ready: false },
       tasks: {
         b: { isComplete: (c) => (seen.push("b"), c.ready) },
@@ -246,11 +246,11 @@ describe("update", () => {
       onChange,
     });
     const listener = vi.fn();
-    owner.checklists.all.subscribe(listener);
+    controller.checklists.all.subscribe(listener);
     listener.mockClear();
     seen.length = 0;
 
-    owner.update({ ready: true });
+    controller.update({ ready: true });
     expect(seen).toEqual(["b", "a"]);
     expect(listener).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({
@@ -264,31 +264,31 @@ describe("update", () => {
 
   it("leaves done tasks alone and does not re-check them", () => {
     const isComplete = vi.fn((c: { ready: boolean }) => c.ready);
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: { ready: true },
       tasks: { a: { isComplete } },
       checklists: { all: ["a"] },
     });
     isComplete.mockClear();
-    owner.update({ ready: false });
+    controller.update({ ready: false });
     expect(isComplete).not.toHaveBeenCalled();
-    expect(statuses(owner.checklists.all)).toEqual({ a: "done" });
+    expect(statuses(controller.checklists.all)).toEqual({ a: "done" });
   });
 
   it("lets done override skipped everywhere without repeating a view's completion", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.checklists.decks.skip("create-deck");
+    const controller = setup({ onEvent });
+    controller.checklists.decks.skip("create-deck");
     expect(types(onEvent)).toEqual(["taskSkipped:create-deck", "checklistComplete:decks"]);
     onEvent.mockClear();
 
-    owner.update({ hasDeck: true, hasPhoto: false });
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "done" });
+    controller.update({ hasDeck: true, hasPhoto: false });
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "done" });
     expect(types(onEvent)).toEqual(["taskComplete:create-deck"]);
   });
 
   it("records nothing when a condition throws", () => {
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: { ready: false },
       tasks: {
         a: { isComplete: (c) => c.ready },
@@ -301,14 +301,14 @@ describe("update", () => {
       },
       checklists: { all: ["a", "b"] },
     });
-    expect(() => owner.update({ ready: true })).toThrow("boom");
-    expect(statuses(owner.checklists.all)).toEqual({ a: "todo", b: "todo" });
+    expect(() => controller.update({ ready: true })).toThrow("boom");
+    expect(statuses(controller.checklists.all)).toEqual({ a: "todo", b: "todo" });
   });
 
   it("sends a throwing isComplete to problemHandlers instead of throwing, and leaves every task todo", () => {
     const onProblem = vi.fn();
     const boom = new Error("boom");
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: { ready: false },
       tasks: {
         a: { isComplete: (c) => c.ready },
@@ -322,9 +322,9 @@ describe("update", () => {
       checklists: { all: ["a", "b"] },
       problemHandlers: everyProblem(onProblem),
     });
-    expect(() => owner.update({ ready: true })).not.toThrow();
+    expect(() => controller.update({ ready: true })).not.toThrow();
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "callbackThrew", callback: "isComplete", error: boom });
-    expect(statuses(owner.checklists.all)).toEqual({ a: "todo", b: "todo" });
+    expect(statuses(controller.checklists.all)).toEqual({ a: "todo", b: "todo" });
   });
 
   it("sends errors from subscribers, onChange, onEvent and run.onEvent to problemHandlers, and still applies each change", () => {
@@ -333,19 +333,19 @@ describe("update", () => {
     const fail = () => {
       throw broken;
     };
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: { a: { walkthrough: single }, b: {} },
       onChange: fail,
       onEvent: fail,
       run: { onEvent: fail },
       problemHandlers: everyProblem(onProblem),
     });
-    owner.checklists.main.subscribe(skipFirstCall(fail));
+    controller.checklists.main.subscribe(skipFirstCall(fail));
 
-    expect(() => owner.markDone("b")).not.toThrow();
-    expect(() => owner.start("a")).not.toThrow();
-    expect(() => owner.getSnapshot().active!.run.act("advance")).not.toThrow();
-    expect(statuses(owner.checklists.main)).toEqual({ a: "done", b: "done" });
+    expect(() => controller.markDone("b")).not.toThrow();
+    expect(() => controller.start("a")).not.toThrow();
+    expect(() => controller.getSnapshot().active!.run.act("advance")).not.toThrow();
+    expect(statuses(controller.checklists.main)).toEqual({ a: "done", b: "done" });
     const threw = (callback: string) => [{ type: "callbackThrew", callback, error: broken }];
     expect(onProblem.mock.calls).toEqual(
       [
@@ -357,7 +357,7 @@ describe("update", () => {
         "onEvent",
         // the Run finishes; onEvent hears taskStopped, taskComplete and checklistComplete
         "subscriber", "onChange", "onEvent", "onEvent", "onEvent",
-        // run.onEvent hears finish, after the owner has handled it
+        // run.onEvent hears finish, after the controller has handled it
         "onEvent",
       ].map(threw),
     );
@@ -369,19 +369,19 @@ describe("update", () => {
     const fail = () => {
       throw broken;
     };
-    const owner = createChecklists({ tasks: { a: {} }, problemHandlers: everyProblem(onProblem) });
-    expect(() => owner.subscribe(fail)).not.toThrow();
-    expect(() => owner.checklists.main.subscribe(fail)).not.toThrow();
+    const controller = createChecklists({ tasks: { a: {} }, problemHandlers: everyProblem(onProblem) });
+    expect(() => controller.subscribe(fail)).not.toThrow();
+    expect(() => controller.checklists.main.subscribe(fail)).not.toThrow();
     const threw = [{ type: "callbackThrew", callback: "subscriber", error: broken }];
     expect(onProblem.mock.calls).toEqual([threw, threw]);
   });
 
-  it("sends a missing waymark in a task's Run to the owner's problemHandlers", () => {
+  it("sends a missing waymark in a task's Run to the controller's problemHandlers", () => {
     const { flush } = fakeFrames();
     const onProblem = vi.fn();
-    const owner = createChecklists({ tasks: { a: { walkthrough: guide } }, problemHandlers: everyProblem(onProblem) });
-    owner.subscribeActive(() => {});
-    owner.start("a");
+    const controller = createChecklists({ tasks: { a: { walkthrough: guide } }, problemHandlers: everyProblem(onProblem) });
+    controller.subscribeActive(() => {});
+    controller.start("a");
     flush(3000);
     flush();
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
@@ -392,70 +392,70 @@ describe("update", () => {
   });
 
   it("keeps an unaffected view's snapshot identity", () => {
-    const owner = setup();
-    const decksBefore = owner.checklists.decks.getSnapshot();
-    const homeBefore = owner.checklists.home.getSnapshot();
-    owner.update({ hasDeck: false, hasPhoto: true });
-    expect(owner.checklists.decks.getSnapshot()).toBe(decksBefore);
-    expect(owner.checklists.home.getSnapshot()).not.toBe(homeBefore);
+    const controller = setup();
+    const decksBefore = controller.checklists.decks.getSnapshot();
+    const homeBefore = controller.checklists.home.getSnapshot();
+    controller.update({ hasDeck: false, hasPhoto: true });
+    expect(controller.checklists.decks.getSnapshot()).toBe(decksBefore);
+    expect(controller.checklists.home.getSnapshot()).not.toBe(homeBefore);
   });
 });
 
 describe("guidance", () => {
   it("starts a Run, shows it in every view holding the task, and exits it on stop", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    const ownerListener = vi.fn();
-    owner.subscribe(ownerListener);
-    ownerListener.mockClear();
-    const before = owner.getSnapshot();
+    const controller = setup({ onEvent });
+    const controllerListener = vi.fn();
+    controller.subscribe(controllerListener);
+    controllerListener.mockClear();
+    const before = controller.getSnapshot();
 
-    owner.checklists.decks.start("create-deck");
+    controller.checklists.decks.start("create-deck");
 
-    const active = owner.getSnapshot().active!;
+    const active = controller.getSnapshot().active!;
     expect(active.task.id).toBe("create-deck");
     expect(active.run.getSnapshot()).toMatchObject({ phase: "running", stepIndex: 0 });
-    expect(owner.getSnapshot()).not.toBe(before);
-    expect(ownerListener).toHaveBeenCalledOnce();
-    expect(owner.checklists.home.getSnapshot().active).toBe(active);
-    expect(owner.checklists.decks.getSnapshot().active).toBe(active);
+    expect(controller.getSnapshot()).not.toBe(before);
+    expect(controllerListener).toHaveBeenCalledOnce();
+    expect(controller.checklists.home.getSnapshot().active).toBe(active);
+    expect(controller.checklists.decks.getSnapshot().active).toBe(active);
     expect(types(onEvent)).toEqual(["taskStarted:create-deck"]);
 
-    owner.start("create-deck");
-    expect(owner.getSnapshot().active).toBe(active);
-    expect(ownerListener).toHaveBeenCalledOnce();
+    controller.start("create-deck");
+    expect(controller.getSnapshot().active).toBe(active);
+    expect(controllerListener).toHaveBeenCalledOnce();
 
-    owner.stop();
-    expect(owner.getSnapshot().active).toBeNull();
+    controller.stop();
+    expect(controller.getSnapshot().active).toBeNull();
     expect(active.run.getSnapshot().phase).toBe("exited");
     expect(types(onEvent)).toEqual(["taskStarted:create-deck", "taskStopped:create-deck"]);
     expect(onEvent.mock.calls[1]![0]).toMatchObject({ reason: "stopped" });
 
-    owner.stop();
+    controller.stop();
     expect(onEvent).toHaveBeenCalledTimes(2);
   });
 
   it("hides the Run from views that do not hold its task", () => {
-    const owner = setup();
-    owner.start("add-photo");
-    expect(owner.checklists.home.getSnapshot().active?.task.id).toBe("add-photo");
-    expect(owner.checklists.decks.getSnapshot().active).toBeNull();
+    const controller = setup();
+    controller.start("add-photo");
+    expect(controller.checklists.home.getSnapshot().active?.task.id).toBe("add-photo");
+    expect(controller.checklists.decks.getSnapshot().active).toBeNull();
   });
 
   it("runs steps written inline on the task, and shows the task as written", () => {
     const steps = [{ waymark: "save" }, {}] as const;
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: {},
       tasks: { tour: { walkthrough: steps } },
       checklists: { home: ["tour"] },
     });
-    expect(owner.checklists.home.getSnapshot().tasks[0]!.task.walkthrough).toBe(steps);
+    expect(controller.checklists.home.getSnapshot().tasks[0]!.task.walkthrough).toBe(steps);
 
-    owner.start("tour");
-    const { run } = owner.getSnapshot().active!;
+    controller.start("tour");
+    const { run } = controller.getSnapshot().active!;
     expect(run.getSnapshot()).toMatchObject({ phase: "running", stepCount: 2 });
     finish(run, 2);
-    expect(statuses(owner.checklists.home)).toEqual({ tour: "done" });
+    expect(statuses(controller.checklists.home)).toEqual({ tour: "done" });
   });
 
   it("checks inline steps at creation, naming the task", () => {
@@ -473,22 +473,22 @@ describe("guidance", () => {
 
   it("ignores tasks without a walkthrough", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.start("say-hello");
-    expect(owner.getSnapshot().active).toBeNull();
+    const controller = setup({ onEvent });
+    controller.start("say-hello");
+    expect(controller.getSnapshot().active).toBeNull();
     expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("replaces the previous Run when another task starts", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.start("create-deck");
-    const first = owner.getSnapshot().active!.run;
+    const controller = setup({ onEvent });
+    controller.start("create-deck");
+    const first = controller.getSnapshot().active!.run;
     onEvent.mockClear();
 
-    owner.start("add-photo");
+    controller.start("add-photo");
     expect(first.getSnapshot().phase).toBe("exited");
-    expect(owner.getSnapshot().active?.task.id).toBe("add-photo");
+    expect(controller.getSnapshot().active?.task.id).toBe("add-photo");
     expect(types(onEvent)).toEqual(["taskStopped:create-deck", "taskStarted:add-photo"]);
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "stopped" });
   });
@@ -496,15 +496,15 @@ describe("guidance", () => {
   it("marks a task without a condition done when its Run finishes", () => {
     const onEvent = vi.fn();
     const onChange = vi.fn();
-    const owner = setup({ onEvent, onChange });
-    owner.start("read-tips");
-    const { run } = owner.getSnapshot().active!;
+    const controller = setup({ onEvent, onChange });
+    controller.start("read-tips");
+    const { run } = controller.getSnapshot().active!;
     onEvent.mockClear();
 
     finish(run, 1);
 
-    expect(owner.getSnapshot().active).toBeNull();
-    expect(statuses(owner.checklists.home)["read-tips"]).toBe("done");
+    expect(controller.getSnapshot().active).toBeNull();
+    expect(statuses(controller.checklists.home)["read-tips"]).toBe("done");
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "read-tips": "done" }));
     expect(types(onEvent)).toEqual(["taskStopped:read-tips", "taskComplete:read-tips"]);
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
@@ -512,33 +512,33 @@ describe("guidance", () => {
 
   it("does not repeat completion when a done task's Run is replayed to the end", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.markDone("read-tips");
-    owner.start("read-tips");
+    const controller = setup({ onEvent });
+    controller.markDone("read-tips");
+    controller.start("read-tips");
     onEvent.mockClear();
-    finish(owner.getSnapshot().active!.run, 1);
+    finish(controller.getSnapshot().active!.run, 1);
     expect(types(onEvent)).toEqual(["taskStopped:read-tips"]);
   });
 
   it("leaves completion to the condition when a guided task finishes", () => {
-    const owner = setup();
-    owner.start("create-deck");
-    finish(owner.getSnapshot().active!.run, 2);
-    expect(owner.getSnapshot().active).toBeNull();
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "todo" });
+    const controller = setup();
+    controller.start("create-deck");
+    finish(controller.getSnapshot().active!.run, 2);
+    expect(controller.getSnapshot().active).toBeNull();
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "todo" });
   });
 
   it("clears active when the Run exits from its own UI, keeping progress", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.markDone("add-photo");
-    owner.start("add-photo");
+    const controller = setup({ onEvent });
+    controller.markDone("add-photo");
+    controller.start("add-photo");
     onEvent.mockClear();
 
-    owner.getSnapshot().active!.run.act("exit");
+    controller.getSnapshot().active!.run.act("exit");
 
-    expect(owner.getSnapshot().active).toBeNull();
-    expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
+    expect(controller.getSnapshot().active).toBeNull();
+    expect(statuses(controller.checklists.home)["add-photo"]).toBe("done");
     expect(types(onEvent)).toEqual(["taskStopped:add-photo"]);
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "stopped" });
   });
@@ -546,24 +546,24 @@ describe("guidance", () => {
   it("handles finish before the supplied Run listener sees it, and gives Runs the bound UI", () => {
     const seen: string[] = [];
     const dialog = document.createElement("div");
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: {},
       tasks: { tips: { walkthrough: single } },
       checklists: { all: ["tips"] },
-      onEvent: (event) => seen.push(`owner:${event.type}`),
+      onEvent: (event) => seen.push(`controller:${event.type}`),
       run: {
         waymarkPadding: 12,
         onEvent: (event) => {
           seen.push(`run:${event.type}`);
-          if (event.type === "finish") seen.push(`active:${owner.getSnapshot().active?.task.id ?? "none"}`);
+          if (event.type === "finish") seen.push(`active:${controller.getSnapshot().active?.task.id ?? "none"}`);
         },
       },
     });
-    expect(owner.waymarkPadding).toBe(12);
-    const release = owner.bindUi(() => ({ dialog, beacon: null }));
+    expect(controller.waymarkPadding).toBe(12);
+    const release = controller.bindUi(() => ({ dialog, beacon: null }));
 
-    owner.start("tips");
-    const { run } = owner.getSnapshot().active!;
+    controller.start("tips");
+    const { run } = controller.getSnapshot().active!;
     const stop = run.subscribe(() => {});
     dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(run.getSnapshot()).toMatchObject({ collapsed: false });
@@ -577,24 +577,24 @@ describe("guidance", () => {
     run.act("advance");
     expect(seen).toEqual([
       "run:advance",
-      "owner:taskStopped",
-      "owner:taskComplete",
-      "owner:checklistComplete",
+      "controller:taskStopped",
+      "controller:taskComplete",
+      "controller:checklistComplete",
       "run:finish",
       "active:none",
     ]);
   });
 
   it("lets the newest UI binding win and releases only its own", () => {
-    const owner = setup();
+    const controller = setup();
     const a = document.createElement("div");
     const b = document.createElement("div");
     addToBody(a);
     addToBody(b);
-    const releaseA = owner.bindUi(() => ({ dialog: a, beacon: null }));
-    owner.bindUi(() => ({ dialog: b, beacon: null }));
-    owner.start("read-tips");
-    const { run } = owner.getSnapshot().active!;
+    const releaseA = controller.bindUi(() => ({ dialog: a, beacon: null }));
+    controller.bindUi(() => ({ dialog: b, beacon: null }));
+    controller.start("read-tips");
+    const { run } = controller.getSnapshot().active!;
     const stop = run.subscribe(() => {});
 
     releaseA();
@@ -605,31 +605,31 @@ describe("guidance", () => {
 });
 
 describe("subscribe", () => {
-  it("calls view and owner listeners at once with the current snapshot, then with each new one", () => {
-    const owner = setup();
+  it("calls view and controller listeners at once with the current snapshot, then with each new one", () => {
+    const controller = setup();
     const view = vi.fn();
-    const own = vi.fn<Parameters<typeof owner.subscribe>[0]>();
-    owner.checklists.home.subscribe(view);
-    owner.subscribe(own);
-    expect(view).toHaveBeenCalledExactlyOnceWith(owner.checklists.home.getSnapshot());
+    const own = vi.fn<Parameters<typeof controller.subscribe>[0]>();
+    controller.checklists.home.subscribe(view);
+    controller.subscribe(own);
+    expect(view).toHaveBeenCalledExactlyOnceWith(controller.checklists.home.getSnapshot());
     expect(own).toHaveBeenCalledExactlyOnceWith({ active: null, storageStatus: "ready" });
 
-    owner.start("read-tips");
-    expect(view).toHaveBeenLastCalledWith(owner.checklists.home.getSnapshot());
-    expect(own).toHaveBeenLastCalledWith(owner.getSnapshot());
+    controller.start("read-tips");
+    expect(view).toHaveBeenLastCalledWith(controller.checklists.home.getSnapshot());
+    expect(own).toHaveBeenLastCalledWith(controller.getSnapshot());
     expect(own.mock.lastCall![0].active?.task.id).toBe("read-tips");
   });
 
   it("throws from subscribe if the listener throws when first called, and drops it", () => {
-    const owner = setup();
+    const controller = setup();
     const broken = vi.fn(() => {
       throw new Error("renderer broke");
     });
     // subscribe calls the listener before returning, so its error surfaces here.
-    expect(() => owner.checklists.home.subscribe(broken)).toThrow("renderer broke");
+    expect(() => controller.checklists.home.subscribe(broken)).toThrow("renderer broke");
 
     // The caller got no unsubscribe, so the listener is not kept.
-    owner.markDone("say-hello");
+    controller.markDone("say-hello");
     expect(broken).toHaveBeenCalledOnce();
   });
 });
@@ -637,70 +637,70 @@ describe("subscribe", () => {
 describe("subscribeActive", () => {
   const setupRuns = () => {
     const runEvents: string[] = [];
-    const owner = createChecklists({
+    const controller = createChecklists({
       tasks: { tour: { walkthrough: [{}, {}] }, other: { walkthrough: [{}] } },
       run: { onEvent: (event) => runEvents.push(event.type) },
     });
-    return { owner, runEvents };
+    return { controller, runEvents };
   };
 
-  it("leaves the active Run asleep when only the owner is subscribed", () => {
-    const { owner, runEvents } = setupRuns();
-    owner.subscribe(() => {});
-    owner.start("tour");
+  it("leaves the active Run asleep when only the controller is subscribed", () => {
+    const { controller, runEvents } = setupRuns();
+    controller.subscribe(() => {});
+    controller.start("tour");
     // Nothing subscribed to the Run, so it never starts watching the page.
     expect(runEvents).toEqual([]);
   });
 
-  it("wakes the active Run, and hears the owner and every step", () => {
-    const { owner, runEvents } = setupRuns();
-    const listener = vi.fn<Parameters<typeof owner.subscribeActive>[0]>();
-    owner.subscribeActive(listener);
+  it("wakes the active Run, and hears the controller and every step", () => {
+    const { controller, runEvents } = setupRuns();
+    const listener = vi.fn<Parameters<typeof controller.subscribeActive>[0]>();
+    controller.subscribeActive(listener);
     expect(listener).toHaveBeenCalledExactlyOnceWith({ active: null, step: null });
 
-    owner.start("tour");
+    controller.start("tour");
     expect(runEvents).toEqual(["start"]);
-    const { active } = owner.getSnapshot();
+    const { active } = controller.getSnapshot();
     expect(listener).toHaveBeenLastCalledWith({ active, step: active!.run.getSnapshot() });
 
     active!.run.act("advance");
     expect(listener.mock.lastCall![0].step).toMatchObject({ stepIndex: 1 });
 
-    owner.stop();
+    controller.stop();
     expect(listener).toHaveBeenLastCalledWith({ active: null, step: null });
   });
 
   it("wakes a Run already active when it subscribes, calling the listener once", () => {
-    const { owner, runEvents } = setupRuns();
-    owner.start("tour");
+    const { controller, runEvents } = setupRuns();
+    controller.start("tour");
     const listener = vi.fn();
-    owner.subscribeActive(listener);
+    controller.subscribeActive(listener);
     expect(runEvents).toEqual(["start"]);
-    // Owner and Run each call at once on subscribe; the listener hears one call.
-    const { active } = owner.getSnapshot();
+    // Controller and Run each call at once on subscribe; the listener hears one call.
+    const { active } = controller.getSnapshot();
     expect(listener).toHaveBeenCalledExactlyOnceWith({ active, step: active!.run.getSnapshot() });
   });
 
   it("follows the Run that replaces the last one", () => {
-    const { owner, runEvents } = setupRuns();
-    owner.subscribeActive(() => {});
-    owner.start("tour");
-    owner.start("other");
-    // The owner exits the old Run once the change is announced, by which
+    const { controller, runEvents } = setupRuns();
+    controller.subscribeActive(() => {});
+    controller.start("tour");
+    controller.start("other");
+    // The controller exits the old Run once the change is announced, by which
     // time the listener has already moved to the new one.
     expect(runEvents).toEqual(["start", "start", "exit"]);
   });
 
-  it("lets go of the owner and the Run when unsubscribed", () => {
-    const { owner } = setupRuns();
+  it("lets go of the controller and the Run when unsubscribed", () => {
+    const { controller } = setupRuns();
     const listener = vi.fn();
-    const unsubscribe = owner.subscribeActive(listener);
-    owner.start("tour");
+    const unsubscribe = controller.subscribeActive(listener);
+    controller.start("tour");
     unsubscribe();
     listener.mockClear();
 
-    owner.getSnapshot().active!.run.act("advance");
-    owner.stop();
+    controller.getSnapshot().active!.run.act("advance");
+    controller.stop();
     expect(listener).not.toHaveBeenCalled();
   });
 });
@@ -709,18 +709,18 @@ describe("markDone and skip", () => {
   it("records done everywhere and lets guidance continue", () => {
     const onEvent = vi.fn();
     const onChange = vi.fn();
-    const owner = setup({ onEvent, onChange });
-    owner.start("create-deck");
+    const controller = setup({ onEvent, onChange });
+    controller.start("create-deck");
     onEvent.mockClear();
 
-    owner.checklists.home.markDone("create-deck");
+    controller.checklists.home.markDone("create-deck");
 
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "done" });
-    expect(owner.getSnapshot().active?.task.id).toBe("create-deck");
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "done" });
+    expect(controller.getSnapshot().active?.task.id).toBe("create-deck");
     expect(types(onEvent)).toEqual(["taskComplete:create-deck", "checklistComplete:decks"]);
     expect(onChange).toHaveBeenCalledOnce();
 
-    owner.markDone("create-deck");
+    controller.markDone("create-deck");
     expect(onChange).toHaveBeenCalledOnce();
     expect(onEvent).toHaveBeenCalledTimes(2);
   });
@@ -728,16 +728,16 @@ describe("markDone and skip", () => {
   it("skips in every view and exits that task's Run", () => {
     const onEvent = vi.fn();
     const onChange = vi.fn();
-    const owner = setup({ onEvent, onChange });
-    owner.checklists.decks.start("create-deck");
-    const { run } = owner.getSnapshot().active!;
+    const controller = setup({ onEvent, onChange });
+    controller.checklists.decks.start("create-deck");
+    const { run } = controller.getSnapshot().active!;
     onEvent.mockClear();
 
-    owner.checklists.home.skip("create-deck");
+    controller.checklists.home.skip("create-deck");
 
-    expect(statuses(owner.checklists.home)["create-deck"]).toBe("skipped");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("skipped");
-    expect(owner.getSnapshot().active).toBeNull();
+    expect(statuses(controller.checklists.home)["create-deck"]).toBe("skipped");
+    expect(statuses(controller.checklists.decks)["create-deck"]).toBe("skipped");
+    expect(controller.getSnapshot().active).toBeNull();
     expect(run.getSnapshot().phase).toBe("exited");
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ "create-deck": "skipped" }));
     expect(types(onEvent)).toEqual([
@@ -748,27 +748,27 @@ describe("markDone and skip", () => {
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "skipped" });
     expect(onEvent.mock.calls[1]![0]).toMatchObject({ checklist: "home" });
 
-    owner.skip("create-deck");
+    controller.skip("create-deck");
     expect(onChange).toHaveBeenCalledOnce();
   });
 
   it("names the view a skip came from, or the view that started the guidance skipped", () => {
     const onEvent = vi.fn<(event: AnyEvent) => void>();
-    const owner = setup({ onEvent });
+    const controller = setup({ onEvent });
     const skippedFrom = () =>
       onEvent.mock.calls
         .map(([event]) => event)
         .filter((event) => event.type === "taskSkipped")
         .map((event) => `${event.task.id}:${"checklist" in event ? event.checklist : "none"}`);
 
-    owner.checklists.home.skip("say-hello");
+    controller.checklists.home.skip("say-hello");
     // A guidance renderer's skip, for guidance a view started and guidance the app started.
-    owner.checklists.decks.start("create-deck");
-    owner.skip("create-deck");
-    owner.start("add-photo");
-    owner.skip("add-photo");
+    controller.checklists.decks.start("create-deck");
+    controller.skip("create-deck");
+    controller.start("add-photo");
+    controller.skip("add-photo");
     // Nothing guided.
-    owner.skip("read-tips");
+    controller.skip("read-tips");
 
     expect(skippedFrom()).toEqual([
       "say-hello:home",
@@ -780,26 +780,26 @@ describe("markDone and skip", () => {
 
   it("does not skip a done task", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.markDone("say-hello");
+    const controller = setup({ onEvent });
+    controller.markDone("say-hello");
     onEvent.mockClear();
-    owner.checklists.home.skip("say-hello");
-    expect(statuses(owner.checklists.home)["say-hello"]).toBe("done");
+    controller.checklists.home.skip("say-hello");
+    expect(statuses(controller.checklists.home)["say-hello"]).toBe("done");
     expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("counts skipped tasks towards completion", () => {
-    const owner = setup();
-    owner.checklists.home.skip("add-photo");
-    owner.checklists.home.skip("create-deck");
-    owner.markDone("read-tips");
-    owner.markDone("say-hello");
-    expect(owner.checklists.home.getSnapshot()).toMatchObject({
+    const controller = setup();
+    controller.checklists.home.skip("add-photo");
+    controller.checklists.home.skip("create-deck");
+    controller.markDone("read-tips");
+    controller.markDone("say-hello");
+    expect(controller.checklists.home.getSnapshot()).toMatchObject({
       finishedCount: 4,
       taskCount: 4,
       complete: true,
     });
-    expect(owner.checklists.decks.getSnapshot().complete).toBe(true);
+    expect(controller.checklists.decks.getSnapshot().complete).toBe(true);
   });
 });
 
@@ -807,13 +807,13 @@ describe("toggle and markTodo", () => {
   it("ticks a todo task and takes a done one back, in every view", () => {
     const onEvent = vi.fn();
     const onChange = vi.fn();
-    const owner = setup({ onEvent, onChange });
+    const controller = setup({ onEvent, onChange });
 
-    owner.checklists.home.toggle("say-hello");
-    expect(statuses(owner.checklists.home)["say-hello"]).toBe("done");
+    controller.checklists.home.toggle("say-hello");
+    expect(statuses(controller.checklists.home)["say-hello"]).toBe("done");
 
-    owner.checklists.home.toggle("say-hello");
-    expect(statuses(owner.checklists.home)["say-hello"]).toBe("todo");
+    controller.checklists.home.toggle("say-hello");
+    expect(statuses(controller.checklists.home)["say-hello"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskComplete:say-hello", "taskReopened:say-hello"]);
     // No condition, so nothing to hold back: the record is empty again.
     expect(onChange).toHaveBeenLastCalledWith(saved({}));
@@ -821,14 +821,14 @@ describe("toggle and markTodo", () => {
 
   it("takes a skipped task back, in every view", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.checklists.home.skip("create-deck");
+    const controller = setup({ onEvent });
+    controller.checklists.home.skip("create-deck");
     onEvent.mockClear();
 
-    owner.checklists.decks.toggle("create-deck");
+    controller.checklists.decks.toggle("create-deck");
 
-    expect(statuses(owner.checklists.home)["create-deck"]).toBe("todo");
-    expect(statuses(owner.checklists.decks)["create-deck"]).toBe("todo");
+    expect(statuses(controller.checklists.home)["create-deck"]).toBe("todo");
+    expect(statuses(controller.checklists.decks)["create-deck"]).toBe("todo");
     expect(types(onEvent)).toEqual(["taskUnskipped:create-deck"]);
     expect(onEvent.mock.calls[0]![0]).toMatchObject({ checklist: "decks" });
   });
@@ -836,57 +836,57 @@ describe("toggle and markTodo", () => {
   it("keeps a reopened task todo until its condition has been false", () => {
     const onEvent = vi.fn();
     const onChange = vi.fn();
-    const owner = setup({ context: { ...context, hasPhoto: true }, onEvent, onChange });
-    expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
+    const controller = setup({ context: { ...context, hasPhoto: true }, onEvent, onChange });
+    expect(statuses(controller.checklists.home)["add-photo"]).toBe("done");
 
-    owner.checklists.home.toggle("add-photo");
+    controller.checklists.home.toggle("add-photo");
     expect(onChange).toHaveBeenLastCalledWith(saved({ "add-photo": "reopened" }));
 
-    owner.update({ ...context, hasPhoto: true });
-    expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
+    controller.update({ ...context, hasPhoto: true });
+    expect(statuses(controller.checklists.home)["add-photo"]).toBe("todo");
 
-    owner.update({ ...context, hasPhoto: false });
+    controller.update({ ...context, hasPhoto: false });
     expect(onChange).toHaveBeenLastCalledWith(saved({}));
 
     onEvent.mockClear();
-    owner.update({ ...context, hasPhoto: true });
-    expect(statuses(owner.checklists.home)["add-photo"]).toBe("done");
+    controller.update({ ...context, hasPhoto: true });
+    expect(statuses(controller.checklists.home)["add-photo"]).toBe("done");
     expect(types(onEvent)).toEqual(["taskComplete:add-photo"]);
   });
 
   it("forgets the hold when the task is ticked again by hand", () => {
     const onChange = vi.fn();
-    const owner = setup({ context: { ...context, hasPhoto: true }, onChange });
-    owner.checklists.home.toggle("add-photo");
-    owner.checklists.home.toggle("add-photo");
+    const controller = setup({ context: { ...context, hasPhoto: true }, onChange });
+    controller.checklists.home.toggle("add-photo");
+    controller.checklists.home.toggle("add-photo");
     expect(onChange).toHaveBeenLastCalledWith(saved({ "add-photo": "done" }));
   });
 
   it("holds a reopened task back across a reload", () => {
-    const owner = setup({
+    const controller = setup({
       context: { ...context, hasPhoto: true },
       initial: saved({ "add-photo": "reopened" }),
     });
-    expect(statuses(owner.checklists.home)["add-photo"]).toBe("todo");
+    expect(statuses(controller.checklists.home)["add-photo"]).toBe("todo");
   });
 
   it("markTodo takes a task back from done or skipped", () => {
     const onEvent = vi.fn();
-    const owner = setup({ onEvent });
-    owner.markDone("read-tips");
-    owner.checklists.home.skip("create-deck");
+    const controller = setup({ onEvent });
+    controller.markDone("read-tips");
+    controller.checklists.home.skip("create-deck");
     onEvent.mockClear();
 
-    owner.markTodo("read-tips");
-    owner.markTodo("create-deck");
+    controller.markTodo("read-tips");
+    controller.markTodo("create-deck");
 
-    expect(statuses(owner.checklists.home)).toMatchObject({ "read-tips": "todo", "create-deck": "todo" });
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "todo" });
+    expect(statuses(controller.checklists.home)).toMatchObject({ "read-tips": "todo", "create-deck": "todo" });
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "todo" });
     expect(types(onEvent)).toEqual(["taskReopened:read-tips", "taskUnskipped:create-deck"]);
     expect(onEvent.mock.calls[1]![0]).not.toHaveProperty("checklist");
 
     onEvent.mockClear();
-    owner.markTodo("read-tips");
+    controller.markTodo("read-tips");
     expect(onEvent).not.toHaveBeenCalled();
   });
 });
@@ -895,20 +895,20 @@ describe("load and clear", () => {
   it("replaces the record without saving or announcing, and notifies changed views", () => {
     const onChange = vi.fn();
     const onEvent = vi.fn();
-    const owner = setup({ onChange, onEvent });
-    owner.markDone("say-hello");
+    const controller = setup({ onChange, onEvent });
+    controller.markDone("say-hello");
     const home = vi.fn();
     const decks = vi.fn();
-    owner.checklists.home.subscribe(home);
-    owner.checklists.decks.subscribe(decks);
+    controller.checklists.home.subscribe(home);
+    controller.checklists.decks.subscribe(decks);
     home.mockClear();
     decks.mockClear();
     onChange.mockClear();
     onEvent.mockClear();
 
-    owner.load(saved({ ghost: "done", "add-photo": "skipped" }));
+    controller.load(saved({ ghost: "done", "add-photo": "skipped" }));
 
-    expect(statuses(owner.checklists.home)).toEqual({
+    expect(statuses(controller.checklists.home)).toEqual({
       "add-photo": "skipped",
       "create-deck": "todo",
       "read-tips": "todo",
@@ -919,7 +919,7 @@ describe("load and clear", () => {
     expect(onChange).not.toHaveBeenCalled();
     expect(onEvent).not.toHaveBeenCalled();
 
-    owner.markDone("read-tips");
+    controller.markDone("read-tips");
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({
       ghost: "done",
       "add-photo": "skipped",
@@ -930,56 +930,56 @@ describe("load and clear", () => {
   it("clears everything once, keeps the Run, and is a no-op when already empty", () => {
     const onChange = vi.fn();
     const onEvent = vi.fn();
-    const owner = setup({ initial: saved({ ghost: "done", gone: "skipped" }), onChange, onEvent });
-    owner.markDone("say-hello");
-    owner.checklists.decks.skip("create-deck");
-    owner.start("add-photo");
+    const controller = setup({ initial: saved({ ghost: "done", gone: "skipped" }), onChange, onEvent });
+    controller.markDone("say-hello");
+    controller.checklists.decks.skip("create-deck");
+    controller.start("add-photo");
     const listener = vi.fn();
-    owner.checklists.home.subscribe(listener);
+    controller.checklists.home.subscribe(listener);
     listener.mockClear();
     onChange.mockClear();
     onEvent.mockClear();
 
-    owner.clear();
+    controller.clear();
 
     expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({}));
     expect(onEvent).not.toHaveBeenCalled();
     expect(listener).toHaveBeenCalledOnce();
-    expect(statuses(owner.checklists.home)).toEqual({
+    expect(statuses(controller.checklists.home)).toEqual({
       "add-photo": "todo",
       "create-deck": "todo",
       "read-tips": "todo",
       "say-hello": "todo",
     });
-    expect(owner.getSnapshot().active?.task.id).toBe("add-photo");
+    expect(controller.getSnapshot().active?.task.id).toBe("add-photo");
 
-    owner.clear();
+    controller.clear();
     expect(onChange).toHaveBeenCalledOnce();
   });
 
   it("does not re-check conditions after clear until the next update", () => {
-    const owner = setup({ context: { hasDeck: true, hasPhoto: false } });
-    owner.clear();
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "todo" });
-    owner.update({ hasDeck: true, hasPhoto: false });
-    expect(statuses(owner.checklists.decks)).toEqual({ "create-deck": "done" });
+    const controller = setup({ context: { hasDeck: true, hasPhoto: false } });
+    controller.clear();
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "todo" });
+    controller.update({ hasDeck: true, hasPhoto: false });
+    expect(statuses(controller.checklists.decks)).toEqual({ "create-deck": "done" });
   });
 });
 
 describe("re-entrancy and errors", () => {
   it("runs a command sent from a listener after the current change is fully announced", () => {
     const order: string[] = [];
-    const owner = setup({
+    const controller = setup({
       onEvent: (event) => order.push(`event:${event.type}`),
     });
-    owner.checklists.home.subscribe(() => {
-      const status = statuses(owner.checklists.home);
+    controller.checklists.home.subscribe(() => {
+      const status = statuses(controller.checklists.home);
       if (status["read-tips"] === "todo") return;
       order.push(`home:${status["read-tips"]}`);
-      if (status["say-hello"] === "todo") owner.markDone("say-hello");
+      if (status["say-hello"] === "todo") controller.markDone("say-hello");
     });
 
-    owner.markDone("read-tips");
+    controller.markDone("read-tips");
 
     expect(order).toEqual([
       "home:done",
@@ -987,25 +987,25 @@ describe("re-entrancy and errors", () => {
       "home:done",
       "event:taskComplete",
     ]);
-    expect(statuses(owner.checklists.home)["say-hello"]).toBe("done");
+    expect(statuses(controller.checklists.home)["say-hello"]).toBe("done");
   });
 
   it("keeps notifying when a listener throws, and reports the errors after", () => {
-    const owner = setup();
+    const controller = setup();
     const after = vi.fn();
-    const done = () => statuses(owner.checklists.home)["say-hello"] === "done";
-    owner.checklists.home.subscribe(() => {
+    const done = () => statuses(controller.checklists.home)["say-hello"] === "done";
+    controller.checklists.home.subscribe(() => {
       if (done()) throw new Error("first");
     });
-    owner.checklists.home.subscribe(() => {
+    controller.checklists.home.subscribe(() => {
       if (done()) throw new Error("second");
     });
-    owner.checklists.home.subscribe(after);
+    controller.checklists.home.subscribe(after);
     after.mockClear();
 
-    expect(() => owner.markDone("say-hello")).toThrow(AggregateError);
+    expect(() => controller.markDone("say-hello")).toThrow(AggregateError);
     expect(after).toHaveBeenCalledOnce();
-    expect(statuses(owner.checklists.home)["say-hello"]).toBe("done");
+    expect(statuses(controller.checklists.home)["say-hello"]).toBe("done");
   });
 
   it.each(["start", "stop", "skip"] as const)(
@@ -1013,28 +1013,28 @@ describe("re-entrancy and errors", () => {
     (command) => {
       const onEvent = vi.fn<(event: AnyEvent) => void>();
       const onChange = vi.fn();
-      const owner = createChecklists({
+      const controller = createChecklists({
         context: {},
         tasks: { a: { walkthrough: single }, b: { walkthrough: single } },
         checklists: { all: ["a", "b"], first: ["a"] },
         onEvent,
         onChange,
       });
-      owner.start("a");
-      const run = owner.getSnapshot().active!.run;
+      controller.start("a");
+      const run = controller.getSnapshot().active!.run;
       const unsubscribe = run.subscribe(() => {
         if (run.getSnapshot().phase !== "completed") return;
-        if (command === "start") owner.start("b");
-        else if (command === "stop") owner.stop();
-        else owner.checklists.all.skip("a");
+        if (command === "start") controller.start("b");
+        else if (command === "stop") controller.stop();
+        else controller.checklists.all.skip("a");
       });
       onEvent.mockClear();
 
       try {
         run.act("advance");
-        expect(statuses(owner.checklists.all)["a"]).toBe("done");
-        expect(statuses(owner.checklists.first)["a"]).toBe("done");
-        expect(owner.getSnapshot().active?.task.id ?? null).toBe(command === "start" ? "b" : null);
+        expect(statuses(controller.checklists.all)["a"]).toBe("done");
+        expect(statuses(controller.checklists.first)["a"]).toBe("done");
+        expect(controller.getSnapshot().active?.task.id ?? null).toBe(command === "start" ? "b" : null);
         expect(run.getSnapshot().phase).toBe("completed");
         expect(onChange).toHaveBeenCalledExactlyOnceWith(saved({ a: "done" }));
         expect(types(onEvent)).toEqual([
@@ -1054,7 +1054,7 @@ describe("re-entrancy and errors", () => {
 
   it("still requires the completion condition when a Run subscriber starts another task", () => {
     const onEvent = vi.fn();
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: { ready: false },
       tasks: {
         a: { walkthrough: single, isComplete: (c) => c.ready },
@@ -1063,23 +1063,23 @@ describe("re-entrancy and errors", () => {
       checklists: { all: ["a", "b"] },
       onEvent,
     });
-    owner.start("a");
-    const run = owner.getSnapshot().active!.run;
+    controller.start("a");
+    const run = controller.getSnapshot().active!.run;
     const unsubscribe = run.subscribe(() => {
-      if (run.getSnapshot().phase === "completed") owner.start("b");
+      if (run.getSnapshot().phase === "completed") controller.start("b");
     });
     onEvent.mockClear();
 
     try {
       run.act("advance");
-      expect(statuses(owner.checklists.all)["a"]).toBe("todo");
-      expect(owner.getSnapshot().active?.task.id).toBe("b");
+      expect(statuses(controller.checklists.all)["a"]).toBe("todo");
+      expect(controller.getSnapshot().active?.task.id).toBe("b");
       expect(types(onEvent)).toEqual(["taskStopped:a", "taskStarted:b"]);
       expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
 
-      owner.update({ ready: true });
-      expect(statuses(owner.checklists.all)["a"]).toBe("done");
-      expect(owner.getSnapshot().active?.task.id).toBe("b");
+      controller.update({ ready: true });
+      expect(statuses(controller.checklists.all)["a"]).toBe("done");
+      expect(controller.getSnapshot().active?.task.id).toBe("b");
     } finally {
       unsubscribe();
     }
@@ -1087,22 +1087,22 @@ describe("re-entrancy and errors", () => {
 
   it("keeps a skip made from a finished Run when the task has a completion condition", () => {
     const onEvent = vi.fn();
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: { ready: false },
       tasks: { a: { walkthrough: single, isComplete: (c) => c.ready } },
       checklists: { all: ["a"] },
       onEvent,
     });
-    owner.start("a");
-    const run = owner.getSnapshot().active!.run;
+    controller.start("a");
+    const run = controller.getSnapshot().active!.run;
     const unsubscribe = run.subscribe(() => {
-      if (run.getSnapshot().phase === "completed") owner.checklists.all.skip("a");
+      if (run.getSnapshot().phase === "completed") controller.checklists.all.skip("a");
     });
     onEvent.mockClear();
 
     try {
       run.act("advance");
-      expect(statuses(owner.checklists.all)["a"]).toBe("skipped");
+      expect(statuses(controller.checklists.all)["a"]).toBe("skipped");
       expect(types(onEvent)).toEqual(["taskStopped:a", "taskSkipped:a", "checklistComplete:all"]);
       expect(onEvent.mock.calls[0]![0]).toMatchObject({ reason: "finished" });
     } finally {
@@ -1110,22 +1110,22 @@ describe("re-entrancy and errors", () => {
     }
   });
 
-  it("starts another task from a Run listener without confusing the owner", () => {
+  it("starts another task from a Run listener without confusing the controller", () => {
     const events: string[] = [];
-    const owner = createChecklists({
+    const controller = createChecklists({
       context: {},
       tasks: { a: { walkthrough: single }, b: { walkthrough: single } },
       checklists: { all: ["a", "b"] },
       onEvent: (event) => events.push(`${event.type}:${"task" in event ? event.task.id : event.checklist}`),
       run: {
         onEvent: (event) => {
-          if (event.type === "finish" && owner.getSnapshot().active === null) owner.start("b");
+          if (event.type === "finish" && controller.getSnapshot().active === null) controller.start("b");
         },
       },
     });
-    owner.start("a");
-    finish(owner.getSnapshot().active!.run, 1);
-    expect(owner.getSnapshot().active?.task.id).toBe("b");
+    controller.start("a");
+    finish(controller.getSnapshot().active!.run, 1);
+    expect(controller.getSnapshot().active?.task.id).toBe("b");
     expect(events).toEqual([
       "taskStarted:a",
       "taskStopped:a",
@@ -1136,13 +1136,13 @@ describe("re-entrancy and errors", () => {
 });
 
 describe("a task written in its own file", () => {
-  it("is used unchanged by an owner", () => {
+  it("is used unchanged by a controller", () => {
     const task = { walkthrough: guide, isComplete: (c) => c.hasDeck } satisfies Task<Context>;
-    const owner = createChecklists({
+    const controller = createChecklists({
       context,
       tasks: { deck: task },
       checklists: { all: ["deck"] },
     });
-    expect(owner.checklists.all.getSnapshot().tasks[0]!.task.walkthrough).toBe(guide);
+    expect(controller.checklists.all.getSnapshot().tasks[0]!.task.walkthrough).toBe(guide);
   });
 });
