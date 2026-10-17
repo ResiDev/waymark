@@ -1,52 +1,34 @@
 import { copy } from "../checklists/record";
 import type { Stored } from "../checklists/record";
-import type { Snapshot } from "../run/types";
+import { dictionary } from "../dictionary";
+import type { WalkthroughProgress } from "../walkthrough/types";
 
 /**
- * Each Task's status. Only Tasks off todo are listed; `reopened` is a Task
- * taken back from done, and is stored like the others.
+ * One user's record: each walkthrough they have started, by id, and each
+ * task's status. Only tasks off todo are listed; `reopened` is a task taken
+ * back from done, and is stored like the others.
  */
-export type StoredTasks = Readonly<{
-  version: 3;
+export type StoredRecord = Readonly<{
+  version: 4;
+  walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
   tasks: Readonly<Record<string, "done" | "skipped" | "reopened">>;
 }>;
 
-/** The active Task and where its walkthrough is. */
-export type StoredChecklistWalkthrough = Readonly<{
-  version: 1;
-  task: string;
-  /** The checklist whose `start` began it, so its skip events still name it. */
-  from?: string;
-  step: number;
-  stepCount: number;
-  collapsed: boolean;
-  /** Epoch ms. */
-  savedAt: number;
+/** What a record holds once read: copies, with no prototype, so any id is an ordinary key. */
+export type Read = Readonly<{
+  walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
+  tasks: Stored;
 }>;
-
-/** A walkthrough run on its own. Ended, it stays ended, so a finished tour is not shown again. */
-export type StoredWalkthrough =
-  | Readonly<{
-      version: 1;
-      phase: "running";
-      step: number;
-      stepCount: number;
-      collapsed: boolean;
-      /** Epoch ms. */
-      savedAt: number;
-    }>
-  | Readonly<{ version: 1; phase: "completed" | "exited" }>;
 
 /** `null`: nothing is stored. */
 export type Parsed<T> =
   | Readonly<{ ok: true; value: T | null }>
   | Readonly<{ ok: false; error: Error }>;
 
-/** A walkthrough record restores for a day after its last change. */
+/** Progress part way through restores for a day after its last change. */
 export const DEFAULT_MAX_AGE = 24 * 60 * 60 * 1000;
 
-const TASKS_VERSION = 3;
-const WALKTHROUGH_VERSION = 1;
+const VERSION = 4;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,117 +42,67 @@ const isTaskMap = (value: unknown): value is Stored =>
 const isIndex = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
 
-/** A step inside its walkthrough, saved at a real time. */
-const isPosition = (value: Readonly<Record<string, unknown>>): boolean =>
+/** A step inside its walkthrough, changed at a real time. */
+const isProgress = (value: unknown): value is WalkthroughProgress =>
+  isRecord(value) &&
+  (value["status"] === "running" || value["status"] === "finished" || value["status"] === "exited") &&
   isIndex(value["step"]) &&
   isIndex(value["stepCount"]) &&
   value["step"] < value["stepCount"] &&
   typeof value["collapsed"] === "boolean" &&
-  Number.isFinite(value["savedAt"]);
+  Number.isFinite(value["changedAt"]);
 
-const nothing = { ok: true, value: null } as const;
-
-const invalid = (record: "tasks" | "walkthrough", value: unknown, latest: number): Parsed<never> => {
+const invalid = (value: unknown): Parsed<never> => {
   const version = isRecord(value) ? value["version"] : undefined;
   const message =
-    typeof version === "number" && version > latest
-      ? `The stored ${record} record is version ${version}; this Waymark reads up to ${latest}.`
-      : `The stored ${record} record is not one Waymark wrote.`;
+    typeof version === "number" && version > VERSION
+      ? `The stored record is version ${version}; this Waymark reads up to ${VERSION}.`
+      : "The stored record is not one Waymark wrote.";
   return { ok: false, error: new Error(message) };
 };
 
-/** Version 2 is the old localStorage envelope; it holds the same statuses. */
-export function parseTasks(value: unknown): Parsed<Stored> {
-  if (value === null || value === undefined) return nothing;
-  if (isRecord(value)) {
-    const tasks =
-      value["version"] === TASKS_VERSION
-        ? value["tasks"]
-        : value["version"] === 2
-          ? value["record"]
-          : undefined;
-    if (isTaskMap(tasks)) return { ok: true, value: copy(tasks) };
+const progressOf = (value: Readonly<Record<string, unknown>>): Record<string, WalkthroughProgress> | undefined => {
+  const walkthroughs = dictionary<WalkthroughProgress>();
+  for (const [id, progress] of Object.entries(value)) {
+    if (!isProgress(progress)) return undefined;
+    const { status, step, stepCount, collapsed, changedAt } = progress;
+    walkthroughs[id] = { status, step, stepCount, collapsed, changedAt };
   }
-  return invalid("tasks", value, TASKS_VERSION);
-}
+  return walkthroughs;
+};
 
-export function parseChecklistWalkthrough(
-  value: unknown,
-): Parsed<StoredChecklistWalkthrough> {
-  if (value === null || value === undefined) return nothing;
-  if (
-    !isRecord(value) ||
-    value["version"] !== WALKTHROUGH_VERSION ||
-    typeof value["task"] !== "string" ||
-    (value["from"] !== undefined && typeof value["from"] !== "string") ||
-    !isPosition(value)
-  ) {
-    return invalid("walkthrough", value, WALKTHROUGH_VERSION);
-  }
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every field was checked above.
-  return { ok: true, value: value as StoredChecklistWalkthrough };
-}
-
-export function parseWalkthrough(value: unknown): Parsed<StoredWalkthrough> {
-  if (value === null || value === undefined) return nothing;
-  if (isRecord(value) && value["version"] === WALKTHROUGH_VERSION) {
-    const phase = value["phase"];
-    if (phase === "completed" || phase === "exited") {
-      return { ok: true, value: { version: 1, phase } };
+/** Versions 2 and 3 are the old records of task statuses alone, with no walkthrough in them. */
+export function parseRecord(value: unknown): Parsed<Read> {
+  if (value === null || value === undefined) return { ok: true, value: null };
+  if (!isRecord(value)) return invalid(value);
+  if (value["version"] === VERSION) {
+    const walkthroughs = isRecord(value["walkthroughs"]) ? progressOf(value["walkthroughs"]) : undefined;
+    const tasks = value["tasks"];
+    if (walkthroughs !== undefined && isTaskMap(tasks)) {
+      return { ok: true, value: { walkthroughs, tasks: copy(tasks) } };
     }
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every field was checked.
-    if (phase === "running" && isPosition(value)) return { ok: true, value: value as StoredWalkthrough };
+    return invalid(value);
   }
-  return invalid("walkthrough", value, WALKTHROUGH_VERSION);
+  const tasks = value["version"] === 3 ? value["tasks"] : value["version"] === 2 ? value["record"] : undefined;
+  if (isTaskMap(tasks)) return { ok: true, value: { walkthroughs: dictionary(), tasks: copy(tasks) } };
+  return invalid(value);
 }
 
+/** Progress part way through that its walkthrough cannot pick up again. Ended progress stays ended. */
 export const staleness = (
-  saved: Readonly<{ stepCount: number; savedAt: number }>,
+  progress: WalkthroughProgress,
   stepCount: number,
   maxAge: number,
 ): "stepsChanged" | "expired" | undefined => {
-  if (saved.stepCount !== stepCount) return "stepsChanged";
-  return Date.now() - saved.savedAt > maxAge ? "expired" : undefined;
+  if (progress.status !== "running") return undefined;
+  if (progress.stepCount !== stepCount) return "stepsChanged";
+  return Date.now() - progress.changedAt > maxAge ? "expired" : undefined;
 };
 
-export const storedTasks = (tasks: Stored): StoredTasks => ({
-  version: TASKS_VERSION,
-  tasks,
-});
+export const storedRecord = (
+  walkthroughs: Readonly<Record<string, WalkthroughProgress>>,
+  tasks: Stored,
+): StoredRecord => ({ version: VERSION, walkthroughs: { ...walkthroughs }, tasks: { ...tasks } });
 
-/** `null` once the run has ended: a checklist keeps whether its Task finished in the Task's status. */
-export const storedChecklistWalkthrough = (
-  task: string,
-  from: string | undefined,
-  snapshot: Snapshot,
-): StoredChecklistWalkthrough | null =>
-  snapshot.phase === "running"
-    ? {
-        version: 1,
-        task,
-        ...(from === undefined ? {} : { from }),
-        step: snapshot.stepIndex,
-        stepCount: snapshot.stepCount,
-        collapsed: snapshot.collapsed,
-        savedAt: Date.now(),
-      }
-    : null;
-
-export const storedWalkthrough = (snapshot: Snapshot): StoredWalkthrough | null => {
-  switch (snapshot.phase) {
-    case "loading":
-      return null;
-    case "running":
-      return {
-        version: 1,
-        phase: "running",
-        step: snapshot.stepIndex,
-        stepCount: snapshot.stepCount,
-        collapsed: snapshot.collapsed,
-        savedAt: Date.now(),
-      };
-    case "completed":
-    case "exited":
-      return { version: 1, phase: snapshot.phase };
-  }
-};
+export const isEmptyRecord = (record: StoredRecord): boolean =>
+  Object.keys(record.walkthroughs).length === 0 && Object.keys(record.tasks).length === 0;

@@ -1,23 +1,26 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import {
-  createChecklists,
+  defineChecklists,
   defineWalkthrough,
   everyProblem,
   localStorageAdapter,
+  useRun,
   Walkthrough,
+  WaymarkRoot,
   type BeaconRenderProps,
   type ChecklistsEvent,
-  type ReactTask,
+  type Run,
+  type RunSnapshot,
   type Snapshot,
   type StorageAdapter,
-  type StoredChecklistWalkthrough,
-  type StoredTasks,
-  type StoredWalkthrough,
+  type StoredRecord,
   type WalkthroughRenderProps,
+  type WalkthroughStep,
+  type WaymarkEvent,
   type WaymarkProblem,
 } from "react-waymark";
 import { CustomBeacon, CustomPopover } from "./popover";
-import { createStore, data, inviteOpen, record, setup, useStore, watched, whatsNewOpen, type AppData } from "./state";
+import { createStore, data, inviteOpen, record, runStatus, setup, useStore, whatsNewOpen, type AppData } from "./state";
 
 // Between them these walkthroughs use every step shape, so the lab exercises each.
 
@@ -25,75 +28,101 @@ const nameLongEnough = (waymark: Element | null) =>
   waymark instanceof HTMLInputElement && waymark.value.trim().length >= 3;
 
 /** Crosses a route: step 2's Waymark mounts only once the decks page has. */
-const createDeck = defineWalkthrough([
-  {
-    waymark: "nav-decks",
-    advance: "click",
-    preferredPlacement: "right",
-    content: <>Decks live under <b>Decks</b> in the sidebar.</>,
-  },
-  { waymark: "new-deck", advance: "click", content: "Press New deck." },
-  {
-    waymark: "deck-name",
-    advance: { state: nameLongEnough, then: "unlock" },
-    content: "Name it. Next unlocks at three letters.",
-  },
-  { waymark: "deck-create", advance: "click", content: "Create it." },
-  { content: <>That's your first deck. <i>Decks group the cards you study.</i></> },
-]);
+const createDeck = defineWalkthrough({
+  id: "createDeck",
+  steps: [
+    {
+      waymark: "nav-decks",
+      advance: "click",
+      preferredPlacement: "right",
+      content: <>Decks live under <b>Decks</b> in the sidebar.</>,
+    },
+    { waymark: "new-deck", advance: "click", content: "Press New deck." },
+    {
+      waymark: "deck-name",
+      advance: { state: nameLongEnough, then: "unlock" },
+      content: "Name it. Next unlocks at three letters.",
+    },
+    { waymark: "deck-create", advance: "click", content: "Create it." },
+    { content: <>That's your first deck. <i>Decks group the cards you study.</i></> },
+  ],
+});
 
-const addPhoto = defineWalkthrough([
-  {
-    waymark: "avatar",
-    advance: "click",
-    preferredPlacement: "left",
-    content: "Your profile is behind your avatar.",
-  },
-  { waymark: "upload-photo", advance: "click", content: "Choose a photo. Any will do." },
-]);
+const addPhoto = defineWalkthrough({
+  id: "addPhoto",
+  steps: [
+    {
+      waymark: "avatar",
+      advance: "click",
+      preferredPlacement: "left",
+      content: "Your profile is behind your avatar.",
+    },
+    { waymark: "upload-photo", advance: "click", content: "Choose a photo. Any will do." },
+  ],
+});
 
-const tour = defineWalkthrough([
-  {
-    content: (
-      <>
-        <b>Welcome to Study.</b> A quick look around. <kbd>→</kbd> moves on, <kbd>←</kbd> goes back,{" "}
-        <kbd>Esc</kbd> or a click elsewhere collapses this into a beacon.
-      </>
-    ),
-  },
-  {
-    selector: ".brand",
-    preferredPlacement: "below",
-    content: "Found by a CSS selector rather than data-waymark.",
-  },
-  {
-    waymark: "search",
-    advance: { event: "focus", then: "unlock" },
-    content: "Click into search. Next unlocks once it has focus.",
-  },
-  {
-    waymark: "help",
-    preferredPlacement: "right",
-    content: "Help sits at the right edge, so the popover flips to fit.",
-  },
-  {
-    waymark: "streak",
-    advance: { state: () => true, delayMs: 2000 },
-    content: "Your streak. This step moves on by itself after two seconds.",
-  },
-  {
-    waymark: "tip",
-    preferredPlacement: "below",
-    content: "A tip. Press its × to take this step's Waymark out of the page.",
-  },
-  { waymark: "guide", content: "Far down the page: the Run scrolled here." },
-  {
-    waymark: "feedback",
-    preferredPlacement: "below",
-    content: "Feedback, bottom right. There is no room below, so it opens above.",
-  },
-  { content: "That's the tour.", popoverStyle: { background: "#f0fdf4", borderColor: "#bbf7d0" } },
-]);
+const tour = defineWalkthrough({
+  id: "tour",
+  steps: [
+    {
+      content: (
+        <>
+          <b>Welcome to Study.</b> A quick look around. <kbd>→</kbd> moves on, <kbd>←</kbd> goes back,{" "}
+          <kbd>Esc</kbd> or a click elsewhere collapses this into a beacon.
+        </>
+      ),
+    },
+    {
+      selector: ".brand",
+      preferredPlacement: "below",
+      content: "Found by a CSS selector rather than data-waymark.",
+    },
+    {
+      waymark: "search",
+      advance: { event: "focus", then: "unlock" },
+      content: "Click into search. Next unlocks once it has focus.",
+    },
+    {
+      waymark: "help",
+      preferredPlacement: "right",
+      content: "Help sits at the right edge, so the popover flips to fit.",
+    },
+    {
+      waymark: "streak",
+      advance: { state: () => true, delayMs: 2000 },
+      content: "Your streak. This step moves on by itself after two seconds.",
+    },
+    {
+      waymark: "tip",
+      preferredPlacement: "below",
+      content: "A tip. Press its × to take this step's Waymark out of the page.",
+    },
+    { waymark: "guide", content: "Far down the page: the Run scrolled here." },
+    {
+      waymark: "feedback",
+      preferredPlacement: "below",
+      content: "Feedback, bottom right. There is no room below, so it opens above.",
+    },
+    { content: "That's the tour.", popoverStyle: { background: "#f0fdf4", borderColor: "#bbf7d0" } },
+  ],
+});
+
+export const whatsNew = defineWalkthrough({
+  id: "whatsNew",
+  steps: [
+    {
+      waymark: "whats-new",
+      preferredPlacement: "below",
+      content: (
+        <>
+          New: sharing. This walkthrough is its own <code>{"<Walkthrough walkthrough>"}</code>, outside the
+          checklists.
+        </>
+      ),
+    },
+    { waymark: "nav-decks", preferredPlacement: "right", content: "Share a deck from the decks page." },
+  ],
+});
 
 const contextOf = (app: AppData) => ({
   hasDeck: app.decks.length > 0,
@@ -102,83 +131,9 @@ const contextOf = (app: AppData) => ({
   emailVerified: app.emailVerified,
 });
 
-const TASKS_KEY = "waymark-react-checklists";
-export const WALKTHROUGH_KEY = "waymark-react-walkthrough";
-const WHATS_NEW_KEY = "waymark-react-whats-new";
+type Context = ReturnType<typeof contextOf>;
 
-const readLocal = <T,>(key: string): T | null => JSON.parse(localStorage.getItem(key) ?? "null");
-
-/** What storage holds now, shown in the lab. In `server` mode, what the server last answered. */
-export const stored = createStore<StoredTasks | null>(setup.get().storage === "local" ? readLocal(TASKS_KEY) : null);
-export const storedWalkthrough = createStore(readLocal<StoredChecklistWalkthrough>(WALKTHROUGH_KEY));
-export const storedWhatsNew = createStore(readLocal<StoredWalkthrough>(WHATS_NEW_KEY));
-
-/** localStorage, with each save, and each change another tab makes, shown in the lab. */
-function shownLocally<T>(key: string, shown: { set: (value: T | null) => void }): StorageAdapter<T> {
-  const local = localStorageAdapter<T>(key);
-  return {
-    load: local.load,
-    save: (value) => {
-      void local.save(value);
-      shown.set(value);
-    },
-    subscribe: (listener) =>
-      local.subscribe!((value) => {
-        shown.set(value);
-        listener(value);
-      }),
-  };
-}
-
-const answer = async (response: Promise<Response>): Promise<StoredTasks | null> => {
-  const value = (await (await response).json()) as StoredTasks | null;
-  stored.set(value);
-  return value;
-};
-
-/** The dev server's /api/tasks: slow, and without `subscribe`, so tabs don't hear each other. */
-const serverTasks: StorageAdapter<StoredTasks> = {
-  load: () => answer(fetch("/api/tasks")),
-  save: async (value) => {
-    await answer(
-      value === null
-        ? fetch("/api/tasks", { method: "DELETE" })
-        : fetch("/api/tasks", { method: "PUT", body: JSON.stringify(value) }),
-    );
-  },
-};
-
-const describeProblem = (problem: WaymarkProblem): string => {
-  switch (problem.type) {
-    case "storageFailed":
-    case "recordUnreadable":
-      return `${problem.type} (${problem.record}): ${String(problem.error)}`;
-    case "recordDropped":
-      return `${problem.type} (${problem.reason})`;
-    case "waymarkLost":
-    case "waymarkMissing":
-      return `${problem.type} on step ${problem.stepIndex + 1}`;
-    default:
-      return `${problem.type} in ${problem.callback}: ${String(problem.error)}`;
-  }
-};
-
-const describeEvent = (event: ChecklistsEvent<any, any>): string => {
-  switch (event.type) {
-    case "taskStopped":
-      return `${event.type} ${event.task.id} (${event.reason})`;
-    case "taskSkipped":
-    case "taskUnskipped":
-      return `${event.type} ${event.task.id}${event.checklist ? ` from ${event.checklist}` : ""}`;
-    case "checklistComplete":
-      return `${event.type} ${event.checklist}`;
-    default:
-      return `${event.type} ${event.task.id}`;
-  }
-};
-
-export const controller = createChecklists({
-  context: contextOf(data.get()),
+export const onboarding = defineChecklists({
   tasks: {
     tour: {
       title: "Take the tour",
@@ -189,12 +144,12 @@ export const controller = createChecklists({
       title: "Create your first deck",
       description: "Done when the app has a deck, however it got one.",
       walkthrough: createDeck,
-      isComplete: (c) => c.hasDeck,
+      isComplete: (c: Context) => c.hasDeck,
     },
     "add-photo": {
       title: "Add a profile photo",
       walkthrough: addPhoto,
-      isComplete: (c) => c.hasPhoto,
+      isComplete: (c: Context) => c.hasPhoto,
     },
     "pick-theme": {
       title: "Pick a theme",
@@ -214,13 +169,13 @@ export const controller = createChecklists({
       title: "Invite a teammate",
       description: "An application action rather than a walkthrough.",
       action: { label: "Invite", onSelect: () => inviteOpen.set(true) },
-      isComplete: (c) => c.invited,
+      isComplete: (c: Context) => c.invited,
     },
     "verify-email": {
       title: "Verify your email",
       description: "The app ticks this one. Its box can't be ticked by hand.",
       toggleable: false,
-      isComplete: (c) => c.emailVerified,
+      isComplete: (c: Context) => c.emailVerified,
     },
     "read-guide": {
       title: "Read the study guide",
@@ -240,23 +195,97 @@ export const controller = createChecklists({
     decks: ["create-deck"],
     settings: ["add-photo", "pick-theme", "verify-email"],
   },
-  storage: {
-    tasks: setup.get().storage === "server" ? serverTasks : shownLocally(TASKS_KEY, stored),
-    walkthrough: shownLocally(WALKTHROUGH_KEY, storedWalkthrough),
-  },
-  problemHandlers: everyProblem((problem) => record("controller", describeProblem(problem))),
-  onEvent: (event) => record("controller", describeEvent(event)),
-  run: {
-    waymarkPadding: setup.get().padding,
-    onEvent: (event) => record("run", `${event.type} on step ${event.stepIndex + 1}`),
-  },
 });
 
-data.subscribe(() => controller.update(contextOf(data.get())));
+/** The Run keeps one record per user: every walkthrough's progress and every task's status. */
+const RECORD_KEY = "waymark-react";
 
-export type AnyTask = ReactTask<any> & { readonly id: string };
+/** What storage holds now, shown in the lab. In `server` mode, what the server last answered. */
+export const stored = createStore<StoredRecord | null>(null);
 
-export const describeRun = (snapshot: Snapshot): string => {
+/** localStorage, with each load, each save and each change another tab makes shown in the lab. */
+function shownLocally(key: string): StorageAdapter<StoredRecord> {
+  const local = localStorageAdapter<StoredRecord>(key);
+  return {
+    load: () => {
+      const value = local.load() as StoredRecord | null;
+      // The root makes its Run, which loads, while it renders: the lab hears it after.
+      queueMicrotask(() => stored.set(value));
+      return value;
+    },
+    save: (value) => {
+      void local.save(value);
+      stored.set(value);
+    },
+    subscribe: (listener) =>
+      local.subscribe!((value) => {
+        stored.set(value);
+        listener(value);
+      }),
+  };
+}
+
+const answer = async (response: Promise<Response>): Promise<StoredRecord | null> => {
+  const value = (await (await response).json()) as StoredRecord | null;
+  stored.set(value);
+  return value;
+};
+
+/** The dev server's /api/record: slow, and without `subscribe`, so tabs don't hear each other. */
+const serverRecord: StorageAdapter<StoredRecord> = {
+  load: () => answer(fetch("/api/record")),
+  save: async (value) => {
+    await answer(
+      value === null
+        ? fetch("/api/record", { method: "DELETE" })
+        : fetch("/api/record", { method: "PUT", body: JSON.stringify(value) }),
+    );
+  },
+};
+
+const localRecord = shownLocally(RECORD_KEY);
+
+const storageOf = () => (setup.get().storage === "server" ? serverRecord : localRecord);
+
+/** Bumped to give `<WaymarkRoot>` a new key: a new Run, as for another user. */
+const generation = createStore(0);
+
+/** Clears the stored record and starts a new Run on it, without a reload. */
+export const forgetRecord = async () => {
+  await storageOf().save(null);
+  generation.set(generation.get() + 1);
+};
+
+const describeProblem = (problem: WaymarkProblem): string => {
+  switch (problem.type) {
+    case "storageFailed":
+    case "recordUnreadable":
+      return `${problem.type}: ${String(problem.error)}`;
+    case "recordDropped":
+      return `${problem.type} ${problem.walkthrough} (${problem.reason})`;
+    case "waymarkLost":
+    case "waymarkMissing":
+      return `${problem.type} in ${problem.walkthrough} on step ${problem.stepIndex + 1}`;
+    default:
+      return `${problem.type} in ${problem.callback}: ${String(problem.error)}`;
+  }
+};
+
+const describeTaskEvent = (event: ChecklistsEvent): string => {
+  switch (event.type) {
+    case "taskStopped":
+      return `${event.type} ${event.task.id} (${event.reason})`;
+    case "taskSkipped":
+    case "taskUnskipped":
+      return `${event.type} ${event.task.id}${event.checklist ? ` from ${event.checklist}` : ""}`;
+    case "checklistComplete":
+      return `${event.type} ${event.checklist}`;
+    default:
+      return `${event.type} ${event.task.id}`;
+  }
+};
+
+export const describe = (snapshot: Snapshot): string => {
   if (snapshot.phase !== "running") return snapshot.phase;
   const parts = [`step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`, snapshot.waymark.status];
   if (!snapshot.canAdvance) parts.push("gate shut");
@@ -264,23 +293,58 @@ export const describeRun = (snapshot: Snapshot): string => {
   return parts.join(" · ");
 };
 
-// Mounted only beside the renderer: subscribing makes a Run watch the page, so
-// a logger that outlived the renderer would keep an unrendered Run working.
-function WatchLog() {
+/** The open walkthrough, or else the beacons to go back to. */
+const describeRun = ({ open, beacons }: RunSnapshot): string | null => {
+  if (open) return `${open.task ?? open.walkthrough.id}: ${describe(open.snapshot)}`;
+  if (beacons.length === 0) return null;
+  return `beacons: ${beacons.map((beacon) => `${beacon.walkthrough.id} at step ${beacon.stepIndex + 1}`).join(", ")}`;
+};
+
+const onEvent = (event: WaymarkEvent<WalkthroughStep>) => {
+  if (!("walkthrough" in event)) {
+    record("checklist", describeTaskEvent(event));
+    return;
+  }
+  const by = event.type === "interrupt" ? ` by ${event.interruptedBy}` : "";
+  record("run", `${event.walkthrough}: ${event.type}${by} on step ${event.stepIndex + 1} → ${describe(event.snapshot)}`);
+  // Asked for again only once it has ended, as the app would.
+  if (event.walkthrough === whatsNew.id && event.snapshot.phase !== "running") whatsNewOpen.set(false);
+};
+
+const problemHandlers = everyProblem((problem) => record("problem", describeProblem(problem)));
+
+/** The Run of the mounted root, for what lives outside it: the lab and `window.playground`. */
+export const currentRun = createStore<Run | null>(null);
+
+const noRun = () => () => {};
+
+/** The current Run's snapshot, or null before a root has mounted. */
+export function useRunSnapshot(): RunSnapshot | null {
+  const run = useStore(currentRun);
+  const subscribe = useCallback((listener: () => void) => run?.subscribe(listener) ?? noRun(), [run]);
+  const get = () => run?.getSnapshot() ?? null;
+  return useSyncExternalStore(subscribe, get, get);
+}
+
+/** Inside the root, hands its Run out and logs where it is. Following it with `subscribe` changes nothing. */
+function ShareRun() {
+  const run = useRun();
   useEffect(() => {
+    currentRun.set(run);
     let last: string | null = null;
-    const stop = controller.subscribeActive(({ active, step }) => {
-      const line = active && step ? `${active.task.id}: ${describeRun(step)}` : null;
+    const stop = run.subscribe((snapshot) => {
+      const line = describeRun(snapshot);
       if (line === last) return;
       last = line;
-      watched.set(line);
+      runStatus.set(line);
       if (line !== null) record("waymark", line);
     });
     return () => {
       stop();
-      watched.set(null);
+      runStatus.set(null);
+      if (currentRun.get() === run) currentRun.set(null);
     };
-  }, []);
+  }, [run]);
   return null;
 }
 
@@ -290,49 +354,33 @@ const customPopover = {
   renderBeacon: (props: BeaconRenderProps) => <CustomBeacon {...props} />,
 };
 
-export function Guidance() {
-  const { popover } = useStore(setup);
+/**
+ * The one `<WaymarkRoot>`: it makes the Run, draws it, and reads the app's
+ * data as its checklists' context. A new key, for new storage or a forgotten
+ * record, makes a new Run, as another user would get.
+ */
+export function Guidance({ children }: { children: ReactNode }) {
+  const { popover, padding, storage } = useStore(setup);
+  const key = `${storage}:${useStore(generation)}`;
+  const app = useStore(data);
+  const context = useMemo(() => contextOf(app), [app]);
   return (
-    <>
-      <Walkthrough checklists={controller} {...(popover === "custom" ? customPopover : {})} />
-      <WatchLog />
-    </>
+    <WaymarkRoot
+      key={key}
+      storage={storage === "server" ? serverRecord : localRecord}
+      context={context}
+      waymarkPadding={padding}
+      problemHandlers={problemHandlers}
+      onEvent={onEvent}
+      {...(popover === "custom" ? customPopover : {})}
+    >
+      <ShareRun />
+      {children}
+    </WaymarkRoot>
   );
 }
 
-export const whatsNew = defineWalkthrough(
-  [
-    {
-      waymark: "whats-new",
-      preferredPlacement: "below",
-      content: (
-        <>
-          New: sharing. This walkthrough is its own <code>{"<Walkthrough walkthrough>"}</code>, outside the
-          checklists.
-        </>
-      ),
-    },
-    { waymark: "nav-decks", preferredPlacement: "right", content: "Share a deck from the decks page." },
-  ],
-  {
-    storage: shownLocally(WHATS_NEW_KEY, storedWhatsNew),
-    problemHandlers: everyProblem((problem) => record("whats-new", describeProblem(problem))),
-  },
-);
-
+/** The app asking: shown once nothing else is open, and never again once finished or exited. */
 export function WhatsNew() {
-  const active = useStore(whatsNewOpen);
-  const { popover, padding } = useStore(setup);
-  return (
-    <Walkthrough
-      walkthrough={whatsNew}
-      active={active}
-      waymarkPadding={padding}
-      onEvent={(event) => {
-        record("whats-new", `${event.type} on step ${event.stepIndex + 1} → ${describeRun(event.snapshot)}`);
-        if (event.snapshot.phase !== "running") whatsNewOpen.set(false);
-      }}
-      {...(popover === "custom" ? customPopover : {})}
-    />
-  );
+  return <Walkthrough walkthrough={whatsNew} active={useStore(whatsNewOpen)} />;
 }

@@ -17,7 +17,7 @@ import {
   Users,
 } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
-import { useChecklist } from "react-waymark";
+import { useChecklist, useRun } from "react-waymark";
 import {
   creatingProject,
   data,
@@ -266,9 +266,10 @@ function Projects() {
   const { projects } = useStore(data);
   const creating = useStore(creatingProject);
   const current = useStore(tab);
+  const run = useRun();
   const choose = (next: Tab) => {
     tab.set(next);
-    onTab(next);
+    onTab(run, next);
   };
   const shown = current === "Mine" ? projects.filter((p) => p.owner === me || p.owner?.name === me.name) : projects;
   return (
@@ -418,16 +419,16 @@ function GettingStarted() {
       </div>
       <ol className="tasks">
         {snapshot.tasks.map(({ task, status }) => {
-          const active = snapshot.active?.task.id === task.id;
+          const open = snapshot.open?.id === task.id;
           return (
-            <li key={task.id} data-status={status} data-active={active || undefined}>
+            <li key={task.id} data-status={status} data-open={open || undefined}>
               <span className="tick">{status === "done" && <Check size={12} strokeWidth={3} />}</span>
               <span className="task-text">
                 <b>{task.title}</b>
                 <small>{task.description}</small>
               </span>
               {status === "todo" && "walkthrough" in task && (
-                <button type="button" className="button small" disabled={active} onClick={() => start(task.id)}>
+                <button type="button" className="button small" disabled={open} onClick={() => start(task.id)}>
                   Show me
                 </button>
               )}

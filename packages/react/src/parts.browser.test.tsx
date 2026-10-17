@@ -1,26 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
-import { ChecklistPanel, ChecklistRoot, ChecklistTrigger, createChecklists } from "./index";
+import { ChecklistPanel, ChecklistRoot, ChecklistTrigger, defineChecklists, WaymarkRoot } from "./index";
 import { onScreen, pastEdges, render, renderInScroller } from "./test/browser";
 
-const controller = () =>
-  createChecklists({
-    context: {},
-    tasks: { "read-tips": { title: "Read the tips" } },
-    checklists: { home: ["read-tips"] },
-  });
+const { checklists } = defineChecklists({
+  tasks: { "read-tips": { title: "Read the tips" } },
+  checklists: { home: ["read-tips"] },
+});
 
 describe("ChecklistPanel", () => {
   it("sits against its trigger, and follows it when a container scrolls", async () => {
     const scroller = renderInScroller(
-      <ChecklistRoot checklist={controller().checklists.home}>
-        {() => (
-          <>
-            <ChecklistTrigger>Getting started</ChecklistTrigger>
-            <ChecklistPanel aria-label="Getting started">Tips</ChecklistPanel>
-          </>
-        )}
-      </ChecklistRoot>,
+      <WaymarkRoot>
+        <ChecklistRoot checklist={checklists.home}>
+          {() => (
+            <>
+              <ChecklistTrigger>Getting started</ChecklistTrigger>
+              <ChecklistPanel aria-label="Getting started">Tips</ChecklistPanel>
+            </>
+          )}
+        </ChecklistRoot>
+      </WaymarkRoot>,
     );
     const trigger = page.getByRole("button", { name: "Getting started" });
     await trigger.click();
@@ -41,14 +41,16 @@ describe("ChecklistPanel", () => {
   it("opens above its trigger when there is no room below, and stays on screen", async () => {
     render(
       <div style={{ position: "fixed", left: 20, bottom: 10 }}>
-        <ChecklistRoot checklist={controller().checklists.home}>
-          {() => (
-            <>
-              <ChecklistTrigger>Getting started</ChecklistTrigger>
-              <ChecklistPanel aria-label="Getting started">Tips</ChecklistPanel>
-            </>
-          )}
-        </ChecklistRoot>
+        <WaymarkRoot>
+          <ChecklistRoot checklist={checklists.home}>
+            {() => (
+              <>
+                <ChecklistTrigger>Getting started</ChecklistTrigger>
+                <ChecklistPanel aria-label="Getting started">Tips</ChecklistPanel>
+              </>
+            )}
+          </ChecklistRoot>
+        </WaymarkRoot>
       </div>,
     );
     const trigger = page.getByRole("button", { name: "Getting started" });

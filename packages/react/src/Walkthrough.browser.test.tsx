@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
-import { defineWalkthrough, Walkthrough } from "./index";
+import { defineWalkthrough, Walkthrough, WaymarkRoot } from "./index";
 import {
   addWaymark,
   allowMotion,
@@ -31,10 +31,13 @@ const beacon = () => page.getByRole("button", { name: "Resume walkthrough", exac
 describe("popover", () => {
   it("stays on screen when the viewport narrows under it", async () => {
     addWaymark({ left: "20px", top: "20px" });
-    const walkthrough = defineWalkthrough([
-      { waymark: "target", scroll: "never", preferredPlacement: "right", content: "This instruction should stay beside the page element." },
-    ]);
-    render(<Walkthrough walkthrough={walkthrough} waymarkPadding={0} />);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "target", scroll: "never", preferredPlacement: "right", content: "This instruction should stay beside the page element." },
+      ],
+    });
+    render(<WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     expect(pastEdges(await dialog())).toEqual(onScreen);
 
     await resize(320, 600);
@@ -44,9 +47,11 @@ describe("popover", () => {
 
   it("stays on screen when its own content grows", async () => {
     addWaymark({ left: "400px", top: "450px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Unused: the popover is custom." }]);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Unused: the popover is custom." }] });
     render(
-      <Walkthrough walkthrough={walkthrough} waymarkPadding={0} renderPopover={({ advance }) => <GrowingContent advance={advance} />} />,
+      <WaymarkRoot waymarkPadding={0} renderPopover={({ advance }) => <GrowingContent advance={advance} />}>
+        <Walkthrough walkthrough={walkthrough} />
+      </WaymarkRoot>,
     );
     expect(pastEdges(await dialog())).toEqual(onScreen);
 
@@ -60,8 +65,8 @@ describe("popover", () => {
   });
 
   it("stays centred without a Waymark as the viewport resizes", async () => {
-    const walkthrough = defineWalkthrough([{ content: "General guidance should follow the viewport." }]);
-    render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "General guidance should follow the viewport." }] });
+    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     expect(centre(await dialog())).toEqual({ x: 450, y: 300 });
 
     await resize(320, 480);
@@ -71,8 +76,8 @@ describe("popover", () => {
 
   it("stays on its Waymark, and so does the beacon, when an ancestor of the Walkthrough is transformed", async () => {
     const waymark = addWaymark({ left: "20px", top: "20px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }]);
-    const host = render(<Walkthrough walkthrough={walkthrough} waymarkPadding={0} />);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }] });
+    const host = render(<WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     const before = (await dialog()).getBoundingClientRect();
     expect(before.top - waymark.getBoundingClientRect().bottom).toBe(8);
 
@@ -90,11 +95,11 @@ describe("popover", () => {
   });
   it("follows its Waymark as the page scrolls", async () => {
     const waymark = addWaymark({ position: "absolute", left: "20px", top: "200px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }]);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }] });
     render(
       <>
         <div style={{ height: 3000 }} />
-        <Walkthrough walkthrough={walkthrough} waymarkPadding={0} />
+        <WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
       </>,
     );
     const gap = async () => (await dialog()).getBoundingClientRect().top - waymark.getBoundingClientRect().bottom;
@@ -107,11 +112,11 @@ describe("popover", () => {
 
   it("keeps Tab and Shift+Tab among its own controls and its Waymark", async () => {
     addWaymark({ left: "20px", top: "20px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Try the page element." }]);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Try the page element." }] });
     render(
       <>
         <button type="button" style={{ position: "fixed", left: 600, top: 400 }}>Elsewhere</button>
-        <Walkthrough walkthrough={walkthrough} />
+        <WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
       </>,
     );
     await dialog();
@@ -129,8 +134,8 @@ describe("popover", () => {
 
 describe("beacon", () => {
   it("follows the bottom centre of the screen as the viewport resizes", async () => {
-    const walkthrough = defineWalkthrough([{ content: "General guidance" }]);
-    render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "General guidance" }] });
+    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
     expect(centre(beacon().element())).toEqual({ x: 450, y: 568 });
@@ -146,8 +151,8 @@ describe("beacon", () => {
 
   it("keeps the default beacon, its pulse included, on screen for a Waymark in the screen's corner", async () => {
     addWaymark({ right: "0px", top: "0px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Help lives here" }]);
-    render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Help lives here" }] });
+    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -157,16 +162,17 @@ describe("beacon", () => {
 
   it("keeps a custom beacon wider than the default whole on screen", async () => {
     addWaymark({ right: "0px", top: "0px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Help lives here" }]);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Help lives here" }] });
     render(
-      <Walkthrough
-        walkthrough={walkthrough}
+      <WaymarkRoot
         renderBeacon={({ resume }) => (
           <button type="button" onClick={resume} style={{ padding: "8px 24px" }}>
             Carry on with help
           </button>
         )}
-      />,
+      >
+        <Walkthrough walkthrough={walkthrough} />
+      </WaymarkRoot>,
     );
     await dialog();
     await collapse();
@@ -177,11 +183,14 @@ describe("beacon", () => {
     const waymark = addWaymark({ left: "20px", top: "20px" });
     const clicked = vi.fn();
     waymark.addEventListener("click", clicked);
-    const walkthrough = defineWalkthrough([
-      { waymark: "target", scroll: "never", advance: "click", content: "Click the page element" },
-      { content: "Done" },
-    ]);
-    render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "target", scroll: "never", advance: "click", content: "Click the page element" },
+        { content: "Done" },
+      ],
+    });
+    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -193,8 +202,8 @@ describe("beacon", () => {
   it("pulses", async () => {
     await allowMotion();
     addWaymark({ left: "400px", top: "300px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Somewhere quiet" }]);
-    render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Somewhere quiet" }] });
+    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -203,8 +212,8 @@ describe("beacon", () => {
 
   it("stays still under reduced motion", async () => {
     addWaymark({ left: "400px", top: "300px" });
-    const walkthrough = defineWalkthrough([{ waymark: "target", scroll: "never", content: "Somewhere quiet" }]);
-    render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Somewhere quiet" }] });
+    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -217,14 +226,17 @@ describe("shade", () => {
     const waymark = addWaymark({ left: "20px", top: "20px" });
     const clicked = vi.fn();
     waymark.addEventListener("click", clicked);
-    const walkthrough = defineWalkthrough([
-      { waymark: "target", scroll: "never", advance: "click", content: "Click the page element" },
-      { content: "Done" },
-    ]);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "target", scroll: "never", advance: "click", content: "Click the page element" },
+        { content: "Done" },
+      ],
+    });
     render(
       <>
         <button type="button" style={{ position: "fixed", left: 600, top: 400 }}>Elsewhere</button>
-        <Walkthrough walkthrough={walkthrough} />
+        <WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
       </>,
     );
     await dialog();

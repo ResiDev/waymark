@@ -1,23 +1,25 @@
 import type { Exactly } from "../exact";
-import type { ProblemHandlers } from "../problems";
-import type { Run, RunOptions, Snapshot, UiElements } from "../run/types";
-import type { ExactStep, Step, UnstoredWalkthrough, Walkthrough } from "../walkthrough/types";
-import type { StorageAdapter } from "../storage/adapter";
-import type { StoredChecklistWalkthrough, StoredTasks } from "../storage/records";
+import type { ExactStep, Step, Walkthrough } from "../walkthrough/types";
 
 /**
- * A Task written away from `createChecklists` has no context type. Give it one
- * with `satisfies Task<AppContext>`, which also keeps the written shape for
- * step inference; `as const satisfies` keeps literal types inside `meta` too.
+ * A Task's condition reads the context the app gives the Run, whose type the
+ * Run cannot know: type it on the condition, `(context: AppContext) => …`. A
+ * Task written away from `defineChecklists` gets it from
+ * `satisfies Task<AppContext>`, which also keeps the written shape for step
+ * inference; `as const satisfies` keeps literal types inside `meta` too.
  */
-export type Task<TContext, TStep extends Step = Step> = Readonly<{
-  walkthrough?: UnstoredWalkthrough<TStep> | readonly TStep[];
-  /** Must be pure. Without one, finishing the walkthrough records the Task done. */
-  isComplete?: (context: TContext) => boolean;
+export type Task<TContext = unknown, TStep extends Step = Step> = Readonly<{
+  /** A walkthrough, or its steps inline, which become a walkthrough with the Task's id. */
+  walkthrough?: Walkthrough<TStep> | readonly TStep[];
+  /**
+   * Must be pure. Without one, finishing the walkthrough records the Task done.
+   * A method, so a condition on any context fits a Task of unknown context.
+   */
+  isComplete?: { check(this: void, context: TContext): boolean }["check"];
   meta?: unknown;
 }>;
 
-export type TaskMap<TContext> = Readonly<Record<string, Task<TContext>>>;
+export type TaskMap = Readonly<Record<string, Task>>;
 export type TaskId<TTasks> = keyof TTasks & string;
 
 export type ChecklistSelections<TTasks> = Readonly<
@@ -30,26 +32,6 @@ export type DefaultChecklists<TTasks> = Readonly<{
   [DEFAULT_CHECKLIST]: readonly TaskId<TTasks>[];
 }>;
 
-export type StepOf<TTask> = TTask extends unknown
-  ? "walkthrough" extends keyof TTask
-    ? StepsOf<NonNullable<TTask["walkthrough"]>>
-    : never
-  : never;
-
-type StepsOf<TWalkthrough> =
-  TWalkthrough extends Walkthrough<infer TStep>
-    ? TStep
-    : TWalkthrough extends readonly (infer TStep)[]
-      ? AsStep<TStep>
-      : never;
-
-/**
- * A Step type sharing no key with core's all-optional Step, such as
- * `{ content }`, fails TypeScript's weak type check and does not extend it.
- * Intersecting keeps it instead of losing it.
- */
-type AsStep<TStep> = TStep extends Step ? TStep : TStep & Step;
-
 export type NamedTask<TTasks, TId extends TaskId<TTasks> = TaskId<TTasks>> = {
   [K in TId]: Readonly<TTasks[K] & { id: K }>;
 }[TId];
@@ -59,19 +41,19 @@ export type SelectedTask<
   TIds extends readonly TaskId<TTasks>[],
 > = NamedTask<TTasks, TIds[number]>;
 
+/** Any Task as written, named by its id, as events hand it back. */
+export type AnyTask = Readonly<{ id: string; meta?: unknown }>;
+
 export type TaskStatus = "todo" | "done" | "skipped";
 
-/** Of the stored Task statuses: `error` when they could not be read, and every Task starts todo. */
+/** Of the stored record: `error` when it could not be read, and every Task starts todo. */
 export type StorageStatus = "loading" | "ready" | "error";
 
 export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
   task: TTask;
   status: TaskStatus;
-}>;
-
-export type ActiveTask<TTask extends { readonly id: string }> = Readonly<{
-  task: TTask;
-  run: Run<StepOf<TTask>>;
+  /** Its walkthrough is collapsed part way: set aside, with a beacon to go back to it. */
+  inProgress: boolean;
 }>;
 
 /** A new object only when something in it changed. */
@@ -82,25 +64,32 @@ export type ChecklistSnapshot<TTask extends { readonly id: string }> =
     finishedCount: number;
     taskCount: number;
     complete: boolean;
-    /** Null while the active Task is not in this checklist. */
-    active: ActiveTask<TTask> | null;
+    /** The Task whose walkthrough is open, while it is in this checklist. */
+    open: TTask | null;
     /** While `loading`, every Task shows todo. */
     storageStatus: StorageStatus;
   }>;
 
 export type TaskCommands<TId extends string> = Readonly<{
-  /** Exits any other Run. No-op if the Task is already active or has no walkthrough. */
+  /**
+   * Shows the Task's walkthrough as `run.start` does, setting aside an open
+   * one: part way through, where it was; otherwise from its first step. No-op
+   * if the Task has no walkthrough.
+   */
   start: (id: TId) => void;
   markDone: (id: TId) => void;
-  /** Only from todo. Exits the Task's Run if it is active. */
-  skip: (id: TId) => void;
   /**
-   * Todo to done; done or skipped back to todo. A Task with a condition, taken
-   * back from done, stays todo until the condition has been false.
+   * Done or skipped back to todo. A Task with a condition, taken back from
+   * done, stays todo until the condition has been false.
    */
+  markTodo: (id: TId) => void;
+  /** Only from todo. Exits the Task's walkthrough if it is running. */
+  skip: (id: TId) => void;
+  /** Todo to done; done or skipped back to todo, as `markTodo` does. */
   toggle: (id: TId) => void;
 }>;
 
+/** A checklist's live state, from a Run's `checklist`. */
 export type Checklist<TTask extends { readonly id: string }> = TaskCommands<
   TTask["id"]
 > &
@@ -116,154 +105,62 @@ export type Checklist<TTask extends { readonly id: string }> = TaskCommands<
   }>;
 
 /**
- * Once per change, not once per view, in this order: `taskStopped`, each Task
- * whose status changed in task map order, `taskStarted`, then
- * `checklistComplete` for each view that just became complete.
+ * Once per change, in this order: `taskStopped`, each Task whose status
+ * changed in task order, `taskStarted`, then `checklistComplete` for each
+ * checklist that just became complete. They follow the walkthroughs' events.
  */
-export type ChecklistsEvent<
-  TTasks,
-  TSelections extends ChecklistSelections<TTasks>,
-> =
-  | Readonly<{ type: "taskStarted"; task: NamedTask<TTasks> }>
-  | Readonly<{ type: "taskComplete"; task: NamedTask<TTasks> }>
-  | Readonly<{ type: "taskReopened"; task: NamedTask<TTasks> }>
+export type ChecklistsEvent =
+  /** Its walkthrough started, from its first step. */
+  | Readonly<{ type: "taskStarted"; task: AnyTask }>
+  | Readonly<{ type: "taskComplete"; task: AnyTask }>
+  | Readonly<{ type: "taskReopened"; task: AnyTask }>
   | Readonly<{
       type: "taskStopped";
-      task: NamedTask<TTasks>;
-      /** `stopped` covers exit, `stop()` and starting another Task. */
+      task: AnyTask;
+      /** Its walkthrough ended: finished, exited as the Task was skipped, or otherwise exited or reset. */
       reason: "finished" | "skipped" | "stopped";
     }>
   | Readonly<{
       type: "taskSkipped";
-      task: NamedTask<TTasks>;
+      task: AnyTask;
       /**
-       * A skip from guidance names the view whose `start` began it, so a
-       * guidance renderer's Skip counts where the user started.
+       * The checklist it was skipped from. A skip from the walkthrough's own
+       * popover names the checklist whose `start` began it.
        */
-      checklist?: keyof TSelections & string;
+      checklist?: string;
     }>
-  | Readonly<{
-      type: "taskUnskipped";
-      task: NamedTask<TTasks>;
-      checklist?: keyof TSelections & string;
-    }>
-  | Readonly<{
-      type: "checklistComplete";
-      checklist: keyof TSelections & string;
-      snapshot: ChecklistSnapshot<NamedTask<TTasks>>;
-    }>;
+  | Readonly<{ type: "taskUnskipped"; task: AnyTask; checklist?: string }>
+  | Readonly<{ type: "checklistComplete"; checklist: string; snapshot: ChecklistSnapshot<AnyTask> }>;
 
-/** Each record takes a localStorage key, or an adapter. */
-export type ChecklistsStorage = Readonly<{
-  /** Saved after each change to a Task's status. */
-  tasks?: string | StorageAdapter<StoredTasks>;
-  /**
-   * The active Task and where its walkthrough is, saved as it starts, moves,
-   * collapses, resumes and stops. Restored once the Task statuses are in.
-   */
-  walkthrough?: string | StorageAdapter<StoredChecklistWalkthrough>;
-  /** In ms, since the last change. An older walkthrough is not restored. Defaults to a day. */
-  maxAge?: number;
+/** A Task as the Run uses it. */
+export type DefinedTask = Readonly<{
+  id: string;
+  /** As written, handed back in snapshots and events. */
+  task: AnyTask;
+  walkthrough: Walkthrough | undefined;
+  isComplete: ((context: unknown) => boolean) | undefined;
 }>;
 
-export type ChecklistsOptions<
+/** Every Task and checklist defined together. A Run takes them in whole the first time one of the checklists is used. */
+export type ChecklistGroup = Readonly<{
+  tasks: readonly DefinedTask[];
+  checklists: readonly ChecklistDefinition<AnyTask>[];
+}>;
+
+/** One checklist, from `defineChecklists`. It holds no state: pass it to a Run's `checklist`. */
+export type ChecklistDefinition<TTask extends { readonly id: string }> = Readonly<{
+  name: string;
+  tasks: readonly TTask[];
+  group: ChecklistGroup;
+}>;
+
+export type ChecklistsDefinition<
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,
 > = Readonly<{
-  /**
-   * Until a Promise from `tasks.load` settles, the controller is `loading`: it holds
-   * commands and runs them in order once the statuses are in.
-   */
-  storage?: ChecklistsStorage;
-  /**
-   * Task statuses already in hand, such as ones fetched for a server render.
-   * Given these, the controller does not load `storage.tasks`; it still saves to it.
-   */
-  initial?: StoredTasks;
-  onChange?: (stored: StoredTasks) => void;
-  /**
-   * Handlers for the problems the controller and its Runs meet. A problem without
-   * one is logged if it is storage's, thrown if it is an error from the app's
-   * own functions, and otherwise passes quietly.
-   */
-  problemHandlers?: ProblemHandlers<StepOf<TTasks[keyof TTasks]>>;
-  onEvent?: (event: ChecklistsEvent<TTasks, TSelections>) => void;
-  /** Your `onEvent` is called after the controller has handled the event. */
-  run?: Omit<
-    RunOptions<StepOf<TTasks[keyof TTasks]>>,
-    "startAt" | "collapsed" | "resumed" | "ui"
-  >;
-}>;
-
-export type ChecklistViews<
-  TTasks,
-  TSelections extends ChecklistSelections<TTasks>,
-> = {
-  readonly [Name in keyof TSelections]: Checklist<
-    SelectedTask<TTasks, TSelections[Name]>
-  >;
-};
-
-export type ChecklistsSnapshot<TTasks> = Readonly<{
-  active: ActiveTask<NamedTask<TTasks>> | null;
-  storageStatus: StorageStatus;
-}>;
-
-export type ActiveSnapshot<TTasks> = Readonly<{
-  active: ChecklistsSnapshot<TTasks>["active"];
-  step: Snapshot<StepOf<TTasks[keyof TTasks]>> | null;
-}>;
-
-export type ChecklistController<
-  TContext,
-  TTasks,
-  TSelections extends ChecklistSelections<TTasks>,
-> = Readonly<{
-  checklists: ChecklistViews<TTasks, TSelections>;
-
-  /** Exits any other Run. No-op if the Task is already active or has no walkthrough. */
-  start: (id: TaskId<TTasks>) => void;
-  stop: () => void;
-  markDone: (id: TaskId<TTasks>) => void;
-  /**
-   * Done or skipped back to todo. A Task with a condition, taken back from
-   * done, stays todo until the condition has been false.
-   */
-  markTodo: (id: TaskId<TTasks>) => void;
-  /** Only from todo. Exits the Task's Run if it is active. */
-  skip: (id: TaskId<TTasks>) => void;
-
-  /**
-   * The guidance renderer's elements, so clicks on them do not collapse the
-   * Run. The newest binding wins.
-   */
-  bindUi: (ui: () => UiElements) => () => void;
-  waymarkPadding: number;
-
-  getSnapshot: () => ChecklistsSnapshot<TTasks>;
-  /** The snapshot from before storage was read, for a server render and the hydration after it. */
-  getServerSnapshot: () => ChecklistsSnapshot<TTasks>;
-  /** Calls the listener at once, then on each change. */
-  subscribe: (
-    listener: (snapshot: ChecklistsSnapshot<TTasks>) => void,
-  ) => () => void;
-  /** Settles once the Task statuses are in, read or not; it never rejects. */
-  ready: Promise<void>;
-  /**
-   * Use this, not `subscribe`, to draw guidance. A Run watches the page only
-   * while subscribed, so one read through `subscribe` alone never finds its
-   * Waymark or hears its clicks.
-   */
-  subscribeActive: (
-    listener: (snapshot: ActiveSnapshot<TTasks>) => void,
-  ) => () => void;
-
-  /** A condition that holds completes a skipped Task too. */
-  update: (context: TContext) => void;
-  /** No `onChange`, no events, and nothing saved. */
-  load: (stored: StoredTasks) => void;
-  /** Also removes unknown ids. Calls `onChange` but emits no events, and keeps the active Run. */
-  clear: () => void;
+  checklists: {
+    readonly [Name in keyof TSelections]: ChecklistDefinition<SelectedTask<TTasks, TSelections[Name]>>;
+  };
 }>;
 
 /** Inline Steps are checked here because no `defineWalkthrough` call checks them. */
@@ -285,16 +182,12 @@ type ExactInlineSteps<TTask, TStepShape extends Step> = TTask extends {
 
 /** `TShape` lets an adapter allow its own Task fields, such as a title. */
 export type ChecklistsConfig<
-  TContext,
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,
-  TShape = Task<TContext>,
+  TShape = Task,
   TStepShape extends Step = Step,
 > = Readonly<{
-  /** Its type is the context every condition receives. */
-  context?: TContext;
   tasks: TTasks & ExactTasks<TTasks, TShape, TStepShape>;
   /** Omit for one checklist, `main`, of every Task. */
   checklists?: TSelections;
-}> &
-  ChecklistsOptions<TTasks, TSelections>;
+}>;

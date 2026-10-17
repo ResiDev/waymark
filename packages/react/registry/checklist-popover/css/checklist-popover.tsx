@@ -7,9 +7,9 @@ import {
   ChecklistTaskTitle,
   ChecklistTrigger,
   type AnyReactTask,
+  type ChecklistDefinition,
   type ChecklistRootState,
   type ChecklistRow,
-  type CoreChecklist,
   type Placement,
   type TaskStatus,
 } from "react-waymark";
@@ -30,12 +30,12 @@ const marks: Record<TaskStatus, ReactNode> = {
 };
 
 /** Put it wherever there is room: a header, a sidebar, a toolbar. The panel opens on `side`. */
-export function ChecklistPopover<TTask extends AnyReactTask>({
+export function ChecklistPopover({
   checklist,
   title = "Getting started",
   side = "below",
 }: {
-  checklist: CoreChecklist<TTask>;
+  checklist: ChecklistDefinition<AnyReactTask>;
   title?: string;
   side?: Placement;
 }) {
@@ -98,7 +98,7 @@ function Contents<TTask extends AnyReactTask>({
                 )}
                 <Actions
                   row={row}
-                  active={snapshot.active?.task.id === row.task.id}
+                  open={snapshot.open?.id === row.task.id}
                   start={start}
                   skip={skip}
                 />
@@ -113,12 +113,12 @@ function Contents<TTask extends AnyReactTask>({
 
 function Actions<TTask extends AnyReactTask>({
   row: { task, status },
-  active,
+  open,
   start,
   skip,
 }: {
   row: ChecklistRow<TTask>;
-  active: boolean;
+  open: boolean;
   start: (id: TTask["id"]) => void;
   skip: (id: TTask["id"]) => void;
 }) {
@@ -131,7 +131,7 @@ function Actions<TTask extends AnyReactTask>({
     );
   } else if (task.walkthrough !== undefined) {
     primary = (
-      <button type="button" className={styles.primary} disabled={active} onClick={() => start(task.id)}>
+      <button type="button" className={styles.primary} disabled={open} onClick={() => start(task.id)}>
         {status === "done" ? "Show me again" : "Show me"}
       </button>
     );

@@ -77,7 +77,10 @@ try {
       assert(await panel.evaluate((node) => node.contains(document.activeElement)), "Baseline: Tab should reach a checklist control when no walkthrough runs.");
       await page.keyboard.press("Escape");
       await panel.waitFor({ state: "hidden" });
-      await page.evaluate(() => window.playground.controller.start("tour"));
+      await page.evaluate(() => {
+        const { playground } = window;
+        playground.run().checklist(playground.onboarding.checklists.home).start("tour");
+      });
       await page.getByRole("dialog", { name: /^Step 1 of / }).waitFor();
       await trigger.focus();
       await page.keyboard.press("Enter");
@@ -91,16 +94,14 @@ try {
       assert(await panel.count() > 0 && await panel.evaluate((node) => node.contains(document.activeElement)), "Tab should reach a checklist control while a walkthrough runs.");
       await page.keyboard.press("Escape");
       await panel.waitFor({ state: "hidden" });
-      assert.equal(await page.evaluate(() => {
-        const snapshot = window.playground.snapshot();
-        return snapshot?.phase === "running" ? snapshot.collapsed : null;
-      }), false, "Checklist Escape should not collapse the walkthrough.");
+      assert.equal(
+        await page.evaluate(() => window.playground.snapshot().open?.task ?? null),
+        "tour",
+        "Checklist Escape should not collapse the walkthrough.",
+      );
       await page.getByRole("button", { name: "Close", exact: true }).focus();
       await page.keyboard.press("ArrowRight");
-      await page.waitForFunction(() => {
-        const snapshot = window.playground.snapshot();
-        return snapshot?.phase === "running" && snapshot.stepIndex === 1;
-      });
+      await page.waitForFunction(() => window.playground.snapshot().open?.snapshot.stepIndex === 1);
     });
 
     await run("switch-task", async (page, result) => {
@@ -110,14 +111,16 @@ try {
       await trigger.click();
       await panel.locator("li").filter({ hasText: "Take the tour" }).getByRole("button", { name: "Show me", exact: true }).click();
       await panel.waitFor({ state: "hidden" });
-      await page.waitForFunction(() => window.playground.controller.getSnapshot().active?.task.id === "tour");
+      await page.waitForFunction(() => window.playground.snapshot().open?.task === "tour");
       await trigger.click();
       await panel.waitFor();
       await page.screenshot({ path: `${output}switch-task-before.png` });
       await panel.locator("li").filter({ hasText: "Create your first deck" }).getByRole("button", { name: "Show me", exact: true }).click();
-      await page.waitForFunction(() => window.playground.controller.getSnapshot().active?.task.id === "create-deck");
+      await page.waitForFunction(() => window.playground.snapshot().open?.task === "create-deck");
       await settle(page);
-      result.observations["activeTask"] = await page.evaluate(() => window.playground.controller.getSnapshot().active?.task.id);
+      result.observations["openTask"] = await page.evaluate(() => window.playground.snapshot().open?.task);
+      // Started over the tour, which collapses behind a beacon rather than exiting.
+      result.observations["tourProgress"] = await page.evaluate(() => window.playground.snapshot().progress["tour"]);
       result.observations["panelOpen"] = await panel.count() > 0;
       assert.equal(await panel.count(), 0, "Starting a replacement task should close the checklist panel.");
     });

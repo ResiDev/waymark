@@ -1,57 +1,42 @@
 import {
-  createChecklists as createCoreChecklists,
+  defineChecklists as defineCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
   everyProblem as everyCoreProblem,
 } from "waymark-core";
 import type {
-  ChecklistController,
   ChecklistSelections,
-  DefaultChecklists,
   ChecklistsConfig,
-  ExactStep,
-  UnstoredWalkthrough,
-  UnstoredWalkthroughOptions,
-  Walkthrough,
-  WalkthroughOptions,
+  ChecklistsDefinition,
+  DefaultChecklists,
 } from "waymark-core";
-import type { ProblemHandlers, ReactTask, WalkthroughStep, WaymarkProblem } from "./types";
+import type {
+  ProblemHandlers,
+  ReactTask,
+  Walkthrough,
+  WalkthroughDefinition,
+  WalkthroughStep,
+  WaymarkProblem,
+} from "./types";
 
+/** Core's, for steps with React content, which may also say how to draw this walkthrough. */
 export function defineWalkthrough<const TStep extends WalkthroughStep>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
-): UnstoredWalkthrough<NoInfer<TStep>>;
-export function defineWalkthrough<const TStep extends WalkthroughStep>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
-  options: UnstoredWalkthroughOptions<NoInfer<TStep>>,
-): Walkthrough<NoInfer<TStep>> & Readonly<{ storage?: never }>;
-export function defineWalkthrough<const TStep extends WalkthroughStep>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
-  options: WalkthroughOptions<NoInfer<TStep>>,
-): Walkthrough<NoInfer<TStep>>;
-export function defineWalkthrough<const TStep extends WalkthroughStep>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, WalkthroughStep>[],
-  options?: WalkthroughOptions<NoInfer<TStep>> | UnstoredWalkthroughOptions<NoInfer<TStep>>,
+  definition: WalkthroughDefinition<TStep>,
 ): Walkthrough<NoInfer<TStep>> {
-  if (options?.storage !== undefined) {
-    return defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { ...options, storage: options.storage });
-  }
-  const problemHandlers = options?.problemHandlers;
-  return problemHandlers
-    ? defineCoreWalkthrough<TStep, WalkthroughStep>(steps, { problemHandlers })
-    : defineCoreWalkthrough<TStep, WalkthroughStep>(steps);
+  const { renderPopover, renderBeacon, ...rest } = definition;
+  return {
+    ...defineCoreWalkthrough<TStep, WalkthroughStep>(rest),
+    ...(renderPopover === undefined ? {} : { renderPopover }),
+    ...(renderBeacon === undefined ? {} : { renderBeacon }),
+  };
 }
 
-export function createChecklists<
-  TContext = {},
-  const TTasks extends Readonly<Record<string, ReactTask<NoInfer<TContext>>>> = Readonly<
-    Record<string, ReactTask<TContext>>
-  >,
+export function defineChecklists<
+  const TTasks extends Readonly<Record<string, ReactTask>>,
   const TSelections extends ChecklistSelections<TTasks> = DefaultChecklists<TTasks>,
 >(
-  config: ChecklistsConfig<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>,
-): ChecklistController<TContext, TTasks, TSelections> {
-  return createCoreChecklists<TContext, TTasks, TSelections, ReactTask<TContext>, WalkthroughStep>(
-    config,
-  );
+  config: ChecklistsConfig<TTasks, TSelections, ReactTask, WalkthroughStep>,
+): ChecklistsDefinition<TTasks, TSelections> {
+  return defineCoreChecklists<TTasks, TSelections, ReactTask, WalkthroughStep>(config);
 }
 
 /** Core's, with its steps React's unless given, so an untyped handler's problems carry React's. */

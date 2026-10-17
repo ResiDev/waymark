@@ -1,13 +1,13 @@
 # Waymark
 
-Waymark describes and runs guided walkthroughs over a browser interface. A walkthrough says what the user should do; a run records what is happening while one user moves through it. Each step may point the user at a waymark: an element in the page marked out for them. Checklists track which tasks a user has done, and can guide them through each one with a walkthrough.
+Waymark describes and runs guided walkthroughs over a browser interface. A walkthrough says what the user should do; the Run keeps how far one user is through every walkthrough, and shows one at a time. Each step may point the user at a waymark: an element in the page marked out for them. Checklists track which tasks a user has done, and can guide them through each one with a walkthrough.
 
 ## Language
 
 ### Walkthroughs
 
 **Walkthrough**:
-An ordered definition of the guidance shown to a user. A walkthrough can be run more than once.
+An ordered definition of the guidance shown to a user. It keeps one id across releases, and can be run more than once.
 _Avoid_: Tutorial, guide, tour, flow
 
 **Step**:
@@ -19,49 +19,65 @@ The element in the page that a step directs the user toward, marked with `data-w
 _Avoid_: Target, highlight
 
 **Advance condition**:
-What must happen before a run may leave a step: a click on the waymark, an event the waymark fires, or application state that holds. It may have to hold for a set time without a break, and a step that states one cannot be skipped past while its waymark can be found.
+What must happen before a walkthrough may leave a step: a click on the waymark, an event the waymark fires, or application state that holds. It may have to hold for a set time without a break, and a step that states one cannot be skipped past while its waymark can be found.
 _Avoid_: Trigger, auto-advance
 
 **Advance gate**:
-The rule that keeps manual advancement locked until the step's advance condition has been met. Meeting the condition either advances the run or unlocks the gate, as the step says. The gate also opens while the step's waymark is lost or missing, so the user is never stuck behind a condition that cannot be met.
+The rule that keeps manual advancement locked until the step's advance condition has been met. Meeting the condition either advances the walkthrough or unlocks the gate, as the step says. The gate also opens while the step's waymark is lost or missing, so the user is never stuck behind a condition that cannot be met.
 _Avoid_: Ready state, gate-next, allow-manual
+
+**Dismiss**:
+What a click away, Escape and being interrupted do to a walkthrough: collapse it, the default, or exit it. It does not change what an explicit collapse or exit does.
+_Avoid_: Close behaviour, on-blur
 
 ### Runs
 
 **Run**:
-One live execution of a walkthrough, including its current step and whether advancement is available.
-_Avoid_: Store, walkthrough instance
+The machinery that runs one user's walkthroughs: how far they are through each, and which one is open. There is one Run per user.
+_Avoid_: Store, controller, walkthrough instance
+
+**Walkthrough progress**:
+How far one user is through one walkthrough: its step, whether it is collapsed, and whether it is running, finished or exited. A walkthrough with no progress has not started.
+_Avoid_: Run, session, state
+
+**Open walkthrough**:
+The walkthrough whose popover shows. At most one is open; starting another interrupts it, and sets it aside as its dismiss says.
+_Avoid_: Active walkthrough, current walkthrough, running walkthrough
+
+**Collapsed walkthrough**:
+A running walkthrough whose popover is hidden behind a beacon, keeping its step, so the user can go back to it. A click away, Escape or being interrupted collapses it, unless its dismiss says to exit. While no walkthrough is open, every collapsed one shows its beacon.
+_Avoid_: Collapsed run, unfocused run, paused
+
+**Attached**:
+A Run is attached while a renderer draws it. Only an attached Run reacts to the page, so following a Run without drawing it, as analytics does, changes nothing.
+_Avoid_: Mounted, subscribed
 
 **Action**:
-One of the six things a run can be asked to do: advance, previous, collapse, resume, reset or exit. A run may refuse one, such as advancing while the gate is locked.
+One of the six things a walkthrough can be asked to do: advance, previous, collapse, resume, reset or exit. The Run may refuse one, such as advancing while the gate is locked.
 
 **Location**:
-Where a run currently believes a step's waymark is: absent (the step has none), searching (not yet seen), waiting (searched for half a second: the step shows without it while the page catches up), found (with its position), lost (seen, then gone for 200ms), or missing (searched for three seconds, or the step's `missingAfterMs`, while mounted, without being found). Once found, a waymark is never searching again. An element with an empty box, such as one hidden with `display: none`, counts as gone.
+Where the Run currently believes a step's waymark is: absent (the step has none), searching (not yet seen), waiting (searched for half a second: the step shows without it while the page catches up), found (with its position), lost (seen, then gone for 200ms), or missing (searched for three seconds, or the step's `missingAfterMs`, while attached, without being found). Once found, a waymark is never searching again. An element with an empty box, such as one hidden with `display: none`, counts as gone.
 _Avoid_: Target state, sighting, reading
 
-**Collapsed run**:
-A run whose step popover is hidden and represented by a beacon while the run remains resumable. Clicking away from a run collapses it.
-_Avoid_: Unfocused run
-
 **UI**:
-The walkthrough's own elements in the page, its dialog and beacon, which a click on does not count as clicking away. Any element can opt in with `data-waymark-ui`.
+The open walkthrough's own element in the page, its dialog, which a click on does not count as clicking away. Any element can opt in with `data-waymark-ui`.
 _Avoid_: View
 
 **Snapshot**:
-Everything needed to draw a run or a checklist at one moment. A new snapshot appears only when something in it has changed.
+Everything needed to draw the Run, one walkthrough, or a checklist at one moment. A new snapshot appears only when something in it has changed.
 
 **Run event**:
-Something a run did: starting, each action it took, or finishing. It belongs to the step it happened on.
+Something a walkthrough did: starting, each action it took, being interrupted, or finishing. It names its walkthrough and belongs to the step it happened on.
 
 **Problem**:
-Something that went wrong, reported to the app's handler for its type: storage that failed or held a record Waymark cannot read, a stored walkthrough dropped, a waymark lost or missing, or an error thrown by the app's own code. A type with no handler gets Waymark's default, which throws the app's errors and logs storage problems.
+Something that went wrong, reported to the app's handler for its type: storage that failed or held a record Waymark cannot read, a walkthrough's stored progress dropped, a waymark lost or missing, or an error thrown by the app's own code. A type with no handler gets Waymark's default, which throws the app's errors and logs storage problems.
 _Avoid_: Error, since most problems are not thrown; issue
 
 ### Checklists
 
-**Checklist controller**:
-One user's live state across a set of tasks, as a run is one user's live state in a walkthrough. It holds each task's status, shared by every checklist, and at most one active run; separate controllers keep separate records.
-_Avoid_: Owner, Checklists, manager, Onboarding, checklist definition, registry, group
+**Checklist definition**:
+A description of a set of tasks and the checklists that list them. It holds no state; each task's status belongs to the user's Run.
+_Avoid_: Checklist controller, owner, Checklists, manager, Onboarding, registry
 
 **Checklist**:
 A named, ordered view of tasks and their statuses. It is complete when every task in it is done or skipped.
@@ -89,6 +105,10 @@ _Avoid_: Facts, state, input
 A check of application context that determines whether a task is done, whether or not its walkthrough ever ran. A task that states one cannot be ticked off by finishing its walkthrough alone; a task that states none is done when its walkthrough finishes or the application says so.
 _Avoid_: Trigger, auto-complete, detection
 
-**Active task**:
-The task whose walkthrough is currently running as a run. At most one task is active across one checklist controller's checklists at a time.
-_Avoid_: Guiding, current walkthrough, open task
+**Open task**:
+The task whose walkthrough is open. At most one task is open at a time, since at most one walkthrough is.
+_Avoid_: Active task, guiding, current walkthrough
+
+**Task in progress**:
+A task whose walkthrough is collapsed part way, waiting behind its beacon for the user to go back to it. Several tasks can be in progress at once.
+_Avoid_: Paused task, started task

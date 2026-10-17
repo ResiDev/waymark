@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Checklist } from "react-waymark";
+import { Checklist, useRun } from "react-waymark";
 import { DecksBanner, HeaderChecklist, HomeChecklist } from "./checklists";
-import { Guidance, controller, WhatsNew } from "./guidance";
+import { onboarding, whatsNew, WhatsNew } from "./guidance";
 import {
   data,
   inviteOpen,
@@ -10,13 +10,11 @@ import {
   routes,
   setup,
   useStore,
-  whatsNewOpen,
   type Route,
   type Theme,
 } from "./state";
 
 export function App() {
-  const { renderer } = useStore(setup);
   const current = useStore(route);
   const { theme } = useStore(data);
   return (
@@ -32,13 +30,13 @@ export function App() {
         Feedback
       </button>
       <InviteDialog />
-      {renderer === "root" && <Guidance />}
       <WhatsNew />
     </div>
   );
 }
 
 function Header() {
+  const run = useRun();
   const { hasPhoto } = useStore(data);
   return (
     <header className="topbar">
@@ -49,7 +47,8 @@ function Header() {
       <span>
         <HeaderChecklist />
       </span>
-      <button type="button" data-waymark="whats-new" onClick={() => whatsNewOpen.set(true)}>
+      {/* A click: shown now, over any open walkthrough. */}
+      <button type="button" data-waymark="whats-new" onClick={() => run.start(whatsNew)}>
         What's new
       </button>
       <button
@@ -89,7 +88,6 @@ function Sidebar({ current }: { current: Route }) {
 }
 
 function Home() {
-  const { renderer } = useStore(setup);
   const { decks, tipDismissed } = useStore(data);
   return (
     <>
@@ -115,7 +113,6 @@ function Home() {
       <p className="guide" data-waymark="guide">
         The study guide lives down here, well below the fold.
       </p>
-      {renderer === "home" && <Guidance />}
     </>
   );
 }
@@ -222,7 +219,7 @@ function Settings() {
           {app.emailVerified ? "Unverify" : "Pretend I clicked the link"}
         </button>
       </section>
-      <Checklist checklist={controller.checklists.settings} />
+      <Checklist checklist={onboarding.checklists.settings} />
     </>
   );
 }

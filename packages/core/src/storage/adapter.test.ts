@@ -1,28 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
 import { localStorageAdapter } from "./adapter";
-import type { StoredTasks } from "./records";
-import { createChecklists } from "../checklists/checklists";
+import type { StoredRecord } from "./records";
+import { defineChecklists } from "../checklists/checklists";
+import { createRun } from "../run/run";
 import { everyProblem } from "../problems";
 import { localKey } from "../test/dom";
 
-const statuses = (controller: { checklists: { main: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } } } }) =>
-  Object.fromEntries(controller.checklists.main.getSnapshot().tasks.map((row) => [row.task.id, row.status]));
+const statuses = (view: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } }) =>
+  Object.fromEntries(view.getSnapshot().tasks.map((row) => [row.task.id, row.status]));
 
 describe("localStorageAdapter", () => {
   it.each(["constructor", "toString", "__proto__"])("keeps the status of a Task named %s across a reload", (id) => {
     const key = localKey("setup");
-    const create = () =>
-      createChecklists({ tasks: { [id]: {}, other: {} }, storage: { tasks: localStorageAdapter(key) } });
-    create().skip(id);
-    expect(statuses(create())).toEqual({ [id]: "skipped", other: "todo" });
+    const tasks = { [id]: {}, other: {} };
+    const definition = defineChecklists({ tasks }).checklists.main;
+    createRun({ storage: localStorageAdapter(key) }).checklist(definition).skip(id);
+    const reloaded = createRun({ storage: localStorageAdapter(key) }).checklist(definition);
+    expect(statuses(reloaded)).toEqual({ [id]: "skipped", other: "todo" });
   });
 
   it("writes JSON under its name, and removes the key once nothing is left", () => {
     const key = localKey("setup");
-    const controller = createChecklists({ tasks: { a: {} }, storage: { tasks: localStorageAdapter(key) } });
-    controller.markDone("a");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 3, tasks: { a: "done" } });
-    controller.markTodo("a");
+    const main = createRun({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
+    main.markDone("a");
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 4, walkthroughs: {}, tasks: { a: "done" } });
+    main.markTodo("a");
     expect(localStorage.getItem(key)).toBeNull();
   });
 
@@ -30,15 +32,10 @@ describe("localStorageAdapter", () => {
     const key = localKey("setup");
     localStorage.setItem(key, "not json");
     const onProblem = vi.fn();
-    const controller = createChecklists({
-      tasks: { a: {} },
-      storage: { tasks: localStorageAdapter<StoredTasks>(key) },
-      problemHandlers: everyProblem(onProblem),
-    });
-    expect(controller.getSnapshot().storageStatus).toBe("error");
+    const run = createRun({ storage: localStorageAdapter<StoredRecord>(key), problemHandlers: everyProblem(onProblem) });
+    expect(run.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
-      record: "tasks",
       error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
     });
   });
@@ -52,14 +49,11 @@ describe("localStorageAdapter", () => {
       throw blocked;
     });
     const onProblem = vi.fn();
-    const controller = createChecklists({
-      tasks: { a: {} },
-      storage: { tasks: localStorageAdapter("setup") },
-      problemHandlers: everyProblem(onProblem),
-    });
-    controller.markDone("a");
-    expect(statuses(controller)).toEqual({ a: "done" });
-    const failed = { type: "storageFailed", record: "tasks", error: blocked };
+    const run = createRun({ storage: localStorageAdapter("setup"), problemHandlers: everyProblem(onProblem) });
+    const main = run.checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
+    main.markDone("a");
+    expect(statuses(main)).toEqual({ a: "done" });
+    const failed = { type: "storageFailed", error: blocked };
     expect(onProblem.mock.calls).toEqual([[failed], [failed]]);
   });
 
@@ -69,9 +63,9 @@ describe("localStorageAdapter", () => {
     const hear = (key: string | null, newValue: string | null) =>
       globalThis.dispatchEvent(new StorageEvent("storage", { key, newValue, storageArea: localStorage }));
 
-    hear("other-tab", '{"version":3,"tasks":{}}');
+    hear("other-tab", '{"version":4,"walkthroughs":{},"tasks":{}}');
     hear(null, null);
-    expect(listener.mock.calls).toEqual([[{ version: 3, tasks: {} }], [null]]);
+    expect(listener.mock.calls).toEqual([[{ version: 4, walkthroughs: {}, tasks: {} }], [null]]);
 
     stop();
     hear("other-tab", "{}");

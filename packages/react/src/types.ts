@@ -1,19 +1,18 @@
 import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
 import type {
+  ChecklistDefinition,
   ChecklistRow,
-  ChecklistController,
-  ChecklistSelections,
   ChecklistSnapshot,
-  NamedTask,
-  RunEvent,
   Running,
   Step,
-  StepOf,
+  StorageAdapter,
+  StoredRecord,
   Task,
   TaskCommands,
   TaskStatus,
-  UnstoredWalkthrough,
-  Walkthrough,
+  Walkthrough as CoreWalkthrough,
+  WalkthroughDefinition as CoreWalkthroughDefinition,
+  WaymarkEvent,
 } from "waymark-core";
 
 export type Placement = "above" | "below" | "left" | "right";
@@ -51,13 +50,13 @@ export type WalkthroughRenderProps<
   collapse: () => void;
   reset: () => void;
   exit: () => void;
-  /** Only when guiding a checklist controller's Task. */
+  /** Only while it guides a checklist's Task. */
   skipTask?: () => void;
   /** The app's labels over the defaults. */
   labels: WalkthroughLabels;
 }>;
 
-/** What a collapsed run's beacon is drawn with. It is placed for you: on the Waymark's top-right corner, or the bottom of the screen. */
+/** What a collapsed walkthrough's beacon is drawn with. It is placed for you: on the Waymark's top-right corner, or the bottom of the screen. */
 export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
   Readonly<{
     currentStep: TStep;
@@ -69,53 +68,59 @@ export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
     labels: WalkthroughLabels;
   }>;
 
+/** A method, so a walkthrough of particular steps still fits where any walkthrough does. */
+type Render<TProps> = { render(this: void, props: TProps): ReactNode }["render"];
+
+/** A walkthrough whose steps React can draw. It may carry its own drawing, which wins over `<WaymarkRoot>`'s. */
+export type Walkthrough<TStep extends WalkthroughStep = WalkthroughStep> = CoreWalkthrough<TStep> &
+  Readonly<{
+    renderPopover?: Render<WalkthroughRenderProps<TStep>>;
+    renderBeacon?: Render<BeaconRenderProps<TStep>>;
+  }>;
+
+/** What `defineWalkthrough` takes. Its render functions see this walkthrough's steps, with their exact types. */
+export type WalkthroughDefinition<TStep extends WalkthroughStep> = CoreWalkthroughDefinition<TStep, WalkthroughStep> &
+  Readonly<{
+    renderPopover?: (props: WalkthroughRenderProps<NoInfer<TStep>>) => ReactNode;
+    renderBeacon?: (props: BeaconRenderProps<NoInfer<TStep>>) => ReactNode;
+  }>;
+
 export type WalkthroughProps<TStep extends WalkthroughStep = WalkthroughStep> =
   Readonly<{
     walkthrough: Walkthrough<TStep>;
-    checklists?: never;
+    /** `false` holds the request back, for example until your data has loaded. Defaults to true. */
     active?: boolean;
-    waymarkPadding?: number;
-    onEvent?: (event: RunEvent<TStep>) => void;
-    renderPopover?: (props: WalkthroughRenderProps<TStep>) => ReactNode;
-    renderBeacon?: (props: BeaconRenderProps<TStep>) => ReactNode;
-    labels?: Partial<WalkthroughLabels>;
-    /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
-    portal?: boolean;
   }>;
 
-/** Admits any other field: it reads Tasks a controller already holds, whatever else they carry. */
-export type ReactGuidanceTasks = Readonly<
-  Record<
-    string,
-    Readonly<{
-      walkthrough?: UnstoredWalkthrough<WalkthroughStep> | readonly WalkthroughStep[];
-      [field: string]: unknown;
-    }>
-  >
->;
-
-export type GuidanceStep<TTasks> = Extract<StepOf<NamedTask<TTasks>>, WalkthroughStep>;
-
-/** Stops the controller's active Run when removed. */
-export type ChecklistWalkthroughProps<
-  TContext,
-  TTasks extends ReactGuidanceTasks,
-  TSelections extends ChecklistSelections<TTasks>,
-> = Readonly<{
-  checklists: ChecklistController<TContext, TTasks, TSelections>;
-  walkthrough?: never;
-  active?: never;
-  waymarkPadding?: never;
-  onEvent?: never;
-  renderPopover?: (props: WalkthroughRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
-  renderBeacon?: (props: BeaconRenderProps<NoInfer<GuidanceStep<TTasks>>>) => ReactNode;
+export type WaymarkRootProps = Readonly<{
+  children?: ReactNode;
+  /**
+   * A localStorage key, or an adapter, for this user's record. Read as the
+   * root mounts: for another user, give the root a new `key`.
+   */
+  storage?: string | StorageAdapter<StoredRecord>;
+  /** A record already in hand, such as one fetched for a server render. */
+  initial?: StoredRecord;
+  /** Hears the record each time it changes. */
+  onChange?: (stored: StoredRecord) => void;
+  /** One set for every walkthrough and checklist. */
+  problemHandlers?: ProblemHandlers;
+  /** The app's facts, read by checklists' completion conditions, which are checked again as it changes. */
+  context?: unknown;
+  /** In px. Room the shade leaves around the Waymark; clicks this close count as clicks on it. Defaults to 20. */
+  waymarkPadding?: number;
+  /** For every walkthrough without one of its own. */
+  renderPopover?: (props: WalkthroughRenderProps) => ReactNode;
+  renderBeacon?: (props: BeaconRenderProps) => ReactNode;
   labels?: Partial<WalkthroughLabels>;
+  /** Every walkthrough's events and every checklist's. */
+  onEvent?: (event: WaymarkEvent<WalkthroughStep>) => void;
   /** Defaults to true: in `document.body`, no ancestor's transform, overflow or stacking context can trap it. */
   portal?: boolean;
 }>;
 
-/** A Task written away from `createChecklists` gets its context from `satisfies ReactTask<AppContext>`. */
-export type ReactTask<TContext> = Task<TContext, WalkthroughStep> &
+/** A Task written away from `defineChecklists` gets its context from `satisfies ReactTask<AppContext>`. */
+export type ReactTask<TContext = unknown> = Task<TContext, WalkthroughStep> &
   Readonly<{
     title: ReactNode;
     description?: ReactNode;
@@ -127,8 +132,7 @@ export type ReactTask<TContext> = Task<TContext, WalkthroughStep> &
     toggleable?: boolean;
   }>;
 
-/** `never`: the context only types a condition's argument, so a ReactTask of any context fits. */
-export type AnyReactTask = ReactTask<never> & { readonly id: string };
+export type AnyReactTask = ReactTask & { readonly id: string };
 
 export type UseChecklistResult<TTask extends AnyReactTask> = TaskCommands<TTask["id"]> &
   Readonly<{
@@ -145,11 +149,14 @@ export type ChecklistRowProps<TTask extends AnyReactTask> = TaskCommands<TTask["
   Readonly<{
     task: TTask;
     status: TaskStatus;
-    active: boolean;
+    /** Its walkthrough is open. */
+    open: boolean;
+    /** Its walkthrough is collapsed part way, with a beacon to go back to it. */
+    inProgress: boolean;
   }>;
 
 export type ChecklistProps<TTask extends AnyReactTask> = Readonly<{
-  checklist: CoreChecklist<TTask>;
+  checklist: ChecklistDefinition<TTask>;
   style?: CSSProperties;
   rowStyle?: CSSProperties;
   labels?: Partial<ChecklistLabels>;
@@ -164,7 +171,7 @@ export type ChecklistRootState<TTask extends AnyReactTask> = UseChecklistResult<
   }>;
 
 export type ChecklistRootProps<TTask extends AnyReactTask> = Readonly<{
-  checklist: CoreChecklist<TTask>;
+  checklist: ChecklistDefinition<TTask>;
   children?: ReactNode | ((state: ChecklistRootState<TTask>) => ReactNode);
 }>;
 
@@ -189,11 +196,18 @@ export type ChecklistCheckboxProps = ComponentPropsWithoutRef<"button"> &
     statusText?: Readonly<Record<TaskStatus, string>>;
   }>;
 
-export type { Checklist as CoreChecklist } from "waymark-core";
-import type { Checklist as CoreChecklist } from "waymark-core";
-export type { RunEvent, Snapshot, Running, Walkthrough } from "waymark-core";
-import type { ProblemHandlers as CoreProblemHandlers, WaymarkProblem as CoreProblem } from "waymark-core";
+export type { RunEvent, Snapshot, Running } from "waymark-core";
+import type {
+  ProblemHandlers as CoreProblemHandlers,
+  Run as CoreRun,
+  RunSnapshot as CoreRunSnapshot,
+  WaymarkProblem as CoreProblem,
+} from "waymark-core";
 
-// These default to any React step, so one set of handlers fits every walkthrough and controller.
+// These default to any React step, so one set of handlers fits every walkthrough.
 export type WaymarkProblem<TStep extends WalkthroughStep = WalkthroughStep> = CoreProblem<TStep>;
 export type ProblemHandlers<TStep extends WalkthroughStep = WalkthroughStep> = CoreProblemHandlers<TStep>;
+
+/** What `useRun` returns: its walkthroughs carry React's steps and drawing. */
+export type Run = CoreRun<Walkthrough>;
+export type RunSnapshot = CoreRunSnapshot<Walkthrough>;

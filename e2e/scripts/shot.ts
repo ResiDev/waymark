@@ -4,7 +4,7 @@ import { chromium } from "playwright";
  * Screenshot a fixture page in the state a URL describes.
  *
  *   pnpm shot                                   default walkthrough
- *   pnpm shot '?situations=sticky&startAt=2'    any query the page accepts
+ *   pnpm shot '?situations=sticky&padding=12'   any query the page accepts
  *   pnpm shot checklist.html                    another fixture page
  *   pnpm shot '?...' out.png 800                 output path and a wait in ms
  *

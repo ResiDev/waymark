@@ -4,41 +4,44 @@ import {
   ChecklistPanel,
   ChecklistRoot,
   ChecklistTrigger,
-  createChecklists,
+  defineChecklists,
   defineWalkthrough,
-  Walkthrough,
+  WaymarkRoot,
 } from "./index";
 import { addRoot } from "./test/dom";
 import { fakeTimers } from "./test/time";
 
 // In a file of its own: the lost close showed only when nothing had rendered before it.
-it("closes when a task starts from inside the panel, under StrictMode and a renderer", async () => {
+it("closes when a task starts from inside the panel, under StrictMode and a WaymarkRoot", async () => {
   // Timers before the frame spy, as when the bug showed. Alone in its file, so the fake clock
   // the spy's restore leaves behind reaches no other test.
   fakeTimers();
   vi.spyOn(window, "requestAnimationFrame").mockImplementation(() => 1);
   const { root } = addRoot();
-  const controller = createChecklists({
-    tasks: { tour: { title: "Take the tour", walkthrough: defineWalkthrough([{ content: "Hello" }]) } },
+  const { checklists } = defineChecklists({
+    tasks: {
+      tour: { title: "Take the tour", walkthrough: defineWalkthrough({ id: "tour", steps: [{ content: "Hello" }] }) },
+    },
     checklists: { home: ["tour"] },
   });
 
   await act(async () =>
     root.render(
       <StrictMode>
-        <Walkthrough checklists={controller} />
-        <ChecklistRoot checklist={controller.checklists.home}>
-          {({ start }) => (
-            <>
-              <ChecklistTrigger>Getting started</ChecklistTrigger>
-              <ChecklistPanel aria-label="Getting started">
-                <button type="button" onClick={() => start("tour")}>
-                  Show me
-                </button>
-              </ChecklistPanel>
-            </>
-          )}
-        </ChecklistRoot>
+        <WaymarkRoot>
+          <ChecklistRoot checklist={checklists.home}>
+            {({ start }) => (
+              <>
+                <ChecklistTrigger>Getting started</ChecklistTrigger>
+                <ChecklistPanel aria-label="Getting started">
+                  <button type="button" onClick={() => start("tour")}>
+                    Show me
+                  </button>
+                </ChecklistPanel>
+              </>
+            )}
+          </ChecklistRoot>
+        </WaymarkRoot>
       </StrictMode>,
     ),
   );
@@ -61,6 +64,6 @@ it("closes when a task starts from inside the panel, under StrictMode and a rend
   });
   await act(async () => vi.advanceTimersByTime(1000));
 
-  expect(controller.getSnapshot().active?.task.id).toBe("tour");
+  expect(document.querySelector('[role="dialog"][aria-label="Step 1 of 1"]')).toHaveTextContent("Hello");
   expect(panel()).toBeNull();
 });

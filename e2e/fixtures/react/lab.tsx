@@ -1,21 +1,22 @@
-import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { actions } from "waymark-core";
-import { controller, stored, storedWalkthrough, storedWhatsNew, whatsNew } from "./guidance";
+import { currentRun, forgetRecord, stored, useRunSnapshot, whatsNew } from "./guidance";
 import {
   data,
   EMPTY_DATA,
   log,
   patch,
+  runStatus,
   setup,
   setupOptions,
   useStore,
-  watched,
   whatsNewOpen,
   type AppData,
   type Setup,
 } from "./state";
 
-// Outside the StrictMode switch, so toggling StrictMode remounts the app and not the panel.
+// Outside the StrictMode switch, so toggling StrictMode remounts the app and
+// its root, not the panel. It reaches the Run through `currentRun`.
 export function Lab() {
   const current = useStore(setup);
   if (!current.lab) {
@@ -44,16 +45,7 @@ export function Lab() {
   );
 }
 
-function Choice<K extends keyof typeof setupOptions>({
-  name,
-  setup: current,
-  reload = false,
-}: {
-  name: K;
-  setup: Setup;
-  /** For what the controller reads once, at creation. */
-  reload?: boolean;
-}) {
+function Choice<K extends keyof typeof setupOptions>({ name, setup: current }: { name: K; setup: Setup }) {
   return (
     <div className="choice">
       <span>{name}</span>
@@ -63,10 +55,7 @@ function Choice<K extends keyof typeof setupOptions>({
             type="radio"
             name={name}
             checked={current[name] === option}
-            onChange={() => {
-              patch(setup, { [name]: option });
-              if (reload) location.reload();
-            }}
+            onChange={() => patch(setup, { [name]: option })}
           />
           {option}
         </label>
@@ -79,12 +68,11 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
   return (
     <>
       <h2>Setup</h2>
-      <Choice name="renderer" setup={current} />
       <Choice name="popover" setup={current} />
       <Choice name="list" setup={current} />
       <Choice name="copy" setup={current} />
-      <Choice name="storage" setup={current} reload />
-      <label title="Remounts the app, not this panel.">
+      <Choice name="storage" setup={current} />
+      <label title="Remounts the app and its root, so a new Run, not this panel.">
         <input type="checkbox" name="strict" checked={current.strict} onChange={() => patch(setup, { strict: !current.strict })} />
         StrictMode
       </label>
@@ -92,7 +80,7 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
         <input type="checkbox" name="slow" checked={current.slow} onChange={() => patch(setup, { slow: !current.slow })} />
         slow decks page
       </label>
-      <label title="The controller reads its Run options once, at creation, so this reloads the page.">
+      <label title="The root's waymarkPadding: room around the Waymark, drawn and clicked.">
         padding{" "}
         <input
           type="number"
@@ -103,7 +91,6 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
             const padding = Number(event.target.value);
             if (padding === current.padding || !Number.isFinite(padding)) return;
             patch(setup, { padding });
-            location.reload();
           }}
         />
       </label>
@@ -112,28 +99,32 @@ function SetupPanel({ setup: current }: { setup: Setup }) {
 }
 
 function GuidancePanel() {
-  const { active } = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const line = useStore(watched);
-  const status = active === null
-    ? "Nothing active."
-    : line ?? `${active.task.id}: no renderer is mounted, so its Run is not watching the page.`;
+  const run = useStore(currentRun);
+  const open = useRunSnapshot()?.open ?? null;
+  const status = useStore(runStatus);
+  const asked = useStore(whatsNewOpen);
   return (
     <>
       <h2>Guidance</h2>
-      <div className="lab-status">{status}</div>
+      <div className="lab-status">{status ?? "Nothing open."}</div>
       <div>
         {actions.map((action) => (
-          <button key={action} type="button" disabled={active === null} onClick={() => active?.run.act(action)}>
+          <button key={action} type="button" disabled={open === null} onClick={() => run?.act(action)}>
             {action}
           </button>
         ))}
       </div>
       <div>
-        <button type="button" onClick={() => controller.stop()}>
-          controller.stop()
+        <button type="button" title="A click: shown now, over any open walkthrough." onClick={() => run?.start(whatsNew)}>
+          start(whatsNew)
         </button>
-        <button type="button" onClick={() => whatsNewOpen.set(true)}>
-          what's new
+        <button
+          type="button"
+          title="The app asking: shown once nothing is open, and not at all once finished or exited."
+          aria-pressed={asked}
+          onClick={() => whatsNewOpen.set(true)}
+        >
+          requestStart(whatsNew)
         </button>
       </div>
     </>
@@ -167,34 +158,32 @@ function DataPanel() {
 
 function ProgressPanel() {
   const { storage } = useStore(setup);
-  const { storageStatus } = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
-  const tasks = useStore(stored);
-  const walkthrough = useStore(storedWalkthrough);
-  const whatsNewRecord = useStore(storedWhatsNew);
+  const run = useStore(currentRun);
+  const storageStatus = useRunSnapshot()?.storageStatus ?? "loading";
+  const record = useStore(stored);
   return (
     <>
       <h2>Storage</h2>
       <div className="lab-status" data-testid="storage-status">
-        tasks in {storage === "server" ? "/api/tasks" : "localStorage"}: {storageStatus}
+        record in {storage === "server" ? "/api/record" : "localStorage"}: {storageStatus}
       </div>
-      <pre data-testid="stored-tasks">{JSON.stringify(tasks)}</pre>
-      <div>checklist walkthrough</div>
-      <pre data-testid="stored-walkthrough">{JSON.stringify(walkthrough)}</pre>
-      <div>what's new</div>
-      <pre data-testid="stored-whats-new">{JSON.stringify(whatsNewRecord)}</pre>
+      <pre data-testid="stored-record">{JSON.stringify(record)}</pre>
       <div>
-        <button type="button" onClick={() => controller.clear()}>
-          controller.clear()
+        <button type="button" title="Clears the record and starts a new Run on it." onClick={() => void forgetRecord()}>
+          forget record
         </button>
         <button type="button" onClick={() => data.set(EMPTY_DATA)}>
           reset app data
         </button>
         <button
           type="button"
-          title="Starts what's new again from its first step: now if it is showing, else the next time it shows."
-          onClick={() => whatsNew.reset()}
+          title="Starts what's new again from its first step: now if it is open, else the next time it shows."
+          onClick={() => {
+            run?.reset(whatsNew);
+            whatsNewOpen.set(false);
+          }}
         >
-          whatsNew.reset()
+          run.reset(whatsNew)
         </button>
         <button type="button" onClick={() => location.reload()}>
           reload

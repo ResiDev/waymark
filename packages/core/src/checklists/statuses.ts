@@ -1,18 +1,17 @@
-import { copy, EMPTY, isEmpty, statusIn } from "./record";
+import { copy, EMPTY, statusIn } from "./record";
 import type { Stored, StoredStatus } from "./record";
 import type { TaskStatus } from "./types";
 
-export type Progress = Readonly<{
+export type Statuses = Readonly<{
   /** A new object only after a write that changed it, so identity means "unchanged". */
   record: () => Stored;
   status: (id: string) => TaskStatus;
   isReopened: (id: string) => boolean;
   set: (id: string, status: StoredStatus | undefined) => void;
   replace: (stored: Stored) => void;
-  clear: () => void;
 }>;
 
-export function createProgress(initial: Stored = EMPTY): Progress {
+export function createStatuses(initial: Stored = EMPTY): Statuses {
   let record: Stored = copy(initial);
 
   return {
@@ -28,9 +27,6 @@ export function createProgress(initial: Stored = EMPTY): Progress {
     },
     replace: (stored) => {
       record = copy(stored);
-    },
-    clear: () => {
-      if (!isEmpty(record)) record = EMPTY;
     },
   };
 }

@@ -1,19 +1,19 @@
 import type { ClickHit } from "./input";
 import {
-  begin,
   end,
   enter,
   gate,
   isGone,
   ABSENT,
   LOST,
+  SEARCHING,
   WAITING,
   MISSING,
   NO_EVENTS,
   noChange,
   show,
 } from "./state";
-import type { Outcome, Start, State } from "./state";
+import type { Outcome, State } from "./state";
 import {
   checkOf,
   delayOf,
@@ -33,7 +33,7 @@ import type { Step, Walkthrough } from "../walkthrough/types";
 export type Message =
   | Readonly<{ kind: "act"; action: Action }>
   | Readonly<{ kind: "stepRead"; stepGeneration: number; stepRead: StepRead }>
-  | Readonly<{ kind: "start" }>
+  | Readonly<{ kind: "start"; stepGeneration: number }>
   | Readonly<{
       kind: "click";
       stepGeneration: number;
@@ -41,9 +41,8 @@ export type Message =
       now: number;
     }>
   | Readonly<{ kind: "event"; stepGeneration: number; now: number }>
-  | Readonly<{ kind: "mounted" }>
-  | Readonly<{ kind: "unmounted" }>
-  | Readonly<{ kind: "loaded"; start: Start }>;
+  | Readonly<{ kind: "attached" }>
+  | Readonly<{ kind: "detached" }>;
 
 export function apply<TStep extends Step>(
   state: State<TStep>,
@@ -64,10 +63,10 @@ export function apply<TStep extends Step>(
         ? observe(state, message.stepRead, walkthrough)
         : noChange(state);
     case "start":
-      return start(state);
+      return stepOf(message.stepGeneration) ? start(state) : noChange(state);
     case "click": {
-      // Collapse applies to the run, so it does not require a matching generation.
-      if (message.hit === "away") return act(state, "collapse", walkthrough);
+      // Dismissing applies to the walkthrough, so it does not require a matching generation.
+      if (message.hit === "away") return act(state, walkthrough.dismiss ?? "collapse", walkthrough);
       const step = stepOf(message.stepGeneration);
       return message.hit === "waymark" && step && isClick(step)
         ? satisfy(state, message.now, walkthrough)
@@ -79,14 +78,10 @@ export function apply<TStep extends Step>(
         ? satisfy(state, message.now, walkthrough)
         : noChange(state);
     }
-    case "mounted":
-      return mount(state, true);
-    case "unmounted":
-      return mount(state, false);
-    case "loaded":
-      return state.snapshot.phase === "loading"
-        ? { state: begin(walkthrough, message.start, state), events: NO_EVENTS }
-        : noChange(state);
+    case "attached":
+      return attach(state, true);
+    case "detached":
+      return attach(state, false);
   }
 }
 
@@ -107,15 +102,11 @@ function act<TStep extends Step>(
   walkthrough: Walkthrough<TStep>,
 ): Outcome<TStep> {
   const snapshot = state.snapshot;
-  // Reset also applies to completed and exited runs. A loading Run has nothing to reset yet.
-  if (action === "reset") {
-    return snapshot.phase === "loading"
-      ? noChange(state)
-      : { state: enter(walkthrough, 0, state), events: ["reset"] };
-  }
   if (snapshot.phase !== "running") return noChange(state);
 
   switch (action) {
+    case "reset":
+      return { state: enter(walkthrough, 0, state), events: ["reset"] };
     case "advance":
       return snapshot.canAdvance
         ? advanceStep(state, snapshot, walkthrough)
@@ -365,26 +356,26 @@ function satisfy<TStep extends Step>(
   return whenDue(held, now, walkthrough);
 }
 
-function mount<TStep extends Step>(
+function attach<TStep extends Step>(
   state: State<TStep>,
-  mounted: boolean,
+  attached: boolean,
 ): Outcome<TStep> {
-  if (state.mounted === mounted) return noChange(state);
+  if (state.attached === attached) return noChange(state);
   const snapshot = state.snapshot;
-  // No frames run without a subscriber, so a `state` check cannot be shown to
+  // No frames run while detached, so a `state` check cannot be shown to
   // have held throughout and its delay starts again. A click already counts.
   const dropClock =
-    !mounted &&
+    !attached &&
     snapshot.phase === "running" &&
     !state.satisfied &&
     checkOf(snapshot.step) !== undefined;
   return {
     state: {
       ...state,
-      mounted,
+      attached,
       heldSince: dropClock ? undefined : state.heldSince,
-      // Nobody looked while unmounted, so that time does not count towards missing or lost.
-      unseenSince: mounted ? state.unseenSince : undefined,
+      // Nobody looked while detached, so that time does not count towards missing or lost.
+      unseenSince: attached ? state.unseenSince : undefined,
     },
     events: NO_EVENTS,
   };
@@ -420,7 +411,7 @@ export type LiveWatchers = Readonly<{
   waymarkEvents: WaymarkEvents | undefined;
 }>;
 
-const NOTHING_LIVE: LiveWatchers = {
+export const NOTHING_LIVE: LiveWatchers = {
   input: false,
   frame: false,
   waymarkAria: undefined,
@@ -430,7 +421,7 @@ const NOTHING_LIVE: LiveWatchers = {
 export function needsAdvanceRead(state: State): boolean {
   const snapshot = state.snapshot;
   return (
-    state.mounted &&
+    state.attached &&
     state.started &&
     snapshot.phase === "running" &&
     !state.unlocked &&
@@ -440,17 +431,14 @@ export function needsAdvanceRead(state: State): boolean {
 
 export function liveWatchers(state: State): LiveWatchers {
   const snapshot = state.snapshot;
-  if (!state.mounted || snapshot.phase !== "running") return NOTHING_LIVE;
+  if (!state.attached || snapshot.phase !== "running" || snapshot.collapsed) return NOTHING_LIVE;
   const step = snapshot.step;
   const conditionUnmet = !state.unlocked;
   const events = eventsOf(step);
   return {
     input: true,
     frame: hasWaymark(step) || needsAdvanceRead(state),
-    waymarkAria:
-      state.element === null
-        ? undefined
-        : { element: state.element, expanded: !snapshot.collapsed },
+    waymarkAria: state.element === null ? undefined : { element: state.element, expanded: true },
     waymarkEvents:
       state.element !== null && conditionUnmet && events.length > 0
         ? {
@@ -460,4 +448,27 @@ export function liveWatchers(state: State): LiveWatchers {
           }
         : undefined,
   };
+}
+
+/** Where a collapsed walkthrough's beacon can sit: its step's Waymark, measured each frame as an open step's is. */
+export type Sighting = Readonly<{
+  stepIndex: number;
+  waymark: Location;
+  unseenSince: number | undefined;
+  element: Element | null;
+}>;
+
+export const unsighted = (step: Step, stepIndex: number): Sighting => ({
+  stepIndex,
+  waymark: hasWaymark(step) ? SEARCHING : ABSENT,
+  unseenSince: undefined,
+  element: null,
+});
+
+/** The same Sighting when nothing moved, so the driver sees no change to notify. */
+export function sight(previous: Sighting, read: WaymarkRead, now: number, step: Step): Sighting {
+  const { waymark, unseenSince } = locate(previous.waymark, previous.unseenSince, read, now, step);
+  return waymark === previous.waymark && unseenSince === previous.unseenSince && read.element === previous.element
+    ? previous
+    : { stepIndex: previous.stepIndex, waymark, unseenSince, element: read.element };
 }

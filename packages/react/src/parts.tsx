@@ -35,7 +35,8 @@ const MARGIN = 8;
 type RootContextValue = Readonly<{
   open: boolean;
   running: boolean;
-  activeId: string | null;
+  /** The Task whose walkthrough is open. */
+  openId: string | null;
   panelId: string;
   triggerRef: RefObject<HTMLButtonElement>;
   panelRef: RefObject<HTMLDivElement>;
@@ -50,7 +51,9 @@ type RootContextValue = Readonly<{
 type TaskContextValue = Readonly<{
   task: AnyReactTask;
   status: TaskStatus;
-  active: boolean;
+  /** Its walkthrough is open. */
+  open: boolean;
+  inProgress: boolean;
   titleId: string;
   statusId: string;
 }>;
@@ -71,9 +74,10 @@ function useTaskContext(part: string): TaskContextValue {
 }
 
 // On every part of a Task, so each can be styled by its Task's state without reaching up to the row.
-const taskData = ({ status, active }: TaskContextValue) => ({
+const taskData = ({ status, open, inProgress }: TaskContextValue) => ({
   "data-status": status,
-  "data-active": active ? "" : undefined,
+  "data-open": open ? "" : undefined,
+  "data-in-progress": inProgress ? "" : undefined,
 });
 
 /**
@@ -111,9 +115,8 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
   children,
 }: ChecklistRootProps<TTask>) {
   const state = useChecklist(checklist);
-  const activeId = state.snapshot.active?.task.id ?? null;
-  const activeRun = state.snapshot.active?.run ?? null;
-  const running = activeId !== null;
+  const openId = state.snapshot.open?.id ?? null;
+  const running = openId !== null;
 
   const [hovered, setHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -149,9 +152,9 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
   // In a layout effect, so it closes before the page paints and before a pending hover fires;
   // done during render instead, StrictMode's replayed render lost it.
   useLayoutEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- resets pin and hover; an `open` derived from `running` would reopen when the Run ends
-    if (activeRun !== null) close();
-  }, [activeRun, close]);
+    // oxlint-disable-next-line react/set-state-in-effect -- resets pin and hover; an `open` derived from `running` would reopen when the walkthrough ends
+    if (openId !== null) close();
+  }, [openId, close]);
 
   useEffect(() => {
     if (!pinned) return;
@@ -170,7 +173,7 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
     () => ({
       open,
       running,
-      activeId,
+      openId,
       panelId,
       triggerRef,
       panelRef,
@@ -182,11 +185,11 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
       },
       close,
       toggle: (id) => {
-        const row = checklist.getSnapshot().tasks.find(({ task }) => task.id === id);
-        if (row) checklist.toggle(row.task.id);
+        const row = state.snapshot.tasks.find(({ task }) => task.id === id);
+        if (row) state.toggle(row.task.id);
       },
     }),
-    [open, running, activeId, panelId, focusIfKeyboardOpened, hover, close, pinned, checklist],
+    [open, running, openId, panelId, focusIfKeyboardOpened, hover, close, pinned, state],
   );
 
   return (
@@ -316,17 +319,17 @@ export function ChecklistPanel({
 }
 
 export function ChecklistTask({ row, ...props }: ChecklistTaskProps) {
-  const { activeId } = useRootContext("ChecklistTask");
+  const { openId } = useRootContext("ChecklistTask");
   const titleId = useId();
   const statusId = useId();
-  const active = activeId === row.task.id;
+  const open = openId === row.task.id;
   const context = useMemo<TaskContextValue>(
-    () => ({ task: row.task, status: row.status, active, titleId, statusId }),
-    [row.task, row.status, active, titleId, statusId],
+    () => ({ task: row.task, status: row.status, open, inProgress: row.inProgress, titleId, statusId }),
+    [row.task, row.status, open, row.inProgress, titleId, statusId],
   );
   return (
     <TaskContext.Provider value={context}>
-      <li aria-current={active ? "step" : undefined} {...props} {...taskData(context)} />
+      <li aria-current={open ? "step" : undefined} {...props} {...taskData(context)} />
     </TaskContext.Provider>
   );
 }

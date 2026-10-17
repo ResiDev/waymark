@@ -3,20 +3,26 @@ import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
-  createChecklists,
+  defineChecklists,
   defineWalkthrough,
   everyProblem,
   localStorageAdapter,
   Walkthrough,
+  WaymarkRoot,
   type BeaconRenderProps,
+  type StoredRecord,
   type WalkthroughLabels,
+  type WalkthroughProgress,
   type WalkthroughRenderProps,
   type WaymarkProblem,
 } from "./index";
-import { addHost, addRoot, addTarget, localKey } from "./test/dom";
+import { addHost, addTarget, localKey } from "./test/dom";
+import { addWaymarkRoot } from "./test/root";
 import { fakeFrames } from "./test/time";
 
-const mount = () => ({ ...fakeFrames(), ...addRoot() });
+const mount = () => ({ ...fakeFrames(), ...addWaymarkRoot() });
+
+const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
 
 const buttonNamed = (label: string) =>
   [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
@@ -41,43 +47,129 @@ const clickAway = async () => {
 
 describe("Walkthrough", () => {
   it("does no work while inactive", async () => {
-    const { root, frames } = mount();
-    const walkthrough = defineWalkthrough([{ content: "Hidden" }]);
-    await act(async () => {
-      root.render(<Walkthrough active={false} walkthrough={walkthrough} />);
-    });
+    const { render, frames } = mount();
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Hidden" }] });
+    await render(<Walkthrough active={false} walkthrough={walkthrough} />);
 
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog()).toBeNull();
     expect(frames.size).toBe(0);
   });
 
-  it("renders into the body, or in place with portal off", async () => {
-    const { root, host } = mount();
-    const walkthrough = defineWalkthrough([{ content: "Hello" }]);
-    const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
+  it("asks for its walkthrough, which waits for the open one and doesn't come back once finished, and draws nothing itself", async () => {
+    const { render } = mount();
+    const first = defineWalkthrough({ id: "first", steps: [{ content: "First tour" }] });
+    const hint = defineWalkthrough({ id: "hint", steps: [{ content: "A hint" }] });
+    const page = () => (
+      <div data-page>
+        <Walkthrough walkthrough={hint} />
+      </div>
+    );
+    const run = await render(null, { portal: false });
+    await act(async () => run.start(first));
 
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    await render(page(), { portal: false });
+    expect(dialog()).toHaveTextContent("First tour");
+    expect(document.querySelector("[data-page]")).toBeEmptyDOMElement();
+
+    await act(async () => buttonNamed("Finish")!.click());
+    expect(dialog()).toHaveTextContent("A hint");
+    expect(document.querySelector("[data-page]")).toBeEmptyDOMElement();
+
+    await act(async () => buttonNamed("Finish")!.click());
+    await render(null, { portal: false });
+    await render(page(), { portal: false });
+    expect(dialog()).toBeNull();
+  });
+
+  it("withdraws its request when its page goes before its turn", async () => {
+    const { render } = mount();
+    const first = defineWalkthrough({ id: "first", steps: [{ content: "First tour" }] });
+    const hint = defineWalkthrough({ id: "hint", steps: [{ content: "A hint" }] });
+    const run = await render(null);
+    await act(async () => run.start(first));
+    await render(<Walkthrough walkthrough={hint} />);
+    await render(null);
+
+    await act(async () => buttonNamed("Finish")!.click());
+    expect(dialog()).toBeNull();
+  });
+
+  it("keeps a page's walkthrough as the next page asks for it too: waiting, it still waits; open, it stays open", async () => {
+    const { render } = mount();
+    const events: string[] = [];
+    const onEvent = (event: { type: string }) => events.push(event.type);
+    const first = defineWalkthrough({ id: "first", steps: [{ content: "First tour" }] });
+    const hint = defineWalkthrough({ id: "hint", steps: [{ content: "A hint" }] });
+    // Keyed, so moving to the next page unmounts one Walkthrough as the other mounts.
+    const page = (name: string) => (
+      <section key={name}>
+        <Walkthrough walkthrough={hint} />
+      </section>
+    );
+    const run = await render(null, { onEvent });
+    await act(async () => run.start(first));
+
+    await render(page("filters"), { onEvent });
+    await render(page("views"), { onEvent });
+    expect(dialog()).toHaveTextContent("First tour");
+    await act(async () => buttonNamed("Finish")!.click());
+    expect(dialog()).toHaveTextContent("A hint");
+
+    events.length = 0;
+    await render(page("filters"), { onEvent });
+    expect(dialog()).toHaveTextContent("A hint");
+    expect(events).toEqual([]);
+  });
+
+  it("keeps a walkthrough open, and the page listened to, through Strict Mode's mount cycle", async () => {
+    const { root } = mount();
+    const events: string[] = [];
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Hello" }] });
+    await act(async () =>
+      root.render(
+        <StrictMode>
+          <WaymarkRoot onEvent={(event) => events.push(event.type)}>
+            <Walkthrough walkthrough={walkthrough} />
+          </WaymarkRoot>
+        </StrictMode>,
+      ),
+    );
+
+    expect(dialog()).toHaveTextContent("Hello");
+    expect(events).toEqual(["start"]);
+
+    await clickAway();
+    expect(events).toEqual(["start", "collapse"]);
+    expect(beacon()).toBeInTheDocument();
+  });
+});
+
+describe("WaymarkRoot", () => {
+  it("renders into the body, or in place with portal off", async () => {
+    const { render, host } = mount();
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Hello" }] });
+
+    await render(<Walkthrough walkthrough={walkthrough} />);
     expect(dialog()!.parentElement).toBe(document.body);
 
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} portal={false} />));
+    await render(<Walkthrough walkthrough={walkthrough} />, { portal: false });
     expect(host).toContainElement(dialog());
   });
 
   it("renders the default view and advances after a Waymark click", async () => {
-    const { root } = mount();
+    const { render } = mount();
     const target = addTarget("save", "Save");
-    const walkthrough = defineWalkthrough([
-      { waymark: "save", advance: "click", content: "Save the document" },
-      { content: "The document is saved" },
-    ]);
-
-    await act(async () => {
-      root.render(<Walkthrough walkthrough={walkthrough} />);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "save", advance: "click", content: "Save the document" },
+        { content: "The document is saved" },
+      ],
     });
 
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
-      "Save the document",
-    );
+    await render(<Walkthrough walkthrough={walkthrough} />);
+
+    expect(dialog()).toHaveTextContent("Save the document");
     expect(target).toHaveAttribute("aria-haspopup", "dialog");
 
     await act(async () => {
@@ -85,54 +177,54 @@ describe("Walkthrough", () => {
       await Promise.resolve();
     });
 
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
-      "The document is saved",
-    );
+    expect(dialog()).toHaveTextContent("The document is saved");
     expect(target).not.toHaveAttribute("aria-haspopup");
   });
 
-  it("uses a replacement event callback without restarting the run", async () => {
-    const { root } = mount();
+  it("uses a replacement event callback without restarting the walkthrough", async () => {
+    const { render } = mount();
     const target = addTarget("save", "Save");
-    const walkthrough = defineWalkthrough([
-      { waymark: "save", advance: "click", content: "First step" },
-      { content: "Second step" },
-      { content: "Third step" },
-    ]);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "save", advance: "click", content: "First step" },
+        { content: "Second step" },
+        { content: "Third step" },
+      ],
+    });
     const original = vi.fn();
     const replacement = vi.fn();
 
-    await act(async () => {
-      root.render(<Walkthrough walkthrough={walkthrough} onEvent={original} />);
-    });
+    await render(<Walkthrough walkthrough={walkthrough} />, { onEvent: original });
     await act(async () => target.click());
     expect(original).toHaveBeenCalled();
     original.mockClear();
 
-    await act(async () => {
-      root.render(<Walkthrough walkthrough={walkthrough} onEvent={replacement} />);
-    });
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Second step");
+    await render(<Walkthrough walkthrough={walkthrough} />, { onEvent: replacement });
+    expect(dialog()).toHaveTextContent("Second step");
 
     await act(async () => buttonNamed("Next")!.click());
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Third step");
+    expect(dialog()).toHaveTextContent("Third step");
     expect(replacement).toHaveBeenCalled();
     expect(original).not.toHaveBeenCalled();
   });
 
   it("renders a closed Advance gate until its condition is met", async () => {
-    const { root } = mount();
+    const { render } = mount();
     const target = addTarget("name", "Name");
-    const walkthrough = defineWalkthrough([
-      {
-        waymark: "name",
-        content: "Enter a name",
-        advance: { event: "change", then: "unlock" },
-      },
-      { content: "Named" },
-    ]);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        {
+          waymark: "name",
+          content: "Enter a name",
+          advance: { event: "change", then: "unlock" },
+        },
+        { content: "Named" },
+      ],
+    });
 
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    await render(<Walkthrough walkthrough={walkthrough} />);
     const next = document.querySelector("button[disabled]");
     expect(next).toHaveTextContent("Next");
 
@@ -144,49 +236,64 @@ describe("Walkthrough", () => {
     expect(document.querySelector("button[disabled]")).toBeNull();
   });
 
-  it("reports a missing Waymark and a throwing onEvent to the walkthrough's problemHandlers", async () => {
-    const { root, runFrames } = mount();
+  it("reports a missing Waymark and a throwing onEvent to its problemHandlers", async () => {
+    const { render, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const onProblem = vi.fn<(problem: WaymarkProblem) => void>();
     const analyticsDown = new Error("analytics down");
-    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }], { problemHandlers: everyProblem(onProblem) });
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "save", content: "Save the document" }] });
 
-    await act(async () =>
-      root.render(
-        <Walkthrough
-          walkthrough={walkthrough}
-          onEvent={() => {
-            throw analyticsDown;
-          }}
-        />,
-      ),
-    );
+    await render(<Walkthrough walkthrough={walkthrough} />, {
+      problemHandlers: everyProblem(onProblem),
+      onEvent: () => {
+        throw analyticsDown;
+      },
+    });
     clock += 3000;
     await runFrames();
 
     expect(onProblem.mock.calls).toEqual([
       [{ type: "callbackThrew", callback: "onEvent", error: analyticsDown }],
-      [{ type: "waymarkMissing", step: walkthrough.steps[0], stepIndex: 0 }],
+      [{ type: "waymarkMissing", walkthrough: "tour", step: walkthrough.steps[0], stepIndex: 0 }],
     ]);
   });
 
-  it("shows a step waiting for its Waymark without a note, then with one once missing, and lets the user past its gate", async () => {
-    const { root, runFrames } = mount();
+  it("reports to the problem handlers of its latest render", async () => {
+    const { render, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
-    const walkthrough = defineWalkthrough([
-      { waymark: "save", advance: "click", content: "Save the document" },
-      { content: "The document is saved" },
-    ]);
+    const original = vi.fn();
+    const replacement = vi.fn();
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "save", content: "Save the document" }] });
 
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await render(<Walkthrough walkthrough={walkthrough} />, { problemHandlers: { waymarkMissing: original } });
+    await render(<Walkthrough walkthrough={walkthrough} />, { problemHandlers: { waymarkMissing: replacement } });
+    clock += 3000;
+    await runFrames();
+
+    expect(replacement).toHaveBeenCalledOnce();
+    expect(original).not.toHaveBeenCalled();
+  });
+
+  it("shows a step waiting for its Waymark without a note, then with one once missing, and lets the user past its gate", async () => {
+    const { render, runFrames } = mount();
+    let clock = 1000;
+    vi.spyOn(performance, "now").mockImplementation(() => clock);
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "save", advance: "click", content: "Save the document" },
+        { content: "The document is saved" },
+      ],
+    });
+
+    await render(<Walkthrough walkthrough={walkthrough} />);
+    expect(dialog()).toBeNull();
     expect(shade()).not.toBeNull();
 
     clock += 1000;
     await runFrames();
-    const dialog = () => document.querySelector('[role="dialog"]');
     expect(dialog()).toHaveTextContent("Save the document");
     expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
     expect(buttonNamed("Next")).toBeDisabled();
@@ -196,47 +303,47 @@ describe("Walkthrough", () => {
     expect(dialog()).toHaveTextContent("Can't find the part of the page");
 
     await act(async () => buttonNamed("Next")!.click());
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("The document is saved");
+    expect(dialog()).toHaveTextContent("The document is saved");
   });
 
   it("shows a note once a step's Waymark has been gone for 200ms", async () => {
-    const { root, runFrames } = mount();
+    const { render, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
     const target = addTarget("save", "Save");
-    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
-    expect(document.querySelector('[role="dialog"]')).not.toHaveTextContent("Can't find the part of the page");
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "save", content: "Save the document" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />);
+    expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
 
     target.remove();
     await runFrames();
     clock += 199;
     await runFrames();
-    expect(document.querySelector('[role="dialog"]')).not.toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
 
     clock += 1;
     await runFrames();
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).toHaveTextContent("Can't find the part of the page");
   });
 
-  it("shows nothing for a Collapsed run still searching for its Waymark", async () => {
-    const { root } = mount();
-    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+  it("shows nothing for a collapsed walkthrough still searching for its Waymark", async () => {
+    const { render } = mount();
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "save", content: "Save the document" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />);
     expect(shade()).not.toBeNull();
 
     await clickAway();
     expect(shade()).toBeNull();
     expect(beacon()).toBeNull();
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog()).toBeNull();
   });
 
-  it("shows a Collapsed run's beacon only once its Waymark is found or missing, not while waiting", async () => {
-    const { root, runFrames } = mount();
+  it("shows a collapsed walkthrough's beacon only once its Waymark is found or missing, not while waiting", async () => {
+    const { render, runFrames } = mount();
     let clock = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => clock);
-    const walkthrough = defineWalkthrough([{ waymark: "save", content: "Save the document" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "save", content: "Save the document" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />);
     await clickAway();
 
     clock += 1000;
@@ -248,50 +355,41 @@ describe("Walkthrough", () => {
     expect(beacon()).not.toBeNull();
   });
 
-  it("turns an outside click into a resumable Collapsed run", async () => {
-    const { root } = mount();
+  it("turns an outside click into a resumable collapsed walkthrough", async () => {
+    const { render } = mount();
     addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough([
-      { waymark: "panel", content: "Use this panel" },
-    ]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "panel", content: "Use this panel" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />);
     await clickAway();
 
     expect(beacon()).toBeInTheDocument();
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog()).toBeNull();
 
     await act(async () => beacon()!.click());
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
-      "Use this panel",
-    );
+    expect(dialog()).toHaveTextContent("Use this panel");
   });
 
   it("pins the beacon to its Waymark's top-right corner", async () => {
-    const { root } = mount();
+    const { render } = mount();
     addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "panel", content: "Use this panel" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />);
     await clickAway();
 
     expect(beaconAnchor()!.style).toMatchObject({ left: "120px", top: "20px" });
   });
 
   it("draws a custom beacon in place of the default, and resumes from it", async () => {
-    const { root } = mount();
+    const { render } = mount();
     addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
-    await act(async () =>
-      root.render(
-        <Walkthrough
-          walkthrough={walkthrough}
-          renderBeacon={({ currentStep, resume }) => (
-            <button type="button" onClick={resume}>
-              Back to: {currentStep.content}
-            </button>
-          )}
-        />,
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "panel", content: "Use this panel" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />, {
+      renderBeacon: ({ currentStep, resume }) => (
+        <button type="button" onClick={resume}>
+          Back to: {currentStep.content}
+        </button>
       ),
-    );
+    });
     await clickAway();
 
     expect(beacon()).toBeNull();
@@ -299,19 +397,20 @@ describe("Walkthrough", () => {
     expect(custom).toHaveTextContent("Back to: Use this panel");
 
     await act(async () => custom.click());
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent("Use this panel");
+    expect(dialog()).toHaveTextContent("Use this panel");
   });
 
   it("doesn't take a click on a custom beacon over its Waymark for a click on the Waymark", async () => {
-    const { root } = mount();
+    const { render } = mount();
     addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough([
-      { waymark: "panel", advance: "click", content: "Click the panel" },
-      { content: "Done" },
-    ]);
-    await act(async () =>
-      root.render(<Walkthrough walkthrough={walkthrough} renderBeacon={() => <span>Paused</span>} />),
-    );
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { waymark: "panel", advance: "click", content: "Click the panel" },
+        { content: "Done" },
+      ],
+    });
+    await render(<Walkthrough walkthrough={walkthrough} />, { renderBeacon: () => <span>Paused</span> });
     await clickAway();
 
     await act(async () => {
@@ -321,15 +420,18 @@ describe("Walkthrough", () => {
       await Promise.resolve();
     });
     expect(beaconAnchor()).toHaveTextContent("Paused");
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog()).toBeNull();
   });
 
   it("tells a custom beacon whether it sits on a found Waymark", async () => {
-    const { root } = mount();
+    const { render } = mount();
     addTarget("panel", "Panel");
     const renderBeacon = vi.fn((_props: BeaconRenderProps) => null);
-    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "On the panel" }, { content: "Anywhere" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} renderBeacon={renderBeacon} />));
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [{ waymark: "panel", content: "On the panel" }, { content: "Anywhere" }],
+    });
+    await render(<Walkthrough walkthrough={walkthrough} />, { renderBeacon });
     await clickAway();
     expect(renderBeacon.mock.lastCall![0].waymarkFound).toBe(true);
 
@@ -344,66 +446,78 @@ describe("Walkthrough", () => {
   });
 
   it("ends the walkthrough from the close button", async () => {
-    const { root } = mount();
+    const { render } = mount();
     addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough([{ waymark: "panel", content: "Use this panel" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} />));
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "panel", content: "Use this panel" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />);
 
     const close = document.querySelector<HTMLButtonElement>(
       '[role="dialog"] button[aria-label="Close"]',
     )!;
     await act(async () => close.click());
 
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog()).toBeNull();
     expect(beacon()).toBeNull();
   });
 
   it("supports one custom popover seam", async () => {
-    const { root } = mount();
-    const walkthrough = defineWalkthrough([{ content: "Payload" }]);
-    await act(async () => {
-      root.render(
-        <Walkthrough
-          walkthrough={walkthrough}
-          renderPopover={({ currentStep, snapshot }) => (
-            <button type="button">
-              Custom {snapshot.stepIndex}: {currentStep.content}
-            </button>
-          )}
-        />,
-      );
+    const { render } = mount();
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Payload" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />, {
+      renderPopover: ({ currentStep, snapshot }) => (
+        <button type="button">
+          Custom {snapshot.stepIndex}: {currentStep.content}
+        </button>
+      ),
     });
 
-    expect(document.querySelector('[role="dialog"]')).toHaveTextContent(
-      "Custom 0: Payload",
-    );
+    expect(dialog()).toHaveTextContent("Custom 0: Payload");
+  });
+
+  it("draws a walkthrough with its definition's own popover and beacon over the root's", async () => {
+    const { render } = mount();
+    const whatsNew = defineWalkthrough({
+      id: "whatsNew",
+      steps: [{ content: "Filters" }],
+      renderPopover: ({ currentStep }) => <p>New: {currentStep.content}</p>,
+      renderBeacon: () => <span>New beacon</span>,
+    });
+    const plain = defineWalkthrough({ id: "plain", steps: [{ content: "Plain" }] });
+    const run = await render(<Walkthrough walkthrough={whatsNew} />, {
+      renderPopover: ({ currentStep }) => <p>Root: {currentStep.content}</p>,
+      renderBeacon: () => <span>Root beacon</span>,
+    });
+    expect(dialog()).toHaveTextContent("New: Filters");
+
+    await act(async () => run.start(plain));
+    expect(dialog()).toHaveTextContent("Root: Plain");
+
+    await act(async () => run.act("exit"));
+    expect(beaconAnchor()).toHaveTextContent("New beacon");
   });
 
   it("uses an app's labels, and the defaults for those it leaves out", async () => {
-    const { root, runFrames } = mount();
+    const { render, runFrames } = mount();
     addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough([
-      { content: "Welcome" },
-      { waymark: "panel", content: "Use this panel" },
-    ]);
-    await act(async () =>
-      root.render(
-        <Walkthrough
-          walkthrough={walkthrough}
-          labels={{
-            next: "Weiter",
-            close: "Schließen",
-            resume: "Fortsetzen",
-            stepOf: (step, count) => `Schritt ${step} von ${count}`,
-          }}
-        />,
-      ),
-    );
+    const walkthrough = defineWalkthrough({
+      id: "tour",
+      steps: [
+        { content: "Welcome" },
+        { waymark: "panel", content: "Use this panel" },
+      ],
+    });
+    await render(<Walkthrough walkthrough={walkthrough} />, {
+      labels: {
+        next: "Weiter",
+        close: "Schließen",
+        resume: "Fortsetzen",
+        stepOf: (step, count) => `Schritt ${step} von ${count}`,
+      },
+    });
 
-    const dialog = document.querySelector('[role="dialog"]');
-    expect(dialog).toHaveAttribute("aria-label", "Schritt 1 von 2");
-    expect(dialog).toHaveTextContent("Schritt 1 von 2");
-    expect(dialog!.querySelector('button[aria-label="Schließen"]')).not.toBeNull();
+    expect(dialog()).toHaveAttribute("aria-label", "Schritt 1 von 2");
+    expect(dialog()).toHaveTextContent("Schritt 1 von 2");
+    expect(dialog()!.querySelector('button[aria-label="Schließen"]')).not.toBeNull();
 
     await act(async () => buttonNamed("Weiter")!.click());
     await runFrames();
@@ -415,83 +529,84 @@ describe("Walkthrough", () => {
   });
 
   it("uses the default for a label passed as undefined", async () => {
-    const { root } = mount();
-    const walkthrough = defineWalkthrough([{ content: "Welcome" }, { content: "Next up" }]);
+    const { render } = mount();
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Welcome" }, { content: "Next up" }] });
     // @ts-expect-error: only exactOptionalPropertyTypes, which an app may not set, rejects this.
     const labels: Partial<WalkthroughLabels> = { next: undefined, stepOf: undefined };
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} labels={labels} />));
+    await render(<Walkthrough walkthrough={walkthrough} />, { labels });
 
-    expect(document.querySelector('[role="dialog"]')).toHaveAttribute("aria-label", "Step 1 of 2");
+    expect(dialog()).toHaveAttribute("aria-label", "Step 1 of 2");
     expect(buttonNamed("Next")).toBeDefined();
   });
 
   it("emits completion after the committed terminal state and cleans up", async () => {
-    const { root, frames } = mount();
+    const { render, frames } = mount();
     const target = addTarget("finish", "Finish target");
     const phases: string[] = [];
-    const walkthrough = defineWalkthrough([
-      { waymark: "finish", content: "Last step" },
-    ]);
-    await act(async () => {
-      root.render(
-        <Walkthrough
-          walkthrough={walkthrough}
-          onEvent={(event) => {
-            if (event.type === "advance" || event.type === "finish") {
-              phases.push(`${event.type}:${event.snapshot.phase}`);
-            }
-          }}
-        />,
-      );
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "finish", content: "Last step" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />, {
+      onEvent: (event) => {
+        if (event.type === "advance" || event.type === "finish") {
+          phases.push(`${event.type}:${event.snapshot.phase}`);
+        }
+      },
     });
 
     await act(async () => buttonNamed("Finish")!.click());
 
     expect(phases).toEqual(["advance:completed", "finish:completed"]);
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(dialog()).toBeNull();
     expect(target).not.toHaveAttribute("aria-haspopup");
     expect(frames.size).toBe(0);
   });
 });
 
-describe("Walkthrough with storage", () => {
-  const tour = localStorageAdapter("tour");
-  const walkthrough = defineWalkthrough(
-    [{ content: "First step" }, { content: "Second step" }, { content: "Third step" }],
-    { storage: tour },
-  );
+describe("WaymarkRoot with storage", () => {
+  const walkthrough = defineWalkthrough({
+    id: "tour",
+    steps: [{ content: "First step" }, { content: "Second step" }, { content: "Third step" }],
+  });
   const view = () => <Walkthrough walkthrough={walkthrough} />;
-  const dialog = () => document.querySelector('[role="dialog"]');
-  // The walkthrough saves its place in localStorage, under a key that goes when the test does.
+  /** A record holding only this walkthrough's progress, as an earlier visit left it. */
+  const record = (progress: Omit<WalkthroughProgress, "stepCount" | "changedAt">) =>
+    JSON.stringify({
+      version: 4,
+      walkthroughs: { tour: { ...progress, stepCount: 3, changedAt: Date.now() } },
+      tasks: {},
+    } satisfies StoredRecord);
+  // The Run saves the user's record in localStorage, under a key that goes when the test does.
   const mountTour = () => {
     localKey("tour");
     return mount();
   };
 
   it("reads storage once as it mounts, and picks up its place on the next mount", async () => {
-    const { root } = mountTour();
-    const load = vi.spyOn(tour, "load");
-    await act(async () => root.render(view()));
+    const { root, render } = mountTour();
+    const storage = localStorageAdapter<StoredRecord>("tour");
+    const load = vi.spyOn(storage, "load");
+    await render(view(), { storage });
     await act(async () => buttonNamed("Next")!.click());
     expect(dialog()).toHaveTextContent("Second step");
 
-    await act(async () => root.render(view()));
+    await render(view(), { storage });
     expect(load).toHaveBeenCalledOnce();
 
     await act(async () => root.unmount());
-    const { root: remounted } = addRoot();
-    await act(async () => remounted.render(view()));
+    const { render: remount } = addWaymarkRoot();
+    await remount(view(), { storage });
     expect(load).toHaveBeenCalledTimes(2);
     expect(dialog()).toHaveTextContent("Second step");
   });
 
-  it("shows a finished walkthrough again once it is reset", async () => {
-    const { root } = mountTour();
-    localStorage.setItem("tour", JSON.stringify({ version: 1, phase: "completed" }));
-    await act(async () => root.render(view()));
+  it("shows a finished walkthrough again, the next time a page asks for it, once it is reset", async () => {
+    const { render } = mountTour();
+    localStorage.setItem("tour", record({ status: "finished", step: 2, collapsed: false }));
+    const run = await render(view(), { storage: "tour" });
     expect(dialog()).toBeNull();
 
-    await act(async () => walkthrough.reset());
+    await act(async () => run.reset(walkthrough));
+    await render(null, { storage: "tour" });
+    await render(view(), { storage: "tour" });
     expect(dialog()).toHaveTextContent("First step");
   });
 
@@ -499,12 +614,11 @@ describe("Walkthrough with storage", () => {
     "hydrates a server render, which has no document, then shows the stored step (portal %s)",
     async (portal) => {
       fakeFrames();
-      localStorage.setItem(
-        localKey("tour"),
-        JSON.stringify({ version: 1, phase: "running", step: 1, stepCount: 3, collapsed: false, savedAt: Date.now() }),
-      );
+      localStorage.setItem(localKey("tour"), record({ status: "running", step: 1, collapsed: false }));
       const app = () => (
-        <Walkthrough walkthrough={walkthrough} portal={portal} />
+        <WaymarkRoot storage="tour" portal={portal}>
+          {view()}
+        </WaymarkRoot>
       );
       vi.stubGlobal("document", undefined);
       let server: string;
@@ -531,60 +645,54 @@ describe("Walkthrough with storage", () => {
   );
 
   it("shows nothing for a walkthrough storage says was finished", async () => {
-    const { root } = mountTour();
-    localStorage.setItem("tour", JSON.stringify({ version: 1, phase: "completed" }));
-    await act(async () => root.render(view()));
+    const { render } = mountTour();
+    localStorage.setItem("tour", record({ status: "finished", step: 2, collapsed: false }));
+    await render(view(), { storage: "tour" });
     expect(dialog()).toBeNull();
     expect(shade()).toBeNull();
   });
 });
 
-describe("Walkthrough with checklists", () => {
-  const setup = (onEvent?: (event: { type: string }) => void) =>
-    createChecklists({
-      context: { hasDeck: false },
+describe("WaymarkRoot with checklists", () => {
+  const setup = () =>
+    defineChecklists({
       tasks: {
         "create-deck": {
           title: "Create a deck",
-          walkthrough: defineWalkthrough([
-            { content: "Open the decks page", meta: { helpUrl: "/help" } },
-            { content: "Press new deck" },
-          ]),
-          isComplete: (c) => c.hasDeck,
+          walkthrough: defineWalkthrough({
+            id: "create-deck",
+            steps: [{ content: "Open the decks page" }, { content: "Press new deck" }],
+          }),
         },
         "read-tips": {
           title: "Read the tips",
-          walkthrough: defineWalkthrough([{ content: "Here are the tips" }]),
+          walkthrough: defineWalkthrough({ id: "read-tips", steps: [{ content: "Here are the tips" }] }),
         },
         "say-hello": { title: "Say hello" },
       },
       checklists: { home: ["create-deck", "read-tips", "say-hello"], decks: ["create-deck"] },
-      ...(onEvent ? { onEvent } : {}),
     });
 
-  const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]');
-
-  it("draws the Run the controller started and finishes it into completion", async () => {
-    const { root, frames } = mount();
-    const controller = setup();
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
+  it("draws the walkthrough a task's Start opens, and finishes the task with it", async () => {
+    const { render, frames } = mount();
+    const run = await render(null);
+    const home = run.checklist(setup().checklists.home);
     expect(dialog()).toBeNull();
 
-    await act(async () => controller.start("read-tips"));
+    await act(async () => home.start("read-tips"));
     expect(dialog()).toHaveTextContent("Here are the tips");
 
     await act(async () => buttonNamed("Finish")!.click());
     expect(dialog()).toBeNull();
-    expect(controller.getSnapshot().active).toBeNull();
-    expect(controller.checklists.home.getSnapshot().tasks[1]!.status).toBe("done");
+    expect(home.getSnapshot().open).toBeNull();
+    expect(home.getSnapshot().tasks[1]!.status).toBe("done");
     expect(frames.size).toBe(0);
   });
 
-  it("binds its elements so a click on the popover is not a click away", async () => {
-    const { root } = mount();
-    const controller = setup();
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
-    await act(async () => controller.start("read-tips"));
+  it("attaches its popover, so a click on it is not a click away", async () => {
+    const { render } = mount();
+    const run = await render(null);
+    await act(async () => run.checklist(setup().checklists.home).start("read-tips"));
 
     await act(async () => {
       dialog()!.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 1, clientY: 1 }));
@@ -592,186 +700,98 @@ describe("Walkthrough with checklists", () => {
     });
     expect(dialog()).toHaveTextContent("Here are the tips");
 
-    await act(async () => {
-      document.body.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 400, clientY: 400 }));
-      await Promise.resolve();
-    });
+    await clickAway();
     expect(dialog()).toBeNull();
     expect(beacon()).toBeInTheDocument();
   });
 
-  it("renders a custom popover with the controller's step union", async () => {
-    const { root } = mount();
-    const controller = setup();
-    await act(async () =>
-      root.render(
-        <Walkthrough
-          checklists={controller}
-          renderPopover={({ currentStep, exit }) => (
-            <button type="button" onClick={exit}>
-              {currentStep.content}
-              {currentStep.meta ? ` (${currentStep.meta.helpUrl})` : ""}
-            </button>
-          )}
-        />,
+  it("draws a task's walkthrough with a custom popover, which can end it", async () => {
+    const { render } = mount();
+    const run = await render(null, {
+      renderPopover: ({ currentStep, exit }) => (
+        <button type="button" onClick={exit}>
+          {currentStep.content}
+        </button>
       ),
-    );
-    await act(async () => controller.start("create-deck"));
-    expect(dialog()).toHaveTextContent("Open the decks page (/help)");
+    });
+    const home = run.checklist(setup().checklists.home);
+    await act(async () => home.start("create-deck"));
+    expect(dialog()).toHaveTextContent("Open the decks page");
 
-    await act(async () => (dialog()!.querySelector("button") as HTMLButtonElement).click());
-    expect(controller.getSnapshot().active).toBeNull();
+    await act(async () => dialog()!.querySelector("button")!.click());
+    expect(home.getSnapshot().open).toBeNull();
     expect(dialog()).toBeNull();
   });
 
-  it("draws a custom beacon with the controller's step union, and exits from it", async () => {
-    const { root } = mount();
-    const controller = setup();
-    await act(async () =>
-      root.render(
-        <Walkthrough
-          checklists={controller}
-          renderBeacon={({ currentStep, exit }) => (
-            <button type="button" onClick={exit}>
-              Stop: {currentStep.meta ? currentStep.meta.helpUrl : "no help"}
-            </button>
-          )}
-        />,
+  it("draws a custom beacon for a task's walkthrough, and exits from it", async () => {
+    const { render } = mount();
+    const run = await render(null, {
+      renderBeacon: ({ currentStep, exit }) => (
+        <button type="button" onClick={exit}>
+          Stop: {currentStep.content}
+        </button>
       ),
-    );
-    await act(async () => controller.start("create-deck"));
+    });
+    await act(async () => run.checklist(setup().checklists.home).start("create-deck"));
     await clickAway();
 
     const custom = beaconAnchor()!.querySelector("button")!;
-    expect(custom).toHaveTextContent("Stop: /help");
+    expect(custom).toHaveTextContent("Stop: Open the decks page");
     await act(async () => custom.click());
-    expect(controller.getSnapshot().active).toBeNull();
+    expect(run.getSnapshot().progress["create-deck"]).toMatchObject({ status: "exited" });
     expect(beaconAnchor()).toBeNull();
   });
 
-  it("offers to skip the task being guided, in every view", async () => {
-    const { root } = mount();
-    const controller = setup();
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
-    await act(async () => controller.start("create-deck"));
+  it("offers to skip the task being guided, in every checklist", async () => {
+    const { render } = mount();
+    const run = await render(null);
+    const { checklists } = setup();
+    await act(async () => run.checklist(checklists.home).start("create-deck"));
     await act(async () => buttonNamed("Skip task")!.click());
     expect(dialog()).toBeNull();
-    expect(controller.checklists.decks.getSnapshot().tasks[0]!.status).toBe("skipped");
-    expect(controller.checklists.home.getSnapshot().tasks[0]!.status).toBe("skipped");
+    expect(run.checklist(checklists.decks).getSnapshot().tasks[0]!.status).toBe("skipped");
+    expect(run.checklist(checklists.home).getSnapshot().tasks[0]!.status).toBe("skipped");
   });
 
   it("passes an app's labels to the guided task's popover", async () => {
-    const { root } = mount();
-    const controller = setup();
-    await act(async () => root.render(<Walkthrough checklists={controller} labels={{ skipTask: "Aufgabe überspringen" }} />));
-    await act(async () => controller.start("create-deck"));
+    const { render } = mount();
+    const run = await render(null, { labels: { skipTask: "Aufgabe überspringen" } });
+    await act(async () => run.checklist(setup().checklists.home).start("create-deck"));
     expect(buttonNamed("Aufgabe überspringen")).toBeDefined();
   });
 
   it("hands a custom popover the labels, the app's over the defaults", async () => {
-    const { root } = mount();
+    const { render } = mount();
     const renderPopover = vi.fn((_props: WalkthroughRenderProps) => null);
-    const walkthrough = defineWalkthrough([{ content: "Alone" }]);
-    await act(async () =>
-      root.render(<Walkthrough walkthrough={walkthrough} labels={{ next: "Weiter" }} renderPopover={renderPopover} />),
-    );
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Alone" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />, { labels: { next: "Weiter" }, renderPopover });
     const { labels } = renderPopover.mock.lastCall![0];
     expect([labels.next, labels.finish]).toEqual(["Weiter", "Finish"]);
   });
 
-  it("offers no task skip to a walkthrough it owns", async () => {
-    const { root } = mount();
+  it("offers no task skip to a walkthrough no task guides", async () => {
+    const { render } = mount();
     const renderPopover = vi.fn((_props: WalkthroughRenderProps) => null);
-    const walkthrough = defineWalkthrough([{ content: "Alone" }]);
-    await act(async () => root.render(<Walkthrough walkthrough={walkthrough} renderPopover={renderPopover} />));
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "Alone" }] });
+    await render(<Walkthrough walkthrough={walkthrough} />, { renderPopover });
     expect(renderPopover).toHaveBeenCalled();
     expect(renderPopover.mock.calls.every(([props]) => !("skipTask" in props))).toBe(true);
   });
 
-  it("follows the controller when guidance is stopped or replaced", async () => {
-    const { root, frames } = mount();
-    const controller = setup();
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
-    await act(async () => controller.start("create-deck"));
+  it("draws the task started over another, then the other's beacon once it ends", async () => {
+    const { render } = mount();
+    const run = await render(null);
+    const home = run.checklist(setup().checklists.home);
+    await act(async () => home.start("create-deck"));
     expect(dialog()).toHaveTextContent("Open the decks page");
 
-    await act(async () => controller.start("read-tips"));
+    await act(async () => home.start("read-tips"));
     expect(dialog()).toHaveTextContent("Here are the tips");
+    expect(beacon()).toBeNull();
 
-    await act(async () => controller.stop());
+    await act(async () => buttonNamed("Finish")!.click());
     expect(dialog()).toBeNull();
-    expect(frames.size).toBe(0);
-  });
-
-  it("keeps a prestarted Run through Strict Mode's mount cycle", async () => {
-    const { root } = mount();
-    const events: string[] = [];
-    const controller = setup((event) => events.push(event.type));
-    controller.start("read-tips");
-    events.length = 0;
-
-    await act(async () => {
-      root.render(
-        <StrictMode>
-          <Walkthrough checklists={controller} />
-        </StrictMode>,
-      );
-    });
-
-    expect(dialog()).toHaveTextContent("Here are the tips");
-    expect(controller.getSnapshot().active?.task.id).toBe("read-tips");
-    expect(events).toEqual([]);
-  });
-
-  it("stops its Run on actual unmount, retaining progress", async () => {
-    const { root, frames } = mount();
-    const events: string[] = [];
-    const controller = setup((event) => events.push(event.type));
-    controller.markDone("say-hello");
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
-    await act(async () => controller.start("read-tips"));
-    const { run } = controller.getSnapshot().active!;
-    events.length = 0;
-
-    await act(async () => root.render(<div />));
-
-    expect(controller.getSnapshot().active).toBeNull();
-    expect(run.getSnapshot().phase).toBe("exited");
-    expect(events).toEqual(["taskStopped"]);
-    expect(controller.checklists.home.getSnapshot().tasks[2]!.status).toBe("done");
-    expect(frames.size).toBe(0);
-  });
-
-  it("does not stop a Run that replaced the one it was drawing", async () => {
-    const { root } = mount();
-    const controller = setup();
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
-    await act(async () => controller.start("read-tips"));
-
-    // The renderer is removed, and before its pending stop runs the app starts something else.
-    act(() => root.render(<div />));
-    controller.start("create-deck");
-    await act(async () => {});
-
-    expect(controller.getSnapshot().active?.task.id).toBe("create-deck");
-  });
-
-  it("hands guidance over to a renderer that mounts as it unmounts", async () => {
-    const { root } = mount();
-    const controller = setup();
-    const { root: other } = addRoot();
-    await act(async () => root.render(<Walkthrough checklists={controller} />));
-    await act(async () => controller.start("read-tips"));
-
-    await act(async () => {
-      root.render(<div />);
-      other.render(<Walkthrough checklists={controller} />);
-    });
-
-    expect(controller.getSnapshot().active?.task.id).toBe("read-tips");
-    expect(dialog()).toHaveTextContent("Here are the tips");
-
-    await act(async () => other.unmount());
-    expect(controller.getSnapshot().active).toBeNull();
+    await act(async () => beacon()!.click());
+    expect(dialog()).toHaveTextContent("Open the decks page");
   });
 });

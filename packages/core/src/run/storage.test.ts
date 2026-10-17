@@ -1,288 +1,379 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRun } from "./run";
 import { everyProblem } from "../problems";
-import type { RunEvent } from "./types";
+import type { RunOptions, WaymarkEvent } from "./types";
 import type { StorageAdapter } from "../storage/adapter";
-import type { StoredWalkthrough } from "../storage/records";
+import type { StoredRecord } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
-import type { WalkthroughStore } from "../walkthrough/types";
+import type { Dismiss, WalkthroughProgress } from "../walkthrough/types";
 import { localKey } from "../test/dom";
-import { fakeTimers } from "../test/time";
+import { progressOf, watch } from "../test/run";
+import { fakeFrames, fakeTimers } from "../test/time";
 
-const tourIn = (storage: WalkthroughStore, maxAge?: number) =>
-  defineWalkthrough([{}, {}, {}], { storage, ...(maxAge === undefined ? {} : { maxAge }) });
+const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
 
-const held = (value: StoredWalkthrough | null) =>
+const held = (value: StoredRecord | null) =>
   ({
     load: vi.fn(() => value),
-    save: vi.fn<(value: StoredWalkthrough | null) => void>(),
-  }) satisfies StorageAdapter<StoredWalkthrough>;
+    save: vi.fn<(value: StoredRecord | null) => void>(),
+  }) satisfies StorageAdapter<StoredRecord>;
 
-const failed = (error: unknown) => ({ type: "storageFailed", record: "walkthrough", error });
+/** An adapter whose `load` answers when the test says so. */
+function later(value: StoredRecord | null = null) {
+  let answer: (value: StoredRecord | null) => void = () => {};
+  let refuse: (error: unknown) => void = () => {};
+  const adapter = {
+    load: vi.fn(
+      () =>
+        new Promise<StoredRecord | null>((resolve, reject) => {
+          answer = resolve;
+          refuse = reject;
+        }),
+    ),
+    save: vi.fn<(value: StoredRecord | null) => void>(),
+  } satisfies StorageAdapter<StoredRecord>;
+  return {
+    adapter,
+    answer: async (given: StoredRecord | null = value) => {
+      answer(given);
+      await Promise.resolve();
+    },
+    refuse: async (error: unknown) => {
+      refuse(error);
+      await Promise.resolve();
+    },
+  };
+}
 
-type RunningRecord = Extract<StoredWalkthrough, { phase: "running" }>;
-
-const running = (overrides: Partial<RunningRecord> = {}): RunningRecord => ({
-  version: 1,
-  phase: "running",
+const progress = (overrides: Partial<WalkthroughProgress> = {}): WalkthroughProgress => ({
+  status: "running",
   step: 1,
   stepCount: 3,
   collapsed: true,
-  savedAt: Date.now(),
+  changedAt: Date.now(),
   ...overrides,
 });
 
-const where = (run: ReturnType<typeof createRun>) => {
-  const snapshot = run.getSnapshot();
-  return snapshot.phase === "running"
-    ? { step: snapshot.stepIndex, collapsed: snapshot.collapsed }
-    : snapshot.phase;
-};
+const record = (walkthroughs: StoredRecord["walkthroughs"], tasks: StoredRecord["tasks"] = {}): StoredRecord => ({
+  version: 4,
+  walkthroughs,
+  tasks,
+});
+
+const failed = (error: unknown) => ({ type: "storageFailed", error });
+
+const types = (onEvent: { mock: { calls: [WaymarkEvent][] } }) => onEvent.mock.calls.map(([event]) => event.type);
 
 describe("run storage", () => {
-  it("saves as the step changes, it collapses, and it ends", () => {
+  it("saves one record, as the step changes, it collapses and it ends", () => {
     fakeTimers(1_000);
-    const walkthrough = held(null);
-    const run = createRun(tourIn(walkthrough));
-    expect(walkthrough.save).not.toHaveBeenCalled();
+    const storage = held(null);
+    const run = createRun({ storage });
+    expect(storage.save).not.toHaveBeenCalled();
 
-    run.act("advance");
-    expect(walkthrough.save).toHaveBeenLastCalledWith(
-      running({ step: 1, collapsed: false, savedAt: 1_000 }),
+    run.start(tour);
+    expect(storage.save).toHaveBeenLastCalledWith(
+      record({ tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) }),
     );
+    run.act("advance");
     run.act("collapse");
-    expect(walkthrough.save).toHaveBeenLastCalledWith(running({ savedAt: 1_000 }));
+    expect(storage.save).toHaveBeenLastCalledWith(record({ tour: progress({ changedAt: 1_000 }) }));
     // Asking again changes nothing, so nothing is saved.
-    run.act("collapse");
-    expect(walkthrough.save).toHaveBeenCalledTimes(2);
+    run.act("collapse", tour);
+    expect(storage.save).toHaveBeenCalledTimes(3);
 
-    run.act("exit");
-    expect(walkthrough.save).toHaveBeenLastCalledWith({ version: 1, phase: "exited" });
+    run.act("exit", tour);
+    expect(storage.save).toHaveBeenLastCalledWith(
+      record({ tour: progress({ status: "exited", collapsed: false, changedAt: 1_000 }) }),
+    );
   });
 
-  it("picks a running walkthrough up where it was, without saving", () => {
-    const walkthrough = held(running());
-    const run = createRun(tourIn(walkthrough), { startAt: 2 });
-    expect(where(run)).toEqual({ step: 1, collapsed: true });
-    expect(walkthrough.save).not.toHaveBeenCalled();
+  it("does not save a look that moves nothing it keeps", () => {
+    const { flush } = fakeFrames();
+    const storage = held(null);
+    const run = createRun({ storage });
+    run.start(defineWalkthrough({ id: "tour", steps: [{ waymark: "save" }] }));
+    watch(run);
+    storage.save.mockClear();
+
+    flush(3000);
+    expect(run.getSnapshot().open?.snapshot.waymark.status).toBe("missing");
+    expect(storage.save).not.toHaveBeenCalled();
+  });
+
+  it("picks a walkthrough up where it was once its definition arrives, without saving", () => {
+    const storage = held(record({ tour: progress({ collapsed: false }) }));
+    const run = createRun({ storage });
+    expect(run.getSnapshot().open).toBeNull();
+
+    run.requestStart(tour);
+    expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 1, collapsed: false });
+    expect(storage.save).not.toHaveBeenCalled();
   });
 
   it.each([
-    ["picks up a walkthrough begun on an earlier page", running(), []],
+    ["picks up a walkthrough begun on an earlier page", record({ tour: progress({ collapsed: false }) }), []],
     ["begins one storage has nothing of", null, ["start"]],
-    ["begins again one it could not pick up", running({ stepCount: 4 }), ["start"]],
+    ["begins again one it could not pick up", record({ tour: progress({ stepCount: 4 }) }), ["start"]],
   ])("sends start only when it %s", (_, stored, sent) => {
-    const onEvent = vi.fn<(event: RunEvent) => void>();
-    const run = createRun(tourIn(held(stored)), { onEvent });
-    run.subscribe(() => {});
-    expect(onEvent.mock.calls.map(([event]) => event.type)).toEqual(sent);
+    fakeFrames();
+    const onEvent = vi.fn<(event: WaymarkEvent) => void>();
+    const run = createRun({ storage: held(stored), onEvent, problemHandlers: { recordDropped: () => {} } });
+    run.requestStart(tour);
+    watch(run);
+    expect(types(onEvent)).toEqual(sent);
   });
 
-  it.each(["completed", "exited"] as const)(
-    "stays %s, even once its steps change, until reset",
-    (phase) => {
-      const walkthrough = held({ version: 1, phase });
-      const run = createRun(defineWalkthrough([{}, {}], { storage: walkthrough }));
-      expect(where(run)).toBe(phase);
+  it.each(["finished", "exited"] as const)(
+    "stays %s, even once its steps change, until started again",
+    (status) => {
+      const storage = held(record({ tour: progress({ status, stepCount: 2 }) }));
+      const run = createRun({ storage });
+      run.requestStart(tour);
+      expect(run.getSnapshot().open).toBeNull();
+      expect(progressOf(run)?.status).toBe(status);
 
-      run.act("reset");
-      expect(where(run)).toEqual({ step: 0, collapsed: false });
-      expect(walkthrough.save).toHaveBeenLastCalledWith(
-        expect.objectContaining({ phase: "running", step: 0 }),
+      run.start(tour);
+      expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
+      expect(storage.save).toHaveBeenLastCalledWith(
+        expect.objectContaining({ walkthroughs: { tour: expect.objectContaining({ status: "running", step: 0 }) } }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
       );
     },
   );
 
   it.each([
-    ["its steps changed", running({ stepCount: 4 }), "stepsChanged"],
-    ["it is older than maxAge", running({ savedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 }), "expired"],
-  ])("starts as asked, wipes and reports a running walkthrough when %s", (_, stored, reason) => {
-    const walkthrough = held(stored);
+    ["its steps changed", progress({ stepCount: 4 }), "stepsChanged"],
+    ["it is older than maxAge", progress({ changedAt: Date.now() - 2 * 24 * 60 * 60 * 1000 }), "expired"],
+  ])("drops and reports progress part way through when %s, once the definition arrives", (_, stored, reason) => {
+    const storage = held(record({ tour: stored }, { hello: "done" }));
     const onProblem = vi.fn();
-    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, problemHandlers: everyProblem(onProblem) }), { startAt: 2 });
-    expect(where(run)).toEqual({ step: 2, collapsed: false });
-    expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", record: "walkthrough", reason });
+    const run = createRun({ storage, problemHandlers: everyProblem(onProblem) });
+    expect(onProblem).not.toHaveBeenCalled();
+
+    run.requestStart(tour);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", walkthrough: "tour", reason });
+    expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
+    expect(storage.save).toHaveBeenLastCalledWith(
+      record({ tour: expect.objectContaining({ step: 0, stepCount: 3 }) }, { hello: "done" }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    );
+  });
+
+  it("keeps the progress a handler starts on hearing the stored progress was dropped", () => {
+    const storage = held(record({ tour: progress({ stepCount: 4 }) }));
+    const run = createRun({ storage, problemHandlers: { recordDropped: () => run.start(tour) } });
+
+    // Collapsing it hands the Run its definition, which drops the stored progress.
+    run.act("collapse", tour);
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("tour");
+    expect(storage.save.mock.lastCall?.[0]?.walkthroughs["tour"]).toMatchObject({ status: "running", step: 0 });
   });
 
   it("honours a custom maxAge", () => {
-    const walkthrough = held(running({ savedAt: Date.now() - 60_000 }));
-    const run = createRun(tourIn(walkthrough, 30_000));
-    expect(where(run)).toEqual({ step: 0, collapsed: false });
+    const storage = held(record({ tour: progress({ changedAt: Date.now() - 60_000, collapsed: false }) }));
+    const run = createRun({ storage, problemHandlers: { recordDropped: () => {} } });
+    run.requestStart(defineWalkthrough({ id: "tour", steps: [{}, {}, {}], maxAge: 30_000 }));
+    expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
   });
 
-  it("reports a record it cannot read, and starts as asked", () => {
-    const onProblem = vi.fn();
-    const walkthrough = held({ version: 1, phase: "running", step: 9, stepCount: 3 } as unknown as StoredWalkthrough);
-    const run = createRun(defineWalkthrough([{}, {}, {}], { storage: walkthrough, problemHandlers: everyProblem(onProblem) }));
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
-      type: "recordUnreadable",
-      record: "walkthrough",
-      error: expect.any(Error), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
-    });
-    expect(where(run)).toEqual({ step: 0, collapsed: false });
-    expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
+  it("waits for its definition, showing no beacon and holding off no request", () => {
+    const storage = held(record({ tour: progress({ collapsed: false }), aside: progress() }));
+    const run = createRun({ storage });
+    expect(run.getSnapshot()).toMatchObject({ open: null, beacons: [] });
+
+    run.requestStart(defineWalkthrough({ id: "whatsNew", steps: [{}] }));
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("whatsNew");
   });
 
-  it("is loading until a Promise settles, holding its actions, then starts once watched", async () => {
-    let answer: (value: StoredWalkthrough | null) => void = () => {};
-    const walkthrough = {
-      load: () =>
-        new Promise<StoredWalkthrough | null>((resolve) => {
-          answer = resolve;
-        }),
-      save: vi.fn(),
-    };
-    const onEvent = vi.fn<(event: RunEvent) => void>();
-    const run = createRun(tourIn(walkthrough), { onEvent });
-    const listener = vi.fn();
-    run.subscribe(listener);
-    expect(run.getSnapshot()).toEqual({ phase: "loading", stepCount: 3 });
-    run.act("advance");
-    expect(onEvent).not.toHaveBeenCalled();
+  it.each([
+    ["collapse", { status: "running", collapsed: true }],
+    ["exit", { status: "exited" }],
+  ] as const)(
+    "sets restored progress aside as its dismiss, %s, says when another walkthrough is open as its definition arrives",
+    (dismiss: Dismiss, after) => {
+      const storage = held(record({ tour: progress({ collapsed: false }) }));
+      const onEvent = vi.fn<(event: WaymarkEvent) => void>();
+      const run = createRun({ storage, onEvent });
+      run.start(defineWalkthrough({ id: "whatsNew", steps: [{}] }));
 
-    answer(running({ collapsed: false }));
-    await Promise.resolve();
-
-    expect(onEvent.mock.calls.map(([event]) => [event.type, event.stepIndex])).toEqual([
-      ["advance", 1],
-    ]);
-    expect(where(run)).toEqual({ step: 2, collapsed: false });
-    expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ stepIndex: 2 }));
-  });
-
-  it("starts as asked when its load fails", async () => {
-    const onProblem = vi.fn();
-    const offline = new Error("offline");
-    const run = createRun(
-      defineWalkthrough([{}, {}, {}], {
-        storage: { load: () => Promise.reject(offline), save: () => {} },
-        problemHandlers: everyProblem(onProblem),
-      }),
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith(failed(offline));
-    expect(where(run)).toEqual({ step: 0, collapsed: false });
-  });
-
-  it.each(["completed", "exited"] as const)(
-    "starts a watched %s Run again on reset, saving only its fresh start",
-    (phase) => {
-      const walkthrough = held({ version: 1, phase });
-      const tour = tourIn(walkthrough);
-      const run = createRun(tour);
-      run.subscribe(() => {});
-
-      tour.reset();
-      expect(where(run)).toEqual({ step: 0, collapsed: false });
-      expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(
-        expect.objectContaining({ phase: "running", step: 0 }),
-      );
+      run.requestStart(defineWalkthrough({ id: "tour", steps: [{}, {}, {}], dismiss }));
+      expect(run.getSnapshot().open?.walkthrough.id).toBe("whatsNew");
+      expect(progressOf(run)).toMatchObject({ step: 1, ...after });
+      expect(onEvent).not.toHaveBeenCalled();
     },
   );
 
-  it("starts a Run reset while loading once it has loaded", async () => {
-    const tour = tourIn({ load: () => Promise.resolve<StoredWalkthrough>({ version: 1, phase: "completed" }), save: vi.fn() });
-    const run = createRun(tour);
-    run.subscribe(() => {});
-
-    tour.reset();
-    await Promise.resolve();
-    expect(where(run)).toEqual({ step: 0, collapsed: false });
-  });
-
-  it("drops a reset held while loading once nothing watches the Run, saving nothing", async () => {
-    const save = vi.fn();
-    const tour = tourIn({ load: () => Promise.resolve<StoredWalkthrough>({ version: 1, phase: "completed" }), save });
-    const run = createRun(tour);
-    const unsubscribe = run.subscribe(() => {});
-
-    tour.reset();
-    unsubscribe();
-    await Promise.resolve();
-    expect(where(run)).toBe("completed");
-    expect(save).not.toHaveBeenCalled();
-  });
-
-  it("clears its record when no Run is watching, so the next one starts at the first step", () => {
-    const tour = tourIn(localKey("tour"));
-    createRun(tour).act("exit");
-
-    tour.reset();
-    expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
-  });
-
-  it("leaves a Run nothing watches any more alone on reset", () => {
-    const walkthrough = held({ version: 1, phase: "completed" });
-    const tour = tourIn(walkthrough);
-    const dropped = createRun(tour);
-    dropped.subscribe(() => {})();
-
-    tour.reset();
-    expect(where(dropped)).toBe("completed");
-    expect(walkthrough.save).toHaveBeenCalledExactlyOnceWith(null);
-  });
-
-  it("looks a key function up as each Run starts and on reset, keeping each user's place apart", () => {
-    let user = "ada";
-    const tour = defineWalkthrough([{}, {}], { storage: () => `tour-${user}` });
-    createRun(tour).act("exit");
-
-    user = "grace";
-    expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
-    user = "ada";
-    expect(where(createRun(tour))).toBe("exited");
-
-    tour.reset();
-    expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
-  });
-
-  it("reports a record reset cannot clear to the walkthrough's problemHandlers", () => {
+  it("reports a record it cannot read, starts afresh, and saves nothing over it until the user changes something", () => {
     const onProblem = vi.fn();
-    const quota = new Error("quota");
-    const tour = defineWalkthrough([{}, {}], {
-      storage: { load: () => null, save: () => { throw quota; } },
-      problemHandlers: everyProblem(onProblem),
+    const storage = held({ version: 4, walkthroughs: { tour: { status: "running", step: 9, stepCount: 3 } }, tasks: {} } as unknown as StoredRecord);
+    const run = createRun({ storage, problemHandlers: everyProblem(onProblem) });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordUnreadable",
+      error: expect.any(Error), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
     });
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "error", progress: {} });
+    expect(storage.save).not.toHaveBeenCalled();
 
-    tour.reset();
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith(failed(quota));
+    run.requestStart(tour);
+    expect(storage.save).toHaveBeenCalledOnce();
   });
 
-  it("reports a key function that throws, and runs unstored", () => {
+  it("names a newer version it cannot read", () => {
     const onProblem = vi.fn();
-    const signedOut = new Error("signed out");
-    const tour = defineWalkthrough([{}, {}], {
-      storage: () => {
-        throw signedOut;
+    createRun({ storage: held({ version: 5 } as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
+      type: "recordUnreadable",
+      error: expect.objectContaining({ message: expect.stringMatching(/version 5.*reads up to 4/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    });
+  });
+
+  it("is loading until a Promise settles, then runs the commands held meanwhile in order", async () => {
+    const { adapter, answer } = later(record({ tour: progress({ collapsed: false }) }));
+    const onEvent = vi.fn<(event: WaymarkEvent) => void>();
+    const run = createRun({ storage: adapter, onEvent });
+    const listener = vi.fn();
+    run.subscribe(listener);
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "loading", open: null });
+
+    run.requestStart(tour);
+    run.act("advance");
+    run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    expect(onEvent).not.toHaveBeenCalled();
+
+    await answer();
+
+    expect(onEvent.mock.calls.map(([event]) => ("walkthrough" in event ? `${event.walkthrough}:${event.type}` : event.type))).toEqual([
+      "tour:advance",
+      "tour:interrupt",
+    ]);
+    expect(progressOf(run)).toMatchObject({ step: 2, collapsed: true });
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("hint");
+    expect(listener).toHaveBeenLastCalledWith(run.getSnapshot());
+  });
+
+  it("starts empty with an error status when its load fails, and reports it", async () => {
+    const { adapter, refuse } = later();
+    const onProblem = vi.fn();
+    const run = createRun({ storage: adapter, problemHandlers: everyProblem(onProblem) });
+    const offline = new Error("offline");
+    run.requestStart(tour);
+
+    await refuse(offline);
+
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(failed(offline));
+    expect(run.getSnapshot().storageStatus).toBe("error");
+    expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
+  });
+
+  it.each([
+    ["throws", () => { throw new Error("quota"); }],
+    ["rejects", () => Promise.reject(new Error("quota"))],
+  ])("keeps the new step when a save %s, and reports storageFailed", async (_, save) => {
+    const onProblem = vi.fn();
+    const run = createRun({ storage: { load: () => null, save }, problemHandlers: everyProblem(onProblem) });
+    run.start(tour);
+    run.act("advance");
+    await Promise.resolve();
+
+    expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 1 });
+    expect(onProblem).toHaveBeenCalledWith(failed(new Error("quota")));
+  });
+
+  it.each<[string, RunOptions]>([
+    ["no handlers", {}],
+    ["handlers for other problems", { problemHandlers: { waymarkMissing: () => {} } }],
+  ])("logs storage failures when given %s", (_, handlers) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const blocked = new Error("blocked");
+    createRun({
+      storage: {
+        load: () => {
+          throw blocked;
+        },
+        save: () => {},
       },
-      problemHandlers: everyProblem(onProblem),
+      ...handlers,
     });
-
-    expect(where(createRun(tour))).toEqual({ step: 0, collapsed: false });
-    tour.reset();
-    expect(onProblem.mock.calls).toEqual([[failed(signedOut)], [failed(signedOut)]]);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("storage"), blocked);
   });
 
-  it("starts a watched Run without storage again on reset", () => {
-    const tour = defineWalkthrough([{}, {}]);
-    const run = createRun(tour);
-    run.subscribe(() => {});
-    run.act("exit");
+  it("takes `initial` in place of loading, and still saves", () => {
+    const storage = held(record({ tour: progress({ status: "finished" }) }));
+    const run = createRun({ storage, initial: record({ tour: progress({ collapsed: false }) }) });
+    expect(storage.load).not.toHaveBeenCalled();
+    run.requestStart(tour);
+    expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(1);
 
-    tour.reset();
-    expect(where(run)).toEqual({ step: 0, collapsed: false });
+    run.act("advance");
+    expect(storage.save).toHaveBeenLastCalledWith(record({ tour: expect.objectContaining({ step: 2 }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
   });
 
-  it("keeps a finished tour finished across a reload through localStorage", () => {
-    const key = localKey("tour");
-    const first = createRun(tourIn(key));
+  it("hands each change of the record to onChange, with or without storage", () => {
+    fakeTimers(1_000);
+    const onChange = vi.fn();
+    const run = createRun({ onChange });
+    run.start(tour);
+    expect(onChange).toHaveBeenLastCalledWith(record({ tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) }));
+  });
+
+  it("hears a change made elsewhere without moving the open walkthrough, whose next save wins", () => {
+    let push: (value: StoredRecord | null) => void = () => {};
+    const storage = {
+      load: () => record({}),
+      save: vi.fn(),
+      subscribe: (listener: (value: StoredRecord | null) => void) => {
+        push = listener;
+        return () => {};
+      },
+    };
+    const onEvent = vi.fn<(event: WaymarkEvent) => void>();
+    const run = createRun({ storage, onEvent });
+    run.start(tour);
+    onEvent.mockClear();
+    storage.save.mockClear();
+
+    push(record({ tour: progress({ step: 2, collapsed: false }) }, { hello: "done" }));
+    expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(0);
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+
+    run.act("advance");
+    expect(storage.save).toHaveBeenLastCalledWith(
+      record({ tour: expect.objectContaining({ step: 1 }) }, { hello: "done" }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    );
+  });
+
+  it("gives a server snapshot from before storage was read", () => {
+    const run = createRun({ storage: held(record({ tour: progress() })) });
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "ready", progress: { tour: progress() } });
+    expect(run.getServerSnapshot()).toEqual({ storageStatus: "loading", progress: {}, open: null, beacons: [] });
+
+    // Nothing to read: the server shows what the client will.
+    const plain = createRun({ initial: record({ tour: progress() }) });
+    expect(plain.getServerSnapshot()).toBe(plain.getSnapshot());
+  });
+
+  it("keeps a finished walkthrough finished across a reload through localStorage", () => {
+    const key = localKey("waymark");
+    const first = createRun({ storage: key });
+    first.start(tour);
     first.act("advance");
     first.act("advance");
     first.act("advance");
 
-    const reloaded = createRun(tourIn(key));
-    expect(where(reloaded)).toBe("completed");
+    const reloaded = createRun({ storage: key });
+    reloaded.requestStart(tour);
+    expect(reloaded.getSnapshot().open).toBeNull();
+    expect(progressOf(reloaded)?.status).toBe("finished");
+  });
+
+  it("reads each user's own record, and leaves the last user's alone", () => {
+    const ada = localKey("waymark:ada");
+    const grace = localKey("waymark:grace");
+    createRun({ storage: ada }).start(tour);
+
+    const next = createRun({ storage: grace });
+    expect(next.getSnapshot().progress).toEqual({});
+    next.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    expect(Object.keys((JSON.parse(localStorage.getItem(ada)!) as StoredRecord).walkthroughs)).toEqual(["tour"]);
   });
 });

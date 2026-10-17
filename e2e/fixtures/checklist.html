@@ -13,7 +13,7 @@
       main button { cursor: pointer; }
       .spacer { height: 1200px; }
 
-      /* The panel: checklists, the controller's commands, and what it reports. */
+      /* The panel: checklists, the Run's commands, and what it reports. */
       #ui {
         position: fixed; top: 12px; right: 12px; width: 360px; z-index: 3;
         padding: 12px; background: #fff; border: 1px solid #ccc; border-radius: 6px;
@@ -28,7 +28,7 @@
       #ui li .title { flex: 1; }
       #ui li[data-status="done"] .title { text-decoration: line-through; color: #64748b; }
       #ui li[data-status="skipped"] .title { color: #94a3b8; }
-      #ui li[data-active="true"] { background: #eff6ff; }
+      #ui li[data-open="true"] { background: #eff6ff; }
       #ui .count { color: #666; margin-left: 6px; font-weight: normal; }
       #ui pre { margin: 0; max-height: 18vh; overflow: auto; white-space: pre-wrap; font-size: 11px; }
       #status { font-weight: bold; margin: 6px 0; }
@@ -63,9 +63,9 @@
       <a href="./index.html">← core fixture</a> · <a href="./react.html">react fixture →</a>
       <h2>Checklists</h2>
       <div id="checklists"></div>
-      <h2>Controller</h2>
-      <div id="controller"></div>
-      <div id="status">Nothing active.</div>
+      <h2>Run</h2>
+      <div id="run"></div>
+      <div id="status">Nothing open.</div>
       <h2>Stored</h2>
       <pre id="stored"></pre>
       <h2>Events</h2>

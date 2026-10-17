@@ -1,23 +1,32 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
-  createChecklists as createCoreChecklists,
+  defineChecklists as defineCoreChecklists,
   defineWalkthrough as defineCoreWalkthrough,
 } from "waymark-core";
-import { Checklist, createChecklists, defineWalkthrough, everyProblem, useChecklist, Walkthrough } from "./index";
+import {
+  Checklist,
+  defineChecklists,
+  defineWalkthrough,
+  everyProblem,
+  useChecklist,
+  useRun,
+  Walkthrough,
+  WaymarkRoot,
+} from "./index";
 import type { ReactTask, WalkthroughStep, WaymarkProblem } from "./types";
 
+type AppContext = { hasDeck: boolean; hasPhoto: boolean };
 
-const initialContext = { hasDeck: false, hasPhoto: false };
-type AppContext = typeof initialContext;
-
-const deckSteps = defineWalkthrough([{ content: "Open decks", meta: { helpUrl: "/help" } }, { content: "Press new" }]);
-const photoSteps = defineWalkthrough([{ content: "Pick a photo", waymark: "avatar" }]);
+const deckSteps = defineWalkthrough({
+  id: "deck",
+  steps: [{ content: "Open decks", meta: { helpUrl: "/help" } }, { content: "Press new" }],
+});
+const photoSteps = defineWalkthrough({ id: "photo", steps: [{ content: "Pick a photo", waymark: "avatar" }] });
 const addPhoto = { title: "Add a photo", walkthrough: photoSteps } satisfies ReactTask<AppContext>;
 
-const controller = createChecklists({
-  context: initialContext,
+const onboarding = defineChecklists({
   tasks: {
-    "create-deck": { title: "Create a deck", walkthrough: deckSteps, isComplete: (c) => c.hasDeck },
+    "create-deck": { title: "Create a deck", walkthrough: deckSteps, isComplete: (c: AppContext) => c.hasDeck },
     "add-photo": addPhoto,
     "say-hello": { title: "Say hello", description: "No guidance needed" },
   },
@@ -25,59 +34,75 @@ const controller = createChecklists({
 });
 
 describe("Walkthrough prop shapes", () => {
-  it("accepts either a walkthrough or a controller, never both", () => {
+  it("takes a walkthrough, and leaves drawing it to WaymarkRoot", () => {
     const elements = {
-      owned: <Walkthrough walkthrough={deckSteps} />,
-      driven: <Walkthrough checklists={controller} />,
-      // @ts-expect-error one shape at a time
-      both: <Walkthrough walkthrough={deckSteps} checklists={controller} />,
-      // @ts-expect-error padding is a controller option in the checklists shape
-      padding: <Walkthrough checklists={controller} waymarkPadding={12} />,
-      // @ts-expect-error Run events are a controller option in the checklists shape
-      events: <Walkthrough checklists={controller} onEvent={() => {}} />,
-      // @ts-expect-error active has no meaning for controller-driven guidance
-      active: <Walkthrough checklists={controller} active={false} />,
+      requested: <Walkthrough walkthrough={deckSteps} />,
+      held: <Walkthrough walkthrough={deckSteps} active={false} />,
+      // @ts-expect-error a checklist's tasks start their own walkthroughs
+      checklists: <Walkthrough checklists={onboarding} />,
+      // @ts-expect-error padding is WaymarkRoot's
+      padding: <Walkthrough walkthrough={deckSteps} waymarkPadding={12} />,
+      // @ts-expect-error events are WaymarkRoot's
+      events: <Walkthrough walkthrough={deckSteps} onEvent={() => {}} />,
+      // @ts-expect-error drawing is WaymarkRoot's, or the definition's
+      popover: <Walkthrough walkthrough={deckSteps} renderPopover={() => null} />,
     };
     expect(Object.keys(elements)).toHaveLength(6);
   });
 
-  it("infers the step union from the controller for custom popovers", () => {
-    const element = (
-      <Walkthrough
-        checklists={controller}
+  it("gives a definition's own popover and beacon its exact steps, and the root's any React step", () => {
+    const announcement = defineWalkthrough({
+      id: "announcement",
+      steps: [{ content: "Open decks", meta: { helpUrl: "/help" } }, { content: "Press new" }],
+      renderPopover: ({ currentStep }) => {
+        expectTypeOf(currentStep.content).toEqualTypeOf<"Open decks" | "Press new">();
+        expectTypeOf(currentStep.meta).toEqualTypeOf<{ readonly helpUrl: "/help" } | undefined>();
+        return currentStep.content;
+      },
+      renderBeacon: ({ currentStep }) => {
+        expectTypeOf(currentStep.content).toEqualTypeOf<"Open decks" | "Press new">();
+        return null;
+      },
+    });
+    const root = (
+      <WaymarkRoot
         renderPopover={({ currentStep }) => {
-          expectTypeOf(currentStep.content).toEqualTypeOf<"Open decks" | "Press new" | "Pick a photo">();
-          // Only some steps carry meta or a waymark; narrow first.
-          expectTypeOf(currentStep).not.toHaveProperty("meta");
-          expectTypeOf(currentStep).not.toHaveProperty("waymark");
-          if ("meta" in currentStep) expectTypeOf(currentStep.meta.helpUrl).toEqualTypeOf<"/help">();
+          expectTypeOf(currentStep).toEqualTypeOf<WalkthroughStep>();
           return currentStep.content;
         }}
-      />
+      >
+        <Walkthrough walkthrough={announcement} />
+      </WaymarkRoot>
     );
-    expect(element).toBeTruthy();
+    expect(root).toBeTruthy();
   });
 
-  it("rejects controllers whose walkthroughs have no React content", () => {
-    const plain = createCoreChecklists({
-      context: {},
-      tasks: { save: { walkthrough: defineCoreWalkthrough([{ waymark: "save" }]) } },
-      checklists: { all: ["save"] },
-    });
+  it("rejects walkthroughs whose steps have no React content", () => {
+    const plain = defineCoreWalkthrough({ id: "save", steps: [{ waymark: "save" }] });
     // @ts-expect-error steps without content cannot be drawn
-    const element = <Walkthrough checklists={plain} />;
+    const element = <Walkthrough walkthrough={plain} />;
     expect(element).toBeTruthy();
+
+    // Never called: hooks need a component.
+    const Starter = () => {
+      const run = useRun();
+      run.start(deckSteps);
+      // @ts-expect-error steps without content cannot be drawn
+      run.start(plain);
+      return null;
+    };
+    expectTypeOf(Starter).toBeFunction();
   });
 });
 
 describe("React definition functions", () => {
   it("rejects a field that neither core, React nor meta names", () => {
     // @ts-expect-error misspelled content
-    defineWalkthrough([{ contnet: "Open decks", content: "Open decks" }]);
+    defineWalkthrough({ id: "a", steps: [{ contnet: "Open decks", content: "Open decks" }] });
     // @ts-expect-error application data belongs in meta
-    defineWalkthrough([{ content: "Open decks", helpUrl: "/help" }]);
+    defineWalkthrough({ id: "b", steps: [{ content: "Open decks", helpUrl: "/help" }] });
     // @ts-expect-error misspelled delayMs
-    defineWalkthrough([{ content: "Open decks", advance: { click: true, delay: 500 } }]);
+    defineWalkthrough({ id: "c", steps: [{ content: "Open decks", advance: { click: true, delay: 500 } }] });
 
     const misspelled = {
       title: "Add a photo",
@@ -86,9 +111,8 @@ describe("React definition functions", () => {
     } satisfies ReactTask<AppContext>;
     expectTypeOf(misspelled).toBeObject();
 
-    const create = () =>
-      createChecklists({
-        context: initialContext,
+    const define = () =>
+      defineChecklists({
         tasks: {
           // @ts-expect-error a React task needs a title
           untitled: { walkthrough: deckSteps },
@@ -98,13 +122,13 @@ describe("React definition functions", () => {
         },
         checklists: { home: ["untitled", "stray", "fine"] },
       });
-    expectTypeOf(create).toBeFunction();
+    expectTypeOf(define).toBeFunction();
   });
 });
 
-describe("createChecklists", () => {
+describe("defineChecklists", () => {
   it("needs no context when no task has a condition", () => {
-    const plain = createChecklists({
+    const plain = defineChecklists({
       tasks: { hello: { title: "Say hello", description: "No condition" } },
       checklists: { home: ["hello"] },
     });
@@ -112,18 +136,16 @@ describe("createChecklists", () => {
   });
 
   it("gives one checklist, main, when it names none", () => {
-    const single = createChecklists({
+    const single = defineChecklists({
       tasks: { tour: { title: "Take the tour", walkthrough: [{ content: "Hello" }] } },
     });
     expect(<Checklist checklist={single.checklists.main} />).toBeTruthy();
-    expect(<Walkthrough checklists={single} />).toBeTruthy();
   });
 });
 
 describe("inline steps", () => {
-  it("holds steps written on a task to React's step, and infers them for popovers", () => {
-    const inline = createChecklists({
-      context: initialContext,
+  it("holds steps written on a task to React's step", () => {
+    const inline = defineChecklists({
       tasks: {
         "create-deck": {
           title: "Create a deck",
@@ -136,26 +158,15 @@ describe("inline steps", () => {
       },
       checklists: { home: ["create-deck"] },
     });
-    const element = (
-      <Walkthrough
-        checklists={inline}
-        renderPopover={({ currentStep }) => {
-          expectTypeOf(currentStep.content).toEqualTypeOf<"Press New deck" | "Decks group your cards">();
-          return currentStep.content;
-        }}
-      />
-    );
-    expect(element).toBeTruthy();
+    expect(<Checklist checklist={inline.checklists.home} />).toBeTruthy();
 
     const mistakes = () => {
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         // @ts-expect-error steps need content
         tasks: { deck: { title: "Deck", walkthrough: [{ waymark: "new-deck" }] } },
         checklists: { home: ["deck"] },
       });
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         // @ts-expect-error misspelled content
         tasks: { deck: { title: "Deck", walkthrough: [{ contnet: "Press", content: "Press" }] } },
         checklists: { home: ["deck"] },
@@ -163,37 +174,40 @@ describe("inline steps", () => {
     };
     expectTypeOf(mistakes).toBeFunction();
   });
+});
 
+describe("problem handlers", () => {
   it("gives an untyped everyProblem handler React's problems, and takes one typed with a walkthrough's own steps", () => {
     const describeProblem = (problem: WaymarkProblem) => problem.type;
-    createChecklists({
-      context: initialContext,
-      tasks: { deck: { title: "Deck", walkthrough: deckSteps } },
-      problemHandlers: everyProblem((problem) => {
-        expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
-        describeProblem(problem);
-      }),
-    });
+    const untyped = (
+      <WaymarkRoot
+        problemHandlers={everyProblem((problem) => {
+          expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
+          describeProblem(problem);
+        })}
+      />
+    );
     const pressProblem = (problem: WaymarkProblem<{ readonly content: "Press" }>) => problem.type;
-    defineWalkthrough([{ content: "Press" }], { problemHandlers: everyProblem(pressProblem) });
+    const typed = <WaymarkRoot problemHandlers={everyProblem(pressProblem)} />;
+    expect([untyped, typed]).toHaveLength(2);
   });
 });
 
 describe("Checklist and useChecklist", () => {
-  it("types views over their selected React tasks", () => {
-    const plain = createCoreChecklists({ context: {}, tasks: { a: {} }, checklists: { all: ["a"] } });
+  it("types checklists over their selected React tasks", () => {
+    const plain = defineCoreChecklists({ tasks: { a: {} }, checklists: { all: ["a"] } });
     const elements = {
-      decks: <Checklist checklist={controller.checklists.decks} />,
+      decks: <Checklist checklist={onboarding.checklists.decks} />,
       home: (
         <Checklist
-        checklist={controller.checklists.home}
-        renderRow={({ task, start }) => {
-          expectTypeOf(task.id).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
-          expectTypeOf(start).parameter(0).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
-          if (task.id === "say-hello") expectTypeOf(task.description).toEqualTypeOf<"No guidance needed">();
-          return task.title;
-        }}
-      />
+          checklist={onboarding.checklists.home}
+          renderRow={({ task, start }) => {
+            expectTypeOf(task.id).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
+            expectTypeOf(start).parameter(0).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
+            if (task.id === "say-hello") expectTypeOf(task.description).toEqualTypeOf<"No guidance needed">();
+            return task.title;
+          }}
+        />
       ),
       // @ts-expect-error a React checklist needs titled tasks
       plain: <Checklist checklist={plain.checklists.all} />,
@@ -202,7 +216,7 @@ describe("Checklist and useChecklist", () => {
 
     // Never called: hooks need a component.
     const Headless = () => {
-      const { start } = useChecklist(controller.checklists.decks);
+      const { start } = useChecklist(onboarding.checklists.decks);
       expectTypeOf(start).parameter(0).toEqualTypeOf<"create-deck">();
       return null;
     };
@@ -224,7 +238,7 @@ describe("Checklist and useChecklist", () => {
     const plain = {
       title: "x",
       // @ts-expect-error steps need content
-      walkthrough: defineCoreWalkthrough([{ waymark: "save" }]),
+      walkthrough: defineCoreWalkthrough({ id: "save", steps: [{ waymark: "save" }] }),
     } satisfies ReactTask<AppContext>;
     expectTypeOf([untitled, plain]).toBeArray();
     expectTypeOf<WalkthroughStep["content"]>().not.toBeNever();

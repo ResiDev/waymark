@@ -1,75 +1,26 @@
-import { problemReporter, storageFailed } from "../problems";
-import type { ReportProblem } from "../problems";
-import { adapterOf, saveTo } from "../storage/adapter";
-import type { StorageAdapter } from "../storage/adapter";
-import type { StoredWalkthrough } from "../storage/records";
-import type {
-  ExactStep,
-  Step,
-  UnstoredWalkthrough,
-  UnstoredWalkthroughOptions,
-  Walkthrough,
-  WalkthroughOptions,
-} from "./types";
+import type { Step, Walkthrough, WalkthroughDefinition } from "./types";
 
-/**
- * `TShape` lets an adapter allow its own Step fields, such as `content`. With
- * `storage` or `problemHandlers` it can be shown on its own but not handed to a
- * checklist's Task, whose controller keeps its place and hears its problems.
- */
+/** `TShape` lets an adapter allow its own Step fields, such as `content`. */
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
-): UnstoredWalkthrough<NoInfer<TStep>>;
-export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
-  options: UnstoredWalkthroughOptions<NoInfer<TStep>>,
-): Walkthrough<NoInfer<TStep>> & Readonly<{ storage?: never }>;
-export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
-  options: WalkthroughOptions<NoInfer<TStep>>,
-): Walkthrough<NoInfer<TStep>>;
-export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
-  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[],
-  options?: WalkthroughOptions<NoInfer<TStep>> | UnstoredWalkthroughOptions<NoInfer<TStep>>,
+  definition: WalkthroughDefinition<TStep, TShape>,
 ): Walkthrough<NoInfer<TStep>> {
-  return checkedWalkthrough<TStep>(steps, "", options);
-}
-
-const resetListeners = new WeakMap<Walkthrough, Set<() => void>>();
-
-/** How a Run on screen hears its walkthrough's `reset`. Returns an unsubscribe. */
-export function onReset(walkthrough: Walkthrough, listener: () => void): () => void {
-  const listeners = resetListeners.get(walkthrough);
-  listeners?.add(listener);
-  return () => {
-    listeners?.delete(listener);
-  };
-}
-
-/**
- * Looked up each time, as a function's key can change with who is signed in.
- * A function that throws is reported, and the walkthrough goes unstored.
- */
-export function storageOf(
-  walkthrough: Walkthrough,
-  reportProblem: ReportProblem<never>,
-): StorageAdapter<StoredWalkthrough> | undefined {
-  const { storage } = walkthrough;
-  if (storage === undefined) return undefined;
-  if (typeof storage !== "function") return adapterOf(storage);
-  try {
-    return adapterOf(storage());
-  } catch (error) {
-    reportProblem(storageFailed("walkthrough", error));
-    return undefined;
-  }
+  const { id, steps, dismiss, maxAge } = definition;
+  return checkedWalkthrough<TStep>(id, steps, "", {
+    ...(dismiss === undefined ? {} : { dismiss }),
+    ...(maxAge === undefined ? {} : { maxAge }),
+  });
 }
 
 export function checkedWalkthrough<TStep extends Step>(
+  id: string,
   steps: readonly TStep[],
   where: string,
-  options?: WalkthroughOptions<TStep> | UnstoredWalkthroughOptions<TStep>,
+  options: Omit<Walkthrough<TStep>, "id" | "steps"> = {},
 ): Walkthrough<TStep> {
+  // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
+  if (typeof id !== "string" || id === "") {
+    throw new Error(`${where}A walkthrough needs an id, its key in the stored record.`);
+  }
   if (steps.length === 0) {
     throw new Error(`${where}A walkthrough needs at least one step.`);
   }
@@ -94,23 +45,7 @@ export function checkedWalkthrough<TStep extends Step>(
       throw new Error(`${where}Step ${index} advances on an event but names no events; it could never advance.`);
     }
   });
-  const listeners = new Set<() => void>();
-  const walkthrough: Walkthrough<TStep> = {
-    steps,
-    ...options,
-    reset: () => {
-      // A Run on screen saves its own fresh start; clearing first as well
-      // would race that save on an async adapter.
-      if (listeners.size === 0) {
-        const reportProblem = problemReporter(walkthrough.problemHandlers);
-        const adapter = storageOf(walkthrough, reportProblem);
-        if (adapter) saveTo(adapter, null, (error) => reportProblem(storageFailed("walkthrough", error)));
-      }
-      for (const listener of listeners) listener();
-    },
-  };
-  resetListeners.set(walkthrough, listeners);
-  return walkthrough;
+  return { id, steps, ...options };
 }
 
 // Only these readers know that `advance: "click"` and `{ click: true }` are the

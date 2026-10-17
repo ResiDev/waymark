@@ -7,9 +7,9 @@ import {
   ChecklistTaskTitle,
   ChecklistTrigger,
   type AnyReactTask,
+  type ChecklistDefinition,
   type ChecklistRootState,
   type ChecklistRow,
-  type CoreChecklist,
   type Placement,
   type TaskStatus,
 } from "react-waymark";
@@ -45,7 +45,7 @@ const classes = {
   track: "mx-3.5 mb-2 h-[3px] flex-none overflow-hidden rounded-full bg-slate-200",
   fill: "h-full rounded-full bg-blue-600 motion-safe:transition-[width] motion-safe:duration-300",
   list: "m-0 flex min-h-0 list-none flex-col gap-0.5 overflow-y-auto px-2 pb-2.5 pt-0",
-  task: "flex items-start gap-2.5 rounded-lg p-2 data-[active]:bg-blue-50",
+  task: "flex items-start gap-2.5 rounded-lg p-2 data-[open]:bg-blue-50",
   checkbox: [
     "m-0 box-border grid h-[18px] w-[18px] flex-none place-items-center rounded-full border-[1.5px] border-solid",
     "border-slate-300 bg-white p-0 text-white enabled:cursor-pointer [&>svg]:h-[11px] [&>svg]:w-[11px]",
@@ -86,12 +86,12 @@ const marks: Record<TaskStatus, ReactNode> = {
 };
 
 /** Put it wherever there is room: a header, a sidebar, a toolbar. The panel opens on `side`. */
-export function ChecklistPopover<TTask extends AnyReactTask>({
+export function ChecklistPopover({
   checklist,
   title = "Getting started",
   side = "below",
 }: {
-  checklist: CoreChecklist<TTask>;
+  checklist: ChecklistDefinition<AnyReactTask>;
   title?: string;
   side?: Placement;
 }) {
@@ -154,7 +154,7 @@ function Contents<TTask extends AnyReactTask>({
                 )}
                 <Actions
                   row={row}
-                  active={snapshot.active?.task.id === row.task.id}
+                  open={snapshot.open?.id === row.task.id}
                   start={start}
                   skip={skip}
                 />
@@ -169,12 +169,12 @@ function Contents<TTask extends AnyReactTask>({
 
 function Actions<TTask extends AnyReactTask>({
   row: { task, status },
-  active,
+  open,
   start,
   skip,
 }: {
   row: ChecklistRow<TTask>;
-  active: boolean;
+  open: boolean;
   start: (id: TTask["id"]) => void;
   skip: (id: TTask["id"]) => void;
 }) {
@@ -187,7 +187,7 @@ function Actions<TTask extends AnyReactTask>({
     );
   } else if (task.walkthrough !== undefined) {
     primary = (
-      <button type="button" className={classes.primary} disabled={active} onClick={() => start(task.id)}>
+      <button type="button" className={classes.primary} disabled={open} onClick={() => start(task.id)}>
         {status === "done" ? "Show me again" : "Show me"}
       </button>
     );

@@ -4,14 +4,15 @@ import { createRun } from "./run";
 import { addPage } from "../test/browser";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Run } from "./types";
-import type { ExactStep, Step } from "../walkthrough/types";
+import type { Step } from "../walkthrough/types";
 
-
-const running = <TStep extends Step>(run: Run<TStep>) => {
-  const snapshot = run.getSnapshot();
-  if (snapshot.phase !== "running") throw new Error(`Run is ${snapshot.phase}.`);
-  return snapshot;
+const running = (run: Run) => {
+  const open = run.getSnapshot().open;
+  if (open === null) throw new Error("No walkthrough is open.");
+  return open.snapshot;
 };
+
+const collapsed = (run: Run) => run.getSnapshot().progress["tour"]?.collapsed;
 
 const foundRect = (run: Run) => {
   const { waymark } = running(run);
@@ -24,14 +25,12 @@ const domRect = (element: Element) => {
   return { x, y, top, right, bottom, left, width, height };
 };
 
-/** Starts a Run on the page, watched until the test ends. */
-const start = <const TStep extends Step>(steps: readonly TStep[], waymarkPadding?: number): Run<TStep> => {
+/** Starts a walkthrough on the page, attached until the test ends. */
+const start = (steps: readonly Step[], waymarkPadding?: number): Run => {
   addPage();
-  const run = createRun(
-    defineWalkthrough<TStep>(steps as readonly TStep[] & readonly ExactStep<TStep, Step>[]),
-    waymarkPadding === undefined ? {} : { waymarkPadding },
-  );
-  onTestFinished(run.subscribe(() => {}));
+  const run = createRun();
+  run.start(defineWalkthrough({ id: "tour", steps }));
+  onTestFinished(run.attach(() => ({ dialog: null }), waymarkPadding === undefined ? {} : { waymarkPadding }));
   return run;
 };
 
@@ -80,7 +79,7 @@ describe("pointer", () => {
     await expect.poll(() => running(run).stepIndex).toBe(1);
 
     await page.getByRole("main").click({ position: { x: 600, y: 20 } });
-    await expect.poll(() => running(run).collapsed).toBe(true);
+    await expect.poll(() => collapsed(run)).toBe(true);
   });
 
   it("a click inside the halo padding counts as a waymark click", async () => {

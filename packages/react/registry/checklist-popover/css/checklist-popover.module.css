@@ -153,7 +153,7 @@
   border-radius: 8px;
 }
 
-.task[data-active] {
+.task[data-open] {
   background: var(--accent-soft);
 }
 

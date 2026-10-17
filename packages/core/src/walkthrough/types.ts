@@ -1,7 +1,3 @@
-import type { ProblemHandlers } from "../problems";
-import type { StorageAdapter } from "../storage/adapter";
-import type { StoredWalkthrough } from "../storage/records";
-
 // `string & {}` accepts custom event names without collapsing the union to
 // `string`, which would lose autocomplete for the built-in ones.
 export type WaymarkEventName = keyof HTMLElementEventMap | (string & {});
@@ -69,62 +65,41 @@ export type ExactStep<TStep extends object, TShape> = NoInfer<
     : never
 >;
 
-/** Where a standalone walkthrough keeps its place: a localStorage key, or an adapter. */
-export type WalkthroughStore = string | StorageAdapter<StoredWalkthrough>;
-
 /**
- * For a walkthrough shown on its own that keeps no place but hears its own
- * problems. It cannot be a checklist's Task, whose problems go to the controller's
- * `problemHandlers`.
+ * What a click away, Escape and being interrupted do to a walkthrough.
+ * `"collapse"` hides it behind its beacon and keeps its place; `"exit"` ends
+ * it, as its × does, and the exit is stored like any other.
  */
-export type UnstoredWalkthroughOptions<TStep extends Step = Step> = Readonly<{
-  storage?: never;
-  maxAge?: never;
-  /**
-   * Handlers for the problems its Runs meet: a Waymark lost or missing, and an
-   * error from the app's own functions, which is then not thrown.
-   */
-  problemHandlers: ProblemHandlers<TStep>;
-}>;
-
-export type WalkthroughOptions<TStep extends Step = Step> = Readonly<{
-  /**
-   * Saved as the step changes, the Run collapses or resumes, and as it ends; a
-   * finished walkthrough stays finished until `reset`. A function is called
-   * as each Run starts, and on a `reset` with none on screen, so the key can
-   * name who is signed in; a Run keeps the key it started with. Until a
-   * Promise from the adapter's `load` settles, the Run is `loading` and holds
-   * its actions.
-   */
-  storage: WalkthroughStore | (() => WalkthroughStore);
-  /** In ms, since the last change. An older running walkthrough starts again. Defaults to a day. */
-  maxAge?: number;
-  /**
-   * Handlers for the problems its Runs meet, and storage's from `reset`. A
-   * problem without one is logged if it is storage's, thrown if it is an
-   * error from the app's own functions, and otherwise passes quietly.
-   */
-  problemHandlers?: ProblemHandlers<TStep>;
-}>;
+export type Dismiss = "collapse" | "exit";
 
 export type Walkthrough<TStep extends Step = Step> = Readonly<{
+  /** Its key in the stored record, so it must not change between releases. */
+  id: string;
   steps: readonly TStep[];
-  storage?: WalkthroughOptions["storage"];
+  /** Defaults to `"collapse"`. */
+  dismiss?: Dismiss;
+  /** In ms, since the last change. Older stored progress part way through starts again. Defaults to a day. */
   maxAge?: number;
-  problemHandlers?: ProblemHandlers<TStep>;
-  /**
-   * Starts it again from its first step, finished or not: a Run on screen
-   * starts again now, and with none on screen its stored place, if it has
-   * one, is cleared.
-   */
-  reset: () => void;
+}>;
+
+/** What `defineWalkthrough` takes. `TShape` lets an adapter allow its own Step fields, such as `content`. */
+export type WalkthroughDefinition<TStep extends TShape, TShape extends Step = Step> = Readonly<{
+  id: string;
+  steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[];
+  dismiss?: Dismiss;
+  maxAge?: number;
 }>;
 
 /**
- * A checklist's Task keeps its place in the controller's storage and reports its
- * problems to the controller's `problemHandlers`, so its walkthrough has neither of
- * its own.
+ * How far one user is through one walkthrough. A walkthrough with none has
+ * not started. Saved, so a reload puts the user back where they were.
  */
-export type UnstoredWalkthrough<TStep extends Step = Step> = Walkthrough<TStep> &
-  Readonly<{ storage?: never; problemHandlers?: never }>;
-
+export type WalkthroughProgress = Readonly<{
+  status: "running" | "finished" | "exited";
+  step: number;
+  stepCount: number;
+  /** Hidden behind its beacon, keeping its place. */
+  collapsed: boolean;
+  /** Epoch ms. */
+  changedAt: number;
+}>;

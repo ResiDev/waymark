@@ -3,28 +3,24 @@ import type { Step } from "./walkthrough/types";
 /** The app's own functions that Waymark calls. */
 export type CallbackName = "subscriber" | "onEvent" | "onChange" | "stateCheck" | "isComplete";
 
-/** Why a stored walkthrough was not picked up again. */
+/** Why stored progress was dropped and its walkthrough starts again. */
 export type DropReason =
-  /** Older than `maxAge`. */
+  /** Part way through, and older than its walkthrough's `maxAge`. */
   | "expired"
   /** Saved when the walkthrough had a different number of steps. */
-  | "stepsChanged"
-  /** Its Task is done or skipped. */
-  | "taskNotTodo"
-  /** Its Task is gone from the controller, or no longer has a walkthrough. */
-  | "unknownTask";
+  | "stepsChanged";
 
 export type WaymarkProblem<TStep extends Step = Step> =
-  /** A storage adapter's `load` or `save` threw or rejected, or a `storage` function threw. */
-  | Readonly<{ type: "storageFailed"; record: "tasks" | "walkthrough"; error: unknown }>
+  /** The storage adapter's `load` or `save` threw or rejected. */
+  | Readonly<{ type: "storageFailed"; error: unknown }>
   /** A stored record Waymark did not write, or a newer version than it reads. */
-  | Readonly<{ type: "recordUnreadable"; record: "tasks" | "walkthrough"; error: Error }>
-  /** A stored walkthrough was wiped and the walkthrough starts fresh. */
-  | Readonly<{ type: "recordDropped"; record: "walkthrough"; reason: DropReason }>
+  | Readonly<{ type: "recordUnreadable"; error: Error }>
+  /** A walkthrough's stored progress was dropped once its definition arrived, and it starts again. */
+  | Readonly<{ type: "recordDropped"; walkthrough: string; reason: DropReason }>
   /** The Waymark was found, then left the page. */
-  | Readonly<{ type: "waymarkLost"; step: TStep; stepIndex: number }>
+  | Readonly<{ type: "waymarkLost"; walkthrough: string; step: TStep; stepIndex: number }>
   /** The Waymark was never found: often a selector that does not match. */
-  | Readonly<{ type: "waymarkMissing"; step: TStep; stepIndex: number }>
+  | Readonly<{ type: "waymarkMissing"; walkthrough: string; step: TStep; stepIndex: number }>
   /**
    * An error thrown by one of the app's own functions. Given a handler, it is
    * not thrown. A state check's is sent once per step for each distinct error,
@@ -43,9 +39,8 @@ export type ProblemHandlers<TStep extends Step = Step> = {
 
 /**
  * One function for every problem, in place of all of Waymark's defaults. Its
- * steps are any Step unless given: inside `createChecklists` or
- * `defineWalkthrough` it cannot learn theirs, and `NoInfer` stops it guessing
- * `never` from them instead.
+ * steps are any Step unless given: inside `createRun` it cannot learn theirs,
+ * and `NoInfer` stops it guessing `never` from them instead.
  */
 export const everyProblem = <TStep extends Step = Step>(
   handle: (problem: WaymarkProblem<TStep>) => void,
@@ -58,21 +53,19 @@ export const everyProblem = <TStep extends Step = Step>(
   callbackThrew: handle,
 });
 
-export const storageFailed = (record: "tasks" | "walkthrough", error: unknown): WaymarkProblem<never> => ({
+export const storageFailed = (error: unknown): WaymarkProblem<never> => ({
   type: "storageFailed",
-  record,
   error,
 });
 
-export const recordUnreadable = (record: "tasks" | "walkthrough", error: Error): WaymarkProblem<never> => ({
+export const recordUnreadable = (error: Error): WaymarkProblem<never> => ({
   type: "recordUnreadable",
-  record,
   error,
 });
 
-export const recordDropped = (reason: DropReason): WaymarkProblem<never> => ({
+export const recordDropped = (walkthrough: string, reason: DropReason): WaymarkProblem<never> => ({
   type: "recordDropped",
-  record: "walkthrough",
+  walkthrough,
   reason,
 });
 
@@ -87,10 +80,10 @@ export type ReportProblem<TStep extends Step = Step> = (problem: WaymarkProblem<
 const DEFAULTS: Required<ProblemHandlers> = {
   // Logged, not thrown: the user's browser failed, not the app, and a throw would break the click that saved.
   storageFailed: (problem) => {
-    console.error(`Waymark could not use its ${problem.record} storage.`, problem.error);
+    console.error("Waymark could not use its storage.", problem.error);
   },
   recordUnreadable: (problem) => {
-    console.error(`Waymark could not read its stored ${problem.record} record.`, problem.error);
+    console.error("Waymark could not read its stored record.", problem.error);
   },
   recordDropped: () => {},
   waymarkLost: () => {},

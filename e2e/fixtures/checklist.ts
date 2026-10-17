@@ -1,32 +1,45 @@
-import { createChecklists, defineWalkthrough, localStorageAdapter } from "waymark-core";
-import type { Checklist, ChecklistsEvent, Snapshot, StoredTasks } from "waymark-core";
+import { createRun, defineChecklists, defineWalkthrough } from "waymark-core";
+import type { Checklist, RunSnapshot, Snapshot, StoredRecord, WaymarkEvent } from "waymark-core";
 
 const $ = <T extends Element>(selector: string) => document.querySelector<T>(selector)!;
 
-const context = { hasDeck: false, hasPhoto: false };
+type Context = Readonly<{ hasDeck: boolean; hasPhoto: boolean }>;
 const hasDeck = $<HTMLInputElement>("#has-deck");
 const hasPhoto = $<HTMLInputElement>("#has-photo");
 
-const createDeck = defineWalkthrough([
-  { waymark: "new-deck", advance: "click", meta: { text: "Press New deck. The app then has a deck." } },
-  { meta: { text: "Decks group the cards you study. That is the whole idea." } },
-]);
-const addPhoto = defineWalkthrough([
-  { waymark: "avatar", advance: "click", meta: { text: "Choose a photo so your teammates can recognise you." } },
-]);
-const readTips = defineWalkthrough([
-  { waymark: "tips", meta: { text: "The tips live down here. Finishing this marks the task done." } },
-]);
+const createDeck = defineWalkthrough({
+  id: "createDeck",
+  steps: [
+    { waymark: "new-deck", advance: "click", meta: { text: "Press New deck. The app then has a deck." } },
+    { meta: { text: "Decks group the cards you study. That is the whole idea." } },
+  ],
+});
+const addPhoto = defineWalkthrough({
+  id: "addPhoto",
+  steps: [{ waymark: "avatar", advance: "click", meta: { text: "Choose a photo so your teammates can recognise you." } }],
+});
+const readTips = defineWalkthrough({
+  id: "readTips",
+  steps: [{ waymark: "tips", meta: { text: "The tips live down here. Finishing this marks the task done." } }],
+});
 
-const TASKS_KEY = "waymark-checklist";
-const readStored = (): StoredTasks | null => JSON.parse(localStorage.getItem(TASKS_KEY) ?? "null");
-const events: ChecklistsEvent<any, any>[] = [];
+/** The Run keeps one record: every walkthrough's progress and the task statuses. */
+const STORAGE_KEY = "waymark-checklist";
+const readStored = (): StoredRecord | null => JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+const events: WaymarkEvent[] = [];
 
-const controller = createChecklists({
-  context,
+const onboarding = defineChecklists({
   tasks: {
-    "create-deck": { meta: { title: "Create your first deck" }, walkthrough: createDeck, isComplete: (c) => c.hasDeck },
-    "add-photo": { meta: { title: "Add a profile photo" }, walkthrough: addPhoto, isComplete: (c) => c.hasPhoto },
+    "create-deck": {
+      meta: { title: "Create your first deck" },
+      walkthrough: createDeck,
+      isComplete: (c: Context) => c.hasDeck,
+    },
+    "add-photo": {
+      meta: { title: "Add a profile photo" },
+      walkthrough: addPhoto,
+      isComplete: (c: Context) => c.hasPhoto,
+    },
     "read-tips": { meta: { title: "Read the tips" }, walkthrough: readTips },
     "say-hello": {
       meta: { title: "Understand sharing", description: "Your decks stay private until you share them." },
@@ -36,19 +49,19 @@ const controller = createChecklists({
     home: ["create-deck", "add-photo", "read-tips", "say-hello"],
     decks: ["create-deck"],
   },
-  storage: {
-    tasks: localStorageAdapter(TASKS_KEY),
-    walkthrough: localStorageAdapter("waymark-checklist-walkthrough"),
-  },
+});
+
+const run = createRun({
+  storage: STORAGE_KEY,
+  context: { hasDeck: false, hasPhoto: false } satisfies Context,
   onChange: (stored) => renderStored(stored),
   onEvent: (event) => {
     events.push(event);
     renderLog();
   },
-  run: { waymarkPadding: 8 },
 });
 
-const update = () => controller.update({ hasDeck: hasDeck.checked, hasPhoto: hasPhoto.checked });
+const update = () => run.setContext({ hasDeck: hasDeck.checked, hasPhoto: hasPhoto.checked } satisfies Context);
 $("#new-deck").addEventListener("click", () => {
   hasDeck.checked = true;
   update();
@@ -70,7 +83,7 @@ const button = (label: string, onClick: () => void, disabled = false) => {
 
 const ui = {
   checklists: $<HTMLDivElement>("#checklists"),
-  controller: $<HTMLDivElement>("#controller"),
+  run: $<HTMLDivElement>("#run"),
   status: $<HTMLDivElement>("#status"),
   stored: $<HTMLPreElement>("#stored"),
   log: $<HTMLPreElement>("#log"),
@@ -80,7 +93,10 @@ const ui = {
 
 // Each view's ids are typed per checklist; this one panel draws them all.
 type AnyView = Checklist<{ readonly id: string; readonly [field: string]: unknown }>;
-const views = Object.entries(controller.checklists) as unknown as [string, AnyView][];
+const views = Object.entries(onboarding.checklists).map(([name, definition]) => [
+  name,
+  run.checklist(definition),
+]) as unknown as [string, AnyView][];
 const sections = new Map(
   views.map(([name]) => {
     const section = document.createElement("section");
@@ -100,11 +116,12 @@ function renderView(name: string, view: AnyView) {
   count.textContent = `${snapshot.finishedCount} of ${snapshot.taskCount}${snapshot.complete ? " · complete" : ""}`;
   heading.append(count);
   const list = document.createElement("ol");
-  for (const { task, status } of snapshot.tasks) {
+  for (const { task, status, inProgress } of snapshot.tasks) {
     const item = document.createElement("li");
-    const active = snapshot.active?.task.id === task.id;
+    const open = snapshot.open?.id === task.id;
     item.dataset.status = status;
-    item.dataset.active = String(active);
+    item.dataset.open = String(open);
+    item.dataset.inProgress = String(inProgress);
     const title = document.createElement("span");
     title.className = "title";
     const meta = task.meta as { title: string; description?: string };
@@ -112,7 +129,8 @@ function renderView(name: string, view: AnyView) {
     title.title = meta.description ?? "";
     item.append(title);
     if (task.walkthrough) {
-      item.append(button(status === "done" ? "replay" : "start", () => view.start(task.id), active));
+      const label = status === "done" ? "replay" : inProgress ? "resume" : "start";
+      item.append(button(label, () => view.start(task.id), open));
     }
     item.append(button(status === "todo" ? "tick" : "untick", () => view.toggle(task.id)));
     if (status === "todo") item.append(button("skip", () => view.skip(task.id)));
@@ -121,21 +139,29 @@ function renderView(name: string, view: AnyView) {
   section.append(heading, list);
 }
 
-// Each subscribe renders at once, then on every change.
+// Each subscribe renders at once, then on every change. The first brings the
+// checklists, and their tasks' walkthroughs, to the Run.
 for (const [name, view] of views) view.subscribe(() => renderView(name, view));
 
-ui.controller.append(
-  button("stop", () => controller.stop()),
-  button("clear", () => controller.clear()),
+ui.run.append(
+  // The Run has no clear: forgetting the user is a new, empty record.
+  button("clear", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  }),
   button("reload", () => location.reload()),
 );
 
-const renderStored = (stored: StoredTasks | null) => {
+const renderStored = (stored: StoredRecord | null) => {
   ui.stored.textContent = JSON.stringify(stored);
 };
 renderStored(readStored());
 
-const describeEvent = (event: ChecklistsEvent<any, any>): string => {
+const describeEvent = (event: WaymarkEvent): string => {
+  if ("walkthrough" in event) {
+    const by = event.type === "interrupt" ? ` by ${event.interruptedBy}` : "";
+    return `${event.type} ${event.walkthrough} on step ${event.stepIndex + 1}${by}`;
+  }
   switch (event.type) {
     case "taskStopped":
       return `${event.type} ${event.task.id} (${event.reason})`;
@@ -154,9 +180,7 @@ function renderLog() {
   ui.log.scrollTop = ui.log.scrollHeight;
 }
 
-controller.bindUi(() => ({ dialog: ui.popover, beacon: null }));
-
-const describeRun = (snapshot: Snapshot): string => {
+const describe = (snapshot: Snapshot): string => {
   if (snapshot.phase !== "running") return snapshot.phase;
   const parts = [`step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`, snapshot.waymark.status];
   if (!snapshot.canAdvance) parts.push("gate shut");
@@ -164,12 +188,17 @@ const describeRun = (snapshot: Snapshot): string => {
   return parts.join(" · ");
 };
 
-function drawRun() {
-  const active = controller.getSnapshot().active;
-  const snapshot = active?.run.getSnapshot();
-  ui.status.textContent = active && snapshot ? `${active.task.id}: ${describeRun(snapshot)}` : "Nothing active.";
+const describeRun = ({ open, beacons }: RunSnapshot): string => {
+  if (open) return `${open.task ?? open.walkthrough.id}: ${describe(open.snapshot)}`;
+  if (beacons.length === 0) return "Nothing open.";
+  return `Beacons: ${beacons.map((b) => `${b.walkthrough.id} at step ${b.stepIndex + 1} (${b.waymark.status})`).join(", ")}`;
+};
 
-  const running = snapshot?.phase === "running" && !snapshot.collapsed ? snapshot : undefined;
+function drawRun(snapshot: RunSnapshot) {
+  ui.status.textContent = describeRun(snapshot);
+  // This page draws no beacons; a collapsed task resumes from its row.
+
+  const running = snapshot.open?.snapshot;
   const rect = running?.waymark.status === "found" ? running.waymark.rect : undefined;
   ui.halo.style.display = rect ? "block" : "none";
   if (rect) {
@@ -191,22 +220,24 @@ function drawRun() {
   }
 }
 
-// Not `subscribe`: only a subscribed Run watches the page.
-controller.subscribeActive(drawRun);
+run.subscribe(drawRun);
+// This page draws the Run, so it attaches: keys, clicks and the frame loop.
+run.attach(() => ({ dialog: ui.popover }), { waymarkPadding: 8 });
 
-$("#previous").addEventListener("click", () => controller.getSnapshot().active?.run.act("previous"));
-$("#advance").addEventListener("click", () => controller.getSnapshot().active?.run.act("advance"));
-$("#exit").addEventListener("click", () => controller.getSnapshot().active?.run.act("exit"));
+$("#previous").addEventListener("click", () => run.act("previous"));
+$("#advance").addEventListener("click", () => run.act("advance"));
+$("#exit").addEventListener("click", () => run.act("exit"));
 
 declare global {
   interface Window {
     checklists: {
-      controller: typeof controller;
+      run: typeof run;
+      onboarding: typeof onboarding;
       update: typeof update;
       events: typeof events;
-      stored: () => StoredTasks | null;
+      stored: () => StoredRecord | null;
     };
   }
 }
 
-window.checklists = { controller, update, events, stored: readStored };
+window.checklists = { run, onboarding, update, events, stored: readStored };

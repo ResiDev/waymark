@@ -3,6 +3,7 @@ import { createRun } from "./run";
 import { addPerfPage } from "../test/browser";
 import { captureFrames } from "../test/time";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
+import type { Step } from "../walkthrough/types";
 
 /**
  * requestAnimationFrame is stubbed so a frame can be run in a tight loop.
@@ -33,9 +34,10 @@ const measure = (fn: (i: number) => void): number => {
   return samples[Math.floor(REPS / 2)]!;
 };
 
-const frameOf = (runFrame: () => void, steps: Parameters<typeof defineWalkthrough>[0]) => {
-  const run = createRun(defineWalkthrough(steps));
-  const stop = run.subscribe(() => {});
+const frameOf = (runFrame: () => void, steps: readonly Step[]) => {
+  const run = createRun();
+  run.start(defineWalkthrough({ id: "perf", steps }));
+  const stop = run.attach(() => ({ dialog: null }));
   runFrame();
   return { frame: runFrame, stop, run };
 };

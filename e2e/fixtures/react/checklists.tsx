@@ -1,12 +1,18 @@
-import { Checklist, useChecklist, type ChecklistRowProps, type CoreChecklist } from "react-waymark";
+import {
+  Checklist,
+  useChecklist,
+  type AnyReactTask,
+  type ChecklistDefinition,
+  type ChecklistRowProps,
+} from "react-waymark";
 import { ChecklistPopover as CssPopover } from "../../../packages/react/registry/checklist-popover/css/checklist-popover";
 import { ChecklistPopover as TailwindPopover } from "../../../packages/react/registry/checklist-popover/tailwind/checklist-popover";
-import { controller, type AnyTask } from "./guidance";
+import { onboarding } from "./guidance";
 import { setup, useStore } from "./state";
 
 export function HomeChecklist() {
   const { list } = useStore(setup);
-  const home = controller.checklists.home;
+  const home = onboarding.checklists.home;
   if (list === "styled") {
     return (
       <Checklist
@@ -22,16 +28,25 @@ export function HomeChecklist() {
   return <Checklist checklist={home} />;
 }
 
-function CompactRow<TTask extends AnyTask>({ task, status, active, start, markDone, skip, toggle }: ChecklistRowProps<TTask>) {
+function CompactRow<TTask extends AnyReactTask>({
+  task,
+  status,
+  open,
+  inProgress,
+  start,
+  markDone,
+  skip,
+  toggle,
+}: ChecklistRowProps<TTask>) {
   return (
     <div className="compact-row">
       <span className="pill" data-status={status}>
-        {active ? "active" : status}
+        {open ? "open" : inProgress ? "in progress" : status}
       </span>
       <span className="compact-title">{task.title}</span>
       {task.walkthrough !== undefined && (
-        <button type="button" onClick={() => start(task.id)} disabled={active}>
-          {status === "done" ? "replay" : "start"}
+        <button type="button" onClick={() => start(task.id)} disabled={open}>
+          {status === "done" ? "replay" : inProgress ? "resume" : "start"}
         </button>
       )}
       {task.action !== undefined && (
@@ -58,7 +73,7 @@ function CompactRow<TTask extends AnyTask>({ task, status, active, start, markDo
   );
 }
 
-function HeadlessChecklist<TTask extends AnyTask>({ checklist }: { checklist: CoreChecklist<TTask> }) {
+function HeadlessChecklist<TTask extends AnyReactTask>({ checklist }: { checklist: ChecklistDefinition<TTask> }) {
   const { snapshot, start, skip, toggle } = useChecklist(checklist);
   return (
     <section className="headless">
@@ -68,14 +83,19 @@ function HeadlessChecklist<TTask extends AnyTask>({ checklist }: { checklist: Co
         <span>{snapshot.complete ? "all done" : `${snapshot.finishedCount} of ${snapshot.taskCount}`}</span>
       </header>
       <div className="cards">
-        {snapshot.tasks.map(({ task, status }) => (
-          <article key={task.id} data-status={status} data-active={snapshot.active?.task.id === task.id}>
+        {snapshot.tasks.map(({ task, status, inProgress }) => (
+          <article
+            key={task.id}
+            data-status={status}
+            data-open={snapshot.open?.id === task.id}
+            data-in-progress={inProgress}
+          >
             <h4>{task.title}</h4>
             {task.description !== undefined && <p>{task.description}</p>}
             <footer>
               {status === "todo" && task.walkthrough !== undefined && (
                 <button type="button" onClick={() => start(task.id)}>
-                  Show me
+                  {inProgress ? "Carry on" : "Show me"}
                 </button>
               )}
               {status === "todo" && task.action !== undefined && (
@@ -102,13 +122,13 @@ function HeadlessChecklist<TTask extends AnyTask>({ checklist }: { checklist: Co
 }
 
 export function DecksBanner() {
-  const { snapshot, start, skip } = useChecklist(controller.checklists.decks);
+  const { snapshot, start, skip } = useChecklist(onboarding.checklists.decks);
   const row = snapshot.tasks[0];
   if (!row || row.status !== "todo") return null;
   return (
     <div className="banner">
       New here?
-      <button type="button" onClick={() => start(row.task.id)} disabled={snapshot.active !== null}>
+      <button type="button" onClick={() => start(row.task.id)} disabled={snapshot.open !== null}>
         Show me how to make a deck
       </button>
       <button type="button" onClick={() => skip(row.task.id)}>
@@ -120,7 +140,7 @@ export function DecksBanner() {
 
 export function HeaderChecklist() {
   const { copy } = useStore(setup);
-  if (copy === "css") return <CssPopover checklist={controller.checklists.home} />;
-  if (copy === "tailwind") return <TailwindPopover checklist={controller.checklists.home} />;
+  if (copy === "css") return <CssPopover checklist={onboarding.checklists.home} />;
+  if (copy === "tailwind") return <TailwindPopover checklist={onboarding.checklists.home} />;
   return null;
 }

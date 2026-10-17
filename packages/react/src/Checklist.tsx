@@ -1,31 +1,32 @@
 import { useId, useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import type { ChecklistDefinition } from "waymark-core";
 import type {
   AnyReactTask,
   ChecklistLabels,
   ChecklistProps,
   ChecklistRowProps,
-  CoreChecklist,
   UseChecklistResult,
 } from "./types";
 import { withDefaults } from "./labels";
+import { useRun } from "./useRun";
 
+/** A checklist's state and commands, from the Run of the `<WaymarkRoot>` above. */
 export function useChecklist<TTask extends AnyReactTask>(
-  checklist: CoreChecklist<TTask>,
+  checklist: ChecklistDefinition<TTask>,
 ): UseChecklistResult<TTask> {
-  const snapshot = useSyncExternalStore(
-    checklist.subscribe,
-    checklist.getSnapshot,
-    checklist.getServerSnapshot,
-  );
+  const run = useRun();
+  const view = useMemo(() => run.checklist(checklist), [run, checklist]);
+  const snapshot = useSyncExternalStore(view.subscribe, view.getSnapshot, view.getServerSnapshot);
   return useMemo(
     () => ({
       snapshot,
-      start: checklist.start,
-      markDone: checklist.markDone,
-      skip: checklist.skip,
-      toggle: checklist.toggle,
+      start: view.start,
+      markDone: view.markDone,
+      markTodo: view.markTodo,
+      skip: view.skip,
+      toggle: view.toggle,
     }),
-    [checklist, snapshot],
+    [view, snapshot],
   );
 }
 
@@ -60,14 +61,14 @@ const listStyle: CSSProperties = {
   listStyle: "none",
 };
 
-const rowStyleFor = (status: keyof typeof STATUS_TEXT, active: boolean): CSSProperties => ({
+const rowStyleFor = (status: keyof typeof STATUS_TEXT, open: boolean): CSSProperties => ({
   display: "flex",
   alignItems: "flex-start",
   gap: 12,
   padding: "10px 12px",
   borderRadius: 8,
-  background: active ? "#eff6ff" : "#f8fafc",
-  outline: active ? "1px solid #93c5fd" : "none",
+  background: open ? "#eff6ff" : "#f8fafc",
+  outline: open ? "1px solid #93c5fd" : "none",
   opacity: status === "todo" ? 1 : 0.7,
 });
 
@@ -116,7 +117,7 @@ export const visuallyHidden: CSSProperties = {
 function DefaultRow<TTask extends AnyReactTask>({
   task,
   status,
-  active,
+  open,
   start,
   skip,
   toggle,
@@ -138,8 +139,8 @@ function DefaultRow<TTask extends AnyReactTask>({
       <button
         type="button"
         onClick={() => start(task.id)}
-        disabled={active}
-        style={{ ...primaryButton, cursor: active ? "default" : "pointer", opacity: active ? 0.6 : 1 }}
+        disabled={open}
+        style={{ ...primaryButton, cursor: open ? "default" : "pointer", opacity: open ? 0.6 : 1 }}
       >
         {status === "done" ? labels.replay : labels.start}
       </button>
@@ -198,7 +199,7 @@ export function Checklist<TTask extends AnyReactTask>({
   labels,
   renderRow,
 }: ChecklistProps<TTask>) {
-  const { snapshot, start, markDone, skip, toggle } = useChecklist(checklist);
+  const { snapshot, start, markDone, markTodo, skip, toggle } = useChecklist(checklist);
   const text = withDefaults(DEFAULT_LABELS, labels);
 
   return (
@@ -212,14 +213,24 @@ export function Checklist<TTask extends AnyReactTask>({
         {snapshot.finishedCount} of {snapshot.taskCount} done
       </div>
       <ol style={listStyle}>
-        {snapshot.tasks.map(({ task, status }) => {
-          const active = snapshot.active?.task.id === task.id;
-          const props: ChecklistRowProps<TTask> = { task, status, active, start, markDone, skip, toggle };
+        {snapshot.tasks.map(({ task, status, inProgress }) => {
+          const open = snapshot.open?.id === task.id;
+          const props: ChecklistRowProps<TTask> = {
+            task,
+            status,
+            open,
+            inProgress,
+            start,
+            markDone,
+            markTodo,
+            skip,
+            toggle,
+          };
           return (
             <li
               key={task.id}
-              aria-current={active ? "step" : undefined}
-              style={{ ...rowStyleFor(status, active), ...rowStyle }}
+              aria-current={open ? "step" : undefined}
+              style={{ ...rowStyleFor(status, open), ...rowStyle }}
             >
               {renderRow ? renderRow(props) : <DefaultRow {...props} labels={text} />}
             </li>

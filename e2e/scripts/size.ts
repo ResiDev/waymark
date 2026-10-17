@@ -27,11 +27,11 @@ const dist = { "waymark-core": `${packages}core/dist/index.js`, "react-waymark":
 /** Keys name the history's columns: add cases freely, but never rename one. */
 const cases: Record<string, string> = {
   "react/all": `export * from "react-waymark";`,
-  "react/walkthrough": `export { defineWalkthrough, Walkthrough } from "react-waymark";`,
-  "react/headless": `export { createChecklists, localStorageAdapter, useChecklist } from "react-waymark";`,
+  "react/walkthrough": `export { defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
+  "react/headless": `export { defineChecklists, localStorageAdapter, useChecklist, WaymarkRoot } from "react-waymark";`,
   "core/all": `export * from "waymark-core";`,
   "core/run": `export { createRun, defineWalkthrough } from "waymark-core";`,
-  "core/checklists": `export { createChecklists } from "waymark-core";`,
+  "core/checklists": `export { createRun, defineChecklists } from "waymark-core";`,
 };
 
 /** Bytes. */

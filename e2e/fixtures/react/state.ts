@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-// Held outside React, so a remount (StrictMode switched, a renderer moved)
-// loses none of it and `window.playground` drives the same stores.
+// Held outside React, so a remount (StrictMode switched, a new root) loses
+// none of it and `window.playground` drives the same stores.
 
 export type Store<T> = Readonly<{
   get: () => T;
@@ -44,9 +44,7 @@ export const setupOptions = {
   list: ["default", "styled", "rows", "headless"],
   /** The copy-in checklist popover from packages/react/registry, in the header. */
   copy: ["off", "css", "tailwind"],
-  /** `home` unmounts the renderer, and so stops guidance, whenever you leave Home. */
-  renderer: ["root", "home", "none"],
-  /** Where task statuses are kept. `server` is the dev server's /api/tasks. The controller reads it once, at creation. */
+  /** Where the Run keeps its record. `server` is the dev server's /api/record. A change makes a new Run. */
   storage: ["local", "server"],
 } as const;
 
@@ -55,11 +53,10 @@ export type Setup = Readonly<{
   popover: (typeof setupOptions.popover)[number];
   list: (typeof setupOptions.list)[number];
   copy: (typeof setupOptions.copy)[number];
-  renderer: (typeof setupOptions.renderer)[number];
   storage: (typeof setupOptions.storage)[number];
   /** The decks page loads for 1.5s first, so its Waymarks mount late. */
   slow: boolean;
-  /** The controller reads it once, at creation. */
+  /** `<WaymarkRoot>`'s `waymarkPadding`. */
   padding: number;
   lab: boolean;
 }>;
@@ -74,7 +71,6 @@ const readSetup = (): Setup => {
     popover: oneOf(setupOptions.popover, q.get("popover")),
     list: oneOf(setupOptions.list, q.get("list")),
     copy: oneOf(setupOptions.copy, q.get("copy")),
-    renderer: oneOf(setupOptions.renderer, q.get("renderer")),
     storage: oneOf(setupOptions.storage, q.get("storage")),
     slow: q.get("slow") === "1",
     padding: Number.isFinite(padding) ? padding : DEFAULT_PADDING,
@@ -89,7 +85,6 @@ const writeSetup = (setup: Setup) => {
   if (setup.popover !== "default") q.set("popover", setup.popover);
   if (setup.list !== "default") q.set("list", setup.list);
   if (setup.copy !== "off") q.set("copy", setup.copy);
-  if (setup.renderer !== "root") q.set("renderer", setup.renderer);
   if (setup.storage !== "local") q.set("storage", setup.storage);
   if (setup.slow) q.set("slow", "1");
   if (setup.padding !== DEFAULT_PADDING) q.set("padding", String(setup.padding));
@@ -147,13 +142,15 @@ export const data = createStore(loadData(), (next) => localStorage.setItem(DATA_
 
 export const inviteOpen = createStore(false);
 
+/** Whether the app asks for what's new, as `<Walkthrough active>`. */
 export const whatsNewOpen = createStore(false);
 
 export type Entry = Readonly<{
   id: number;
   /** ms since the page loaded. */
   at: number;
-  source: "controller" | "run" | "waymark" | "whats-new";
+  /** `run` and `checklist` are the root's events, `waymark` where the Run is. */
+  source: "run" | "checklist" | "problem" | "waymark";
   text: string;
 }>;
 
@@ -164,5 +161,5 @@ let nextId = 0;
 export const record = (source: Entry["source"], text: string) =>
   log.set([...log.get(), { id: nextId++, at: Math.round(performance.now()), source, text }]);
 
-/** Null while no renderer is mounted: only a watched Run finds Waymarks and hears clicks. */
-export const watched = createStore<string | null>(null);
+/** The open walkthrough, or the beacons to go back to; null with neither. */
+export const runStatus = createStore<string | null>(null);

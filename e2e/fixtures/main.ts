@@ -1,10 +1,10 @@
 import { actions, createRun, defineWalkthrough } from "waymark-core";
-import type { Action, Run, RunEvent, RunOptions, Snapshot, Step, Walkthrough } from "waymark-core";
+import type { Action, Run, RunEvent, RunSnapshot, Snapshot, Step, Walkthrough } from "waymark-core";
 
 /**
  * The whole starting state lives in the URL, so a link is a reproduction:
  *
- *   /?situations=sticky,late&steps=[{"waymark":"save"}]&padding=12&startAt=0
+ *   /?situations=sticky,late&steps=[{"waymark":"save"}]&padding=12
  */
 
 type Situation = Readonly<{ describe: string; apply: () => void }>;
@@ -62,26 +62,38 @@ const DEFAULT_STEPS: readonly Step[] = [
   {},
 ];
 
-type StartOptions = Readonly<{ waymarkPadding?: number; startAt?: number }>;
+type StartOptions = Readonly<{ waymarkPadding?: number }>;
+
+/** The id the fixture's one walkthrough is stored under. */
+const ID = "fixture";
 
 let run: Run | undefined;
+let walkthrough: Walkthrough | undefined;
 let stop: (() => void) | undefined;
 const events: RunEvent[] = [];
 
+/** A new Run for `steps`, drawn by this page: one Run is attached at a time. */
 const start = (steps: readonly Step[], options: StartOptions = {}) => {
   stop?.();
   events.length = 0;
-  const runOptions: RunOptions = {
-    ...(options.waymarkPadding === undefined ? {} : { waymarkPadding: options.waymarkPadding }),
-    ...(options.startAt === undefined ? {} : { startAt: options.startAt }),
+  const next = createRun({
     onEvent: (event) => {
+      if (!("walkthrough" in event)) return;
       events.push(event);
       render();
     },
+  });
+  run = next;
+  walkthrough = defineWalkthrough({ id: ID, steps: steps.map(hydrate) });
+  const unsubscribe = next.subscribe(render);
+  // The halo is this page's drawing; it has no dialog of its own.
+  const detach = next.attach(() => ({ dialog: null }), { waymarkPadding: options.waymarkPadding ?? 0 });
+  stop = () => {
+    detach();
+    unsubscribe();
   };
-  run = createRun(defineWalkthrough(steps.map(hydrate)) as Walkthrough, runOptions);
-  stop = run.subscribe(render);
-  return run;
+  next.start(walkthrough);
+  return next;
 };
 
 type PageState = Readonly<{ situations: readonly string[]; steps: readonly Step[]; options: StartOptions }>;
@@ -91,14 +103,10 @@ const readUrl = (): PageState => {
   const stepsParam = q.get("steps");
   const num = (key: string) => (q.get(key) === null ? undefined : Number(q.get(key)));
   const padding = num("padding");
-  const startAt = num("startAt");
   return {
     situations: q.get("situations")?.split(",").filter(Boolean) ?? [],
     steps: stepsParam ? (JSON.parse(stepsParam) as Step[]) : DEFAULT_STEPS,
-    options: {
-      ...(padding === undefined ? {} : { waymarkPadding: padding }),
-      ...(startAt === undefined ? {} : { startAt }),
-    },
+    options: padding === undefined ? {} : { waymarkPadding: padding },
   };
 };
 
@@ -107,7 +115,6 @@ const writeUrl = (state: PageState) => {
   if (state.situations.length) q.set("situations", state.situations.join(","));
   q.set("steps", JSON.stringify(state.steps));
   if (state.options.waymarkPadding !== undefined) q.set("padding", String(state.options.waymarkPadding));
-  if (state.options.startAt !== undefined) q.set("startAt", String(state.options.startAt));
   history.replaceState(null, "", `?${q}`);
 };
 
@@ -127,7 +134,6 @@ const ui = {
   page: $<HTMLDivElement>("#page"),
   steps: $<HTMLTextAreaElement>("#steps"),
   padding: $<HTMLInputElement>("#padding"),
-  startAt: $<HTMLInputElement>("#startAt"),
   start: $<HTMLButtonElement>("#start"),
   actions: $<HTMLDivElement>("#actions"),
   status: $<HTMLDivElement>("#status"),
@@ -137,7 +143,6 @@ const ui = {
 };
 
 const describe = (snapshot: Snapshot): string => {
-  if (snapshot.phase === "loading") return "loading";
   if (snapshot.phase !== "running") return `${snapshot.phase} at step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`;
   const parts = [
     `step ${snapshot.stepIndex + 1} of ${snapshot.stepCount}`,
@@ -148,19 +153,35 @@ const describe = (snapshot: Snapshot): string => {
   return parts.join(" · ");
 };
 
+/** The fixture's walkthrough: open, collapsed behind its beacon, or how it ended. */
+const describeRun = (snapshot: RunSnapshot): string => {
+  if (snapshot.open) return describe(snapshot.open.snapshot);
+  const beacon = snapshot.beacons.find((b) => b.walkthrough.id === ID);
+  if (beacon) return `collapsed at step ${beacon.stepIndex + 1} · ${beacon.waymark.status}`;
+  const progress = snapshot.progress[ID];
+  if (!progress) return snapshot.storageStatus === "loading" ? "loading" : "not started";
+  return `${progress.status} at step ${progress.step + 1} of ${progress.stepCount}`;
+};
+
+/** The snapshot without its definitions, which hold functions. */
+const plain = (snapshot: RunSnapshot) => ({
+  storageStatus: snapshot.storageStatus,
+  progress: snapshot.progress,
+  open: snapshot.open && { task: snapshot.open.task, ...snapshot.open.snapshot, step: undefined },
+  beacons: snapshot.beacons.map(({ walkthrough: w, stepIndex, waymark }) => ({ walkthrough: w.id, stepIndex, waymark })),
+});
+
 function render() {
   const snapshot = run?.getSnapshot();
-  ui.status.textContent = snapshot ? describe(snapshot) : "No run.";
-  ui.snapshot.textContent = snapshot ? JSON.stringify({ ...snapshot, step: undefined }, null, 1) : "";
+  ui.status.textContent = snapshot ? describeRun(snapshot) : "No run.";
+  ui.snapshot.textContent = snapshot ? JSON.stringify(plain(snapshot), null, 1) : "";
   ui.log.textContent = events
-    .map((event, i) => `${String(i + 1).padStart(2)} ${event.type.padEnd(8)} on step ${event.stepIndex + 1} → ${describe(event.snapshot)}`)
+    .map((event, i) => `${String(i + 1).padStart(2)} ${event.type.padEnd(9)} on step ${event.stepIndex + 1} → ${describe(event.snapshot)}`)
     .join("\n");
   ui.log.scrollTop = ui.log.scrollHeight;
 
-  const rect =
-    snapshot?.phase === "running" && snapshot.waymark.status === "found" && !snapshot.collapsed
-      ? snapshot.waymark.rect
-      : undefined;
+  const open = snapshot?.open?.snapshot;
+  const rect = open?.waymark.status === "found" ? open.waymark.rect : undefined;
   ui.halo.style.display = rect ? "block" : "none";
   if (rect) {
     ui.halo.style.left = `${rect.left}px`;
@@ -191,20 +212,21 @@ for (const [name, situation] of Object.entries(situations)) {
   ui.situations.append(label);
 }
 for (const [name, act] of Object.entries(pageActions)) ui.page.append(button(name, "", act));
-for (const action of actions) ui.actions.append(button(action, "", () => run?.act(action)));
+const act = (action: Action) => {
+  if (run && walkthrough) run.act(action, walkthrough);
+};
+for (const action of actions) ui.actions.append(button(action, "", () => act(action)));
 
 ui.steps.value = JSON.stringify(initial.steps);
 ui.padding.value = String(initial.options.waymarkPadding ?? 0);
-ui.startAt.value = String(initial.options.startAt ?? 0);
 
 ui.start.addEventListener("click", () => {
   const situationsChecked = [...ui.situations.querySelectorAll<HTMLInputElement>("input:checked")].map((b) => b.value);
   const padding = Number(ui.padding.value);
-  const startAt = Number(ui.startAt.value);
   writeUrl({
     situations: situationsChecked,
     steps: JSON.parse(ui.steps.value) as Step[],
-    options: { ...(padding ? { waymarkPadding: padding } : {}), ...(startAt ? { startAt } : {}) },
+    options: padding ? { waymarkPadding: padding } : {},
   });
   location.reload();
 });
@@ -218,7 +240,8 @@ declare global {
       start: typeof start;
       apply: typeof apply;
       page: typeof pageActions;
-      snapshot: () => Snapshot;
+      snapshot: () => RunSnapshot;
+      /** Acts on the fixture's walkthrough, open or not. */
       act: (action: Action) => void;
       events: RunEvent[];
     };
@@ -235,7 +258,7 @@ window.waymark = {
     if (!run) throw new Error("No run started.");
     return run.getSnapshot();
   },
-  act: (action) => run?.act(action),
+  act,
   events,
 };
 

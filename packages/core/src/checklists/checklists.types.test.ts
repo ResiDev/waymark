@@ -1,39 +1,32 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
-import { createChecklists } from "./checklists";
-import type { StoredTasks } from "../storage/records";
-import type { ChecklistsEvent, StepOf, Task } from "./types";
+import { describe, expectTypeOf, it } from "vitest";
+import { defineChecklists } from "./checklists";
+import type { ChecklistsEvent, Task } from "./types";
+import { createRun } from "../run/run";
+import type { RunOptions, Running } from "../run/types";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Walkthrough } from "../walkthrough/types";
 import { everyProblem } from "../problems";
 import type { ProblemHandlers, WaymarkProblem } from "../problems";
-import type { Run } from "../run/types";
-
 
 const initialContext = { hasDeck: false, hasPhoto: false };
 type AppContext = typeof initialContext;
 
-const deckSteps = defineWalkthrough([
-  { waymark: "new-deck", meta: { helpUrl: "/help/decks" } },
-]);
-const photoSteps = defineWalkthrough([{ waymark: "avatar" }]);
+const deckSteps = defineWalkthrough({ id: "deck", steps: [{ waymark: "new-deck", meta: { helpUrl: "/help/decks" } }] });
+const photoSteps = defineWalkthrough({ id: "photo", steps: [{ waymark: "avatar" }] });
 
 const external = {
   walkthrough: photoSteps,
   isComplete: (c) => c.hasPhoto,
 } satisfies Task<AppContext>;
 
-describe("createChecklists types", () => {
-  it("infers context from initial values and types inline conditions from it", () => {
-    const controller = createChecklists({
-      context: initialContext,
+describe("defineChecklists types", () => {
+  it("types each condition from its own context, and each checklist's commands from its tasks", () => {
+    const onboarding = defineChecklists({
       tasks: {
         "create-deck": {
           walkthrough: deckSteps,
-          isComplete: (context) => {
-            expectTypeOf(context).toEqualTypeOf<{
-              hasDeck: boolean;
-              hasPhoto: boolean;
-            }>();
+          isComplete: (context: AppContext) => {
+            expectTypeOf(context).toEqualTypeOf<{ hasDeck: boolean; hasPhoto: boolean }>();
             return context.hasDeck;
           },
         },
@@ -45,67 +38,41 @@ describe("createChecklists types", () => {
         decks: ["create-deck"],
       },
     });
+    const run = createRun();
+    const home = run.checklist(onboarding.checklists.home);
+    const decks = run.checklist(onboarding.checklists.decks);
 
-    expectTypeOf(controller.update)
-      .parameter(0)
-      .toEqualTypeOf<{ hasDeck: boolean; hasPhoto: boolean }>();
-    // @ts-expect-error the full context shape is required
-    controller.update({ hasDeck: true });
+    expectTypeOf(home.start).parameter(0).toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
+    expectTypeOf(decks.start).parameter(0).toEqualTypeOf<"create-deck">();
+    const mistakes = () => {
+      // @ts-expect-error not in decks
+      decks.start("add-photo");
+    };
+    expectTypeOf(mistakes).toBeFunction();
 
-    expectTypeOf(controller.start)
-      .parameter(0)
-      .toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
-    expectTypeOf(controller.checklists.decks.start)
-      .parameter(0)
-      .toEqualTypeOf<"create-deck">();
-    // @ts-expect-error not in decks
-    controller.checklists.decks.start("add-photo");
-
-    expect(() =>
-      createChecklists({
-        context: initialContext,
-        tasks: {
-          // @ts-expect-error the controller keeps a Task's place, so its walkthrough has no storage
-          tour: { walkthrough: defineWalkthrough([{}], { storage: "tour" }) },
-        },
-      }),
-    ).toThrow(/its own storage/);
-
-    type HomeRow = ReturnType<
-      typeof controller.checklists.home.getSnapshot
-    >["tasks"][number];
-    expectTypeOf<HomeRow["task"]["id"]>().toEqualTypeOf<
-      "create-deck" | "add-photo" | "say-hello"
-    >();
-    type DeckActive = NonNullable<
-      ReturnType<typeof controller.checklists.decks.getSnapshot>["active"]
-    >;
-    expectTypeOf<DeckActive["run"]>().toEqualTypeOf<
-      Run<{
-        readonly waymark: "new-deck";
-        readonly meta: { readonly helpUrl: "/help/decks" };
-      }>
+    type HomeRow = ReturnType<typeof home.getSnapshot>["tasks"][number];
+    expectTypeOf<HomeRow["task"]["id"]>().toEqualTypeOf<"create-deck" | "add-photo" | "say-hello">();
+    expectTypeOf(decks.getSnapshot().open).toEqualTypeOf<
+      Readonly<(typeof onboarding.checklists.decks.tasks)[number]> | null
     >();
 
-    const controllerActive = controller.getSnapshot().active;
-    if (controllerActive) controller.skip(controllerActive.task.id);
-    const deckActive = controller.checklists.decks.getSnapshot().active;
-    if (deckActive) controller.skip(deckActive.task.id);
-
-    const home = controller.checklists.home.getSnapshot();
-    for (const row of home.tasks) {
-      if (row.task.id === "create-deck") {
-        expectTypeOf(row.task.walkthrough).toEqualTypeOf<typeof deckSteps>();
-      }
-      if (row.task.id === "say-hello") {
-        expectTypeOf(row.task).not.toHaveProperty("walkthrough");
-      }
+    for (const row of home.getSnapshot().tasks) {
+      if (row.task.id === "create-deck") expectTypeOf(row.task.walkthrough).toEqualTypeOf<typeof deckSteps>();
+      if (row.task.id === "say-hello") expectTypeOf(row.task).not.toHaveProperty("walkthrough");
     }
   });
 
+  it("rejects a condition that does not say what context it reads, which the Run cannot know", () => {
+    const create = () =>
+      defineChecklists({
+        // @ts-expect-error the context is unknown until the condition types it
+        tasks: { deck: { isComplete: (c) => c.hasDeck } }, // oxlint-disable-line typescript/no-unsafe-return, typescript/no-unsafe-member-access -- a deliberate type error, so its value has no type.
+      });
+    expectTypeOf(create).toBeFunction();
+  });
+
   it("takes a task's steps inline, typed and checked as defineWalkthrough's are", () => {
-    const controller = createChecklists({
-      context: initialContext,
+    const defined = defineChecklists({
       tasks: {
         deck: {
           walkthrough: [
@@ -119,162 +86,47 @@ describe("createChecklists types", () => {
               },
             },
           ],
-          isComplete: (c) => c.hasDeck,
+          isComplete: (c: AppContext) => c.hasDeck,
         },
         photo: { walkthrough: photoSteps },
       },
       checklists: { home: ["deck", "photo"] },
     });
-
-    type DeckActive = NonNullable<
-      ReturnType<typeof controller.checklists.home.getSnapshot>["active"]
-    >;
-    type DeckStep = DeckActive["run"] extends Run<infer TStep> ? TStep : never;
-    expectTypeOf<
-      Extract<DeckStep, { readonly waymark: "new-deck" }>
-    >().toEqualTypeOf<{
-      readonly waymark: "new-deck";
-      readonly advance: "click";
-    }>();
-    expectTypeOf<
-      Extract<DeckStep, { readonly waymark: "avatar" }>
-    >().toEqualTypeOf<{ readonly waymark: "avatar" }>();
+    expectTypeOf<(typeof defined.checklists.home.tasks)[number]["id"]>().toEqualTypeOf<"deck" | "photo">();
 
     const mistakes = () => {
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         // @ts-expect-error misspelled advance
         tasks: { deck: { walkthrough: [{ advnace: "click" }] } },
-        checklists: { home: ["deck"] },
       });
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         tasks: {
           // @ts-expect-error misspelled delayMs
           deck: { walkthrough: [{ advance: { click: true, delay: 500 } }] },
         },
-        checklists: { home: ["deck"] },
       });
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         // @ts-expect-error a waymark is a name
         tasks: { deck: { walkthrough: [{ waymark: 5 }] } },
-        checklists: { home: ["deck"] },
       });
     };
     expectTypeOf(mistakes).toBeFunction();
-  });
-
-  it("needs no context when no task has a condition", () => {
-    const controller = createChecklists({
-      tasks: { tour: { walkthrough: deckSteps }, hello: {} },
-      checklists: { home: ["tour", "hello"] },
-    });
-    expectTypeOf(controller.update).parameter(0).toEqualTypeOf<{}>();
-
-    const create = () =>
-      createChecklists({
-        // @ts-expect-error without a context, a condition has no fields to read
-        tasks: { deck: { isComplete: (c) => c.hasDeck } }, // oxlint-disable-line typescript/no-unsafe-return -- a deliberate type error, so its value has no type.
-        checklists: { home: ["deck"] },
-      });
-    expectTypeOf(create).toBeFunction();
   });
 
   it("names one checklist, main, of every task when it names none", () => {
-    const controller = createChecklists({
-      tasks: { tour: { walkthrough: deckSteps }, hello: {} },
-    });
-    expectTypeOf<keyof typeof controller.checklists>().toEqualTypeOf<"main">();
-    expectTypeOf(controller.checklists.main.start)
-      .parameter(0)
-      .toEqualTypeOf<"tour" | "hello">();
-    const mistakes = () => {
-      // @ts-expect-error the one checklist is main
-      controller.checklists.home.start("tour"); // oxlint-disable-line typescript/no-unsafe-call, typescript/no-unsafe-member-access -- a deliberate type error, so its value has no type.
-    };
-    expectTypeOf(mistakes).toBeFunction();
+    const defined = defineChecklists({ tasks: { tour: { walkthrough: deckSteps }, hello: {} } });
+    expectTypeOf<keyof typeof defined.checklists>().toEqualTypeOf<"main">();
+    expectTypeOf(createRun().checklist(defined.checklists.main).start).parameter(0).toEqualTypeOf<"tour" | "hello">();
   });
 
   it("rejects a selection naming an unknown task", () => {
     const create = () =>
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         tasks: { "create-deck": { walkthrough: deckSteps } },
         // @ts-expect-error not a key of tasks
         checklists: { broken: ["missing-task"] },
       });
     expectTypeOf(create).toBeFunction();
-  });
-
-  it("recovers the step union across tasks, without steps from tasks that have none", () => {
-    const tasks = {
-      deck: { walkthrough: deckSteps },
-      photo: external,
-      // A step with only application data is still a step.
-      note: {
-        walkthrough: defineWalkthrough([{ meta: { text: "Read this" } }]),
-      },
-      hello: {},
-    } as const;
-    expectTypeOf<StepOf<(typeof tasks)[keyof typeof tasks]>>().toEqualTypeOf<
-      | {
-          readonly waymark: "new-deck";
-          readonly meta: { readonly helpUrl: "/help/decks" };
-        }
-      | { readonly waymark: "avatar" }
-      | { readonly meta: { readonly text: "Read this" } }
-    >();
-    expectTypeOf<StepOf<(typeof tasks)["hello"]>>().toEqualTypeOf<never>();
-  });
-
-  it("types events over all tasks and checklist names", () => {
-    createChecklists({
-      context: initialContext,
-      tasks: { deck: { walkthrough: deckSteps }, hello: {} },
-      checklists: { home: ["deck", "hello"], decks: ["deck"] },
-      onEvent: (event) => {
-        expectTypeOf(event.type).toEqualTypeOf<
-          | "taskStarted"
-          | "taskComplete"
-          | "taskReopened"
-          | "taskStopped"
-          | "taskSkipped"
-          | "taskUnskipped"
-          | "checklistComplete"
-        >();
-        if (event.type === "taskSkipped") {
-          expectTypeOf(event.task.id).toEqualTypeOf<"deck" | "hello">();
-          expectTypeOf(event.checklist).toEqualTypeOf<
-            "home" | "decks" | undefined
-          >();
-        }
-        if (event.type === "checklistComplete") {
-          expectTypeOf(event.checklist).toEqualTypeOf<"home" | "decks">();
-        }
-        if (event.type === "taskStopped") {
-          expectTypeOf(event.reason).toEqualTypeOf<
-            "finished" | "skipped" | "stopped"
-          >();
-        }
-        if (event.type === "taskStarted") {
-          expectTypeOf(event.type).toEqualTypeOf<"taskStarted">();
-        }
-        if (event.type === "taskComplete") {
-          expectTypeOf(event.type).toEqualTypeOf<"taskComplete">();
-        }
-      },
-      run: {
-        onEvent: (event) => {
-          expectTypeOf(event.step).toEqualTypeOf<{
-            readonly waymark: "new-deck";
-            readonly meta: { readonly helpUrl: "/help/decks" };
-          }>();
-        },
-        // @ts-expect-error core owns startAt
-        startAt: 0,
-      },
-    });
   });
 
   it("types a task written with satisfies from the supplied context and keeps meta", () => {
@@ -299,9 +151,9 @@ describe("createChecklists types", () => {
 
   it("rejects a field that neither core nor meta names", () => {
     // @ts-expect-error misspelled advance
-    defineWalkthrough([{ waymark: "new-deck", advnace: "click" }]);
+    defineWalkthrough({ id: "a", steps: [{ waymark: "new-deck", advnace: "click" }] });
     // @ts-expect-error application data belongs in meta
-    defineWalkthrough([{ waymark: "new-deck", helpUrl: "/help/decks" }]);
+    defineWalkthrough({ id: "a", steps: [{ waymark: "new-deck", helpUrl: "/help/decks" }] });
 
     const misspelled = {
       // @ts-expect-error misspelled isComplete
@@ -310,107 +162,109 @@ describe("createChecklists types", () => {
     expectTypeOf(misspelled).toBeObject();
 
     const create = () =>
-      createChecklists({
-        context: initialContext,
+      defineChecklists({
         tasks: {
           // @ts-expect-error application data belongs in meta
           deck: { walkthrough: deckSteps, title: "Create a deck" },
           hello: { meta: { title: "Say hello" } },
         },
-        checklists: { home: ["deck", "hello"] },
       });
     expectTypeOf(create).toBeFunction();
   });
 
   it("rejects a field that no form of advance names", () => {
-    const valid = defineWalkthrough([
-      { advance: "click" },
-      { advance: { event: "input" } },
-      { advance: { event: ["input", "change"] } },
-      { advance: { state: (waymark) => waymark !== null } },
-      { advance: { click: true } },
-      { advance: { click: true, then: "unlock", delayMs: 500 } },
-      { advance: { event: "input", delayMs: 500 } },
-    ]);
+    const valid = defineWalkthrough({
+      id: "valid",
+      steps: [
+        { advance: "click" },
+        { advance: { event: "input" } },
+        { advance: { event: ["input", "change"] } },
+        { advance: { state: (waymark) => waymark !== null } },
+        { advance: { click: true } },
+        { advance: { click: true, then: "unlock", delayMs: 500 } },
+        { advance: { event: "input", delayMs: 500 } },
+      ],
+    });
     expectTypeOf(valid).toHaveProperty("steps");
 
     const mistakes = () => {
       // @ts-expect-error misspelled delayMs
-      defineWalkthrough([{ advance: { click: true, delay: 500 } }]);
-      defineWalkthrough([
+      defineWalkthrough({ id: "a", steps: [{ advance: { click: true, delay: 500 } }] });
+      defineWalkthrough({
+        id: "a",
         // @ts-expect-error misspelled delayMs, alongside a valid then
-        { advance: { click: true, then: "unlock", delayMS: 500 } },
-      ]);
-      defineWalkthrough([
+        steps: [{ advance: { click: true, then: "unlock", delayMS: 500 } }],
+      });
+      defineWalkthrough({
+        id: "a",
         // @ts-expect-error misspelled state, beside an event
-        { advance: { event: "input", stat: () => true } },
-      ]);
+        steps: [{ advance: { event: "input", stat: () => true } }],
+      });
       // @ts-expect-error a condition is an event or a state, not both
-      defineWalkthrough([{ advance: { event: "input", state: () => true } }]);
+      defineWalkthrough({ id: "a", steps: [{ advance: { event: "input", state: () => true } }] });
       // @ts-expect-error a condition is a click or an event, not both
-      defineWalkthrough([{ advance: { click: true, event: "input" } }]);
+      defineWalkthrough({ id: "a", steps: [{ advance: { click: true, event: "input" } }] });
       // @ts-expect-error options with no condition
-      defineWalkthrough([{ advance: { then: "unlock" } }]);
-      defineWalkthrough([
-        { advance: "click" },
-        // @ts-expect-error a typo in a later step
-        { advance: { click: true, delay: 500 } },
-      ]);
+      defineWalkthrough({ id: "a", steps: [{ advance: { then: "unlock" } }] });
     };
     expectTypeOf(mistakes).toBeFunction();
   });
+});
 
-  it("accepts a stored record and an event handler typed over the controller", () => {
-    const stored: StoredTasks = { version: 3, tasks: { x: "done", y: "skipped", z: "reopened" } };
-    const controller = createChecklists({
-      context: {},
-      tasks: { a: {} },
-      checklists: { all: ["a"] },
-      initial: stored,
-    });
-    type Event = ChecklistsEvent<{ a: {} }, { all: readonly ["a"] }>;
-    const handler = (event: Event) => event.type;
-    controller.load(stored);
-    expectTypeOf(handler).toBeFunction();
+describe("defineWalkthrough types", () => {
+  it("takes one object with an id, and keeps its steps exact", () => {
+    const tour = defineWalkthrough({ id: "tour", steps: [{ waymark: "a", meta: { id: 1 } }], dismiss: "exit" });
+    expectTypeOf(tour).toEqualTypeOf<Walkthrough<{ readonly waymark: "a"; readonly meta: { readonly id: 1 } }>>();
+
+    const mistakes = () => {
+      // @ts-expect-error a walkthrough needs an id, its key in the stored record
+      defineWalkthrough({ steps: [{}] });
+      // @ts-expect-error not a way to dismiss a walkthrough
+      defineWalkthrough({ id: "a", steps: [{}], dismiss: "hide" });
+      // @ts-expect-error storage belongs to the Run
+      defineWalkthrough({ id: "a", steps: [{}], storage: "a" });
+      // @ts-expect-error problem handlers belong to the Run
+      defineWalkthrough({ id: "a", steps: [{}], problemHandlers: {} });
+    };
+    expectTypeOf(mistakes).toBeFunction();
+  });
+});
+
+describe("Run types", () => {
+  it("types the events of every walkthrough and checklist in one handler", () => {
+    const onEvent = (event: Parameters<NonNullable<RunOptions["onEvent"]>>[0]) => {
+      if (event.type === "interrupt") expectTypeOf(event.interruptedBy).toEqualTypeOf<string>();
+      if (event.type === "taskStopped") expectTypeOf(event.reason).toEqualTypeOf<"finished" | "skipped" | "stopped">();
+      if (event.type === "checklistComplete") expectTypeOf(event.checklist).toEqualTypeOf<string>();
+      if (event.type === "advance") expectTypeOf(event.walkthrough).toEqualTypeOf<string>();
+      if ("task" in event) expectTypeOf(event).toEqualTypeOf<Exclude<ChecklistsEvent, { type: "checklistComplete" }>>();
+    };
+    expectTypeOf(onEvent).toExtend<NonNullable<RunOptions["onEvent"]>>();
   });
 
-  it("types each handler's problem from its key and the walkthrough or the controller's Tasks", () => {
-    const tour = defineWalkthrough([{ waymark: "a", meta: { id: 1 } }], {
+  it("types each handler's problem from its key and the Run's walkthroughs", () => {
+    type Tour = Walkthrough<{ readonly waymark: "a"; readonly meta: { readonly id: 1 } }>;
+    const run = createRun<Tour>({
       problemHandlers: {
         waymarkMissing: (problem) => {
           expectTypeOf(problem.step.meta).toEqualTypeOf<{ readonly id: 1 }>();
-        },
-      },
-    });
-    expectTypeOf(tour).toExtend<Walkthrough>();
-    expect(() =>
-      createChecklists({
-        // @ts-expect-error the controller hears a Task's problems, so its walkthrough has no problemHandlers
-        tasks: { tour: { walkthrough: tour } },
-      }),
-    ).toThrow(/its own problemHandlers/);
-
-    // @ts-expect-error maxAge only means something with storage
-    defineWalkthrough([{}], { maxAge: 1000 });
-    // @ts-expect-error without storage, options only give the walkthrough its own problemHandlers
-    defineWalkthrough([{}], {});
-    defineWalkthrough([{}], { storage: "tour" });
-    // @ts-expect-error not a type of problem
-    defineWalkthrough([{}], { problemHandlers: { storageFaild: () => {} } });
-
-    createChecklists({
-      tasks: { "create-deck": { walkthrough: deckSteps } },
-      problemHandlers: {
-        waymarkLost: (problem) => {
-          expectTypeOf(problem.step.meta).toEqualTypeOf<{ readonly helpUrl: "/help/decks" }>();
+          expectTypeOf(problem.walkthrough).toEqualTypeOf<string>();
         },
         recordDropped: (problem) => {
-          expectTypeOf(problem.reason).toEqualTypeOf<"expired" | "stepsChanged" | "taskNotTodo" | "unknownTask">();
+          expectTypeOf(problem.reason).toEqualTypeOf<"expired" | "stepsChanged">();
         },
       },
     });
-    createChecklists({
-      tasks: { "create-deck": { walkthrough: deckSteps } },
+    expectTypeOf(run.getSnapshot().open?.snapshot).toEqualTypeOf<Running<Tour["steps"][number]> | undefined>();
+    const mistakes = () => {
+      // @ts-expect-error a Run of these walkthroughs takes no other
+      run.start(deckSteps);
+      // @ts-expect-error not a type of problem
+      createRun({ problemHandlers: { storageFaild: () => {} } });
+    };
+    expectTypeOf(mistakes).toBeFunction();
+
+    createRun({
       problemHandlers: everyProblem((problem) => {
         expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
       }),
@@ -419,7 +273,7 @@ describe("createChecklists types", () => {
 
   it("gives a handler no this, as each is called on its own", () => {
     expectTypeOf<NonNullable<ProblemHandlers["storageFailed"]>>().thisParameter.toBeVoid();
-    defineWalkthrough([{}], {
+    createRun({
       problemHandlers: {
         storageFailed() {
           // @ts-expect-error a handler is called on its own, so it has no this

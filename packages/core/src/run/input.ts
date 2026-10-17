@@ -1,7 +1,8 @@
 import type { Action, Rect, UiElements } from "./types";
+import type { Dismiss } from "../walkthrough/types";
 
 export type InputContext = Readonly<{
-  collapsed: boolean;
+  dismiss: Dismiss;
   element: Element | null;
   rect: Rect | null;
   padding: number;
@@ -17,11 +18,11 @@ const within = (rect: Rect, padding: number, x: number, y: number) =>
   y <= rect.bottom + padding;
 
 /**
- * Whose UI `node` is in. This Run's dialog or beacon comes first, since content inside them
+ * Whose UI `node` is in. This Run's dialog comes first, since content inside it
  * may carry `data-waymark-ui`; "other" is any other Waymark UI, and "page" is the app's own.
  */
-const uiOwner = (node: Element, { dialog, beacon }: UiElements): "run" | "other" | "page" => {
-  if (dialog?.contains(node) === true || beacon?.contains(node) === true) return "run";
+const uiOwner = (node: Element, { dialog }: UiElements): "run" | "other" | "page" => {
+  if (dialog?.contains(node) === true) return "run";
   if (node.closest("[data-waymark-ui]") !== null) return "other";
   return "page";
 };
@@ -30,8 +31,7 @@ export function whereClicked(event: MouseEvent, ctx: InputContext): ClickHit {
   const node = event.target;
   if (!(node instanceof Element) || !node.isConnected) return "ui";
 
-  // UI first: the beacon can sit inside the Waymark's halo, and so can a
-  // popover clamped into the viewport.
+  // UI first: a popover clamped into the viewport can sit inside the Waymark's halo.
   if (uiOwner(node, ctx.ui) !== "page") return "ui";
 
   if (ctx.element?.contains(node) === true) return "waymark";
@@ -80,8 +80,6 @@ export function keyAction(
   event: KeyboardEvent,
   ctx: InputContext,
 ): Action | undefined {
-  if (ctx.collapsed) return undefined;
-
   const alreadyHandled = event.defaultPrevented;
   const hasShortcutModifier = event.altKey || event.ctrlKey || event.metaKey;
   if (alreadyHandled || hasShortcutModifier) return undefined;
@@ -93,7 +91,7 @@ export function keyAction(
   switch (event.key) {
     case "Escape":
       event.preventDefault();
-      return "collapse";
+      return ctx.dismiss;
     case "ArrowRight":
       if (isTyping()) return undefined;
       event.preventDefault();

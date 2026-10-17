@@ -419,13 +419,12 @@ const dot: CSSProperties = {
  */
 export function BeaconAnchor({
   rect,
-  beaconRef,
   children,
 }: {
   rect: Rect | null;
-  beaconRef: RefObject<HTMLDivElement>;
   children: ReactNode;
 }) {
+  const beaconRef = useRef<HTMLDivElement>(null);
   const size = useMeasuredSize(beaconRef, true);
   const viewport = useViewportSize();
   const reachX = size.width / 2;
