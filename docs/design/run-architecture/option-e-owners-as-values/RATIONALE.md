@@ -47,6 +47,9 @@ expect(gather().events.map((e) => e.type)).toEqual(["interrupt"]);
 
 ## Shape
 
+Every piece of state, inside `RunState` and out, with why each exists, is in
+[STATE.md](STATE.md).
+
 | File | Owns | Kind | Lines (est.) |
 | --- | --- | --- | --- |
 | `run/walkthroughs.ts` | definitions, progress, restored, open machine, waiting, lastGeneration | pure | 330 |
@@ -54,8 +57,9 @@ expect(gather().events.map((e) => e.type)).toEqual(["interrupt"]);
 | `run/beacons.ts` | sightings | pure | 110 |
 | `run/model.ts` | `RunState`, `settle`, `selectRun`, `changesOf` | pure | 140 |
 | `run/change.ts` | `Change`, `Source` | types + one maker | 70 |
-| `run/page.ts` | attachments, watchers, frame loop, throw dedupe | shell | 230 |
-| `run/run.ts` | `let state`, snapshots, queue, listeners, handles, held, context, adapter, `commit` | shell | 280 |
+| `run/page.ts` | attachments, watchers, frame loop, throw dedupe, as one private `PageState` | shell | 230 |
+| `storage/link.ts` | the connection to storage, as one private `Link` | shell | 50 |
+| `run/run.ts` | `let state`, the server state, what was published, held, context, `commit` | shell | 250 |
 
 About 1,380 lines against 1,007, about A's size. `checklists/statuses.ts` and
 `checklists/views.ts` go, and `checklists/tasks.ts` returns new records instead

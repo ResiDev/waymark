@@ -38,6 +38,33 @@ export type Page = Readonly<{
   look: (start: Message) => void;
 }>;
 
+// WaymarkAria and WaymarkEvents, the keys of two watchers, move here from today's run.ts.
+type Attachment = Readonly<{ ui: () => UiElements; padding: number }>;
+type Watcher<K> = Readonly<{ key: K; close: () => void }> | undefined;
+
+/** Everything this file holds, in one place. Private: nothing outside writes it. */
+type PageState = {
+  /** Renderers drawing the Run, newest last. The newest one's elements are used; the one before takes over when it unmounts. */
+  attachments: Attachment[];
+  /** DOM listeners. `sync()` brings them in line with the state after every change. */
+  watching: {
+    input: Watcher<true>;                    // clicks and keys
+    frame: Watcher<true>;                    // the next animation frame
+    aria: Watcher<WaymarkAria>;              // aria attributes on the Waymark
+    events: Watcher<WaymarkEvents>;          // listeners for "advance on event" steps
+  };
+  /** A state check's error → the step it was reported on, so a check that throws is reported once a step, not every frame. */
+  thrown: Map<string, number>;
+};
+
+/** Shared by every Run on the page, for the development warning about two Runs drawing over each other. */
+const attachedRuns = new WeakMap<Document, number>();
+
 export function createPage(deps: PageDeps): Page {
+  const page: PageState = {
+    attachments: [],
+    watching: { input: undefined, frame: undefined, aria: undefined, events: undefined },
+    thrown: new Map(),
+  };
   throw new Error("not implemented");
 }
