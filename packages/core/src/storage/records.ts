@@ -14,6 +14,17 @@ export type StoredRecord = Readonly<{
   tasks: Readonly<Record<string, "done" | "skipped" | "reopened">>;
 }>;
 
+/**
+ * What one save changes: each entry here replaces the user's stored entry
+ * under the same id, and `null` removes it. Entries not listed stay as they
+ * are, so a save never touches what this Run did not change.
+ */
+export type StoredChanges = Readonly<{
+  version: 4;
+  walkthroughs: Readonly<Record<string, WalkthroughProgress | null>>;
+  tasks: Readonly<Record<string, "done" | "skipped" | "reopened" | null>>;
+}>;
+
 /** What a record holds once read: copies, with no prototype, so any id is an ordinary key. */
 export type Read = Readonly<{
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
@@ -98,6 +109,46 @@ export const staleness = (
   if (progress.stepCount !== stepCount) return "stepsChanged";
   return Date.now() - progress.changedAt > maxAge ? "expired" : undefined;
 };
+
+/** The entries that differ between two moments, or none. Entries are replaced, never changed in place, so identity says which. */
+export const changesBetween = (
+  before: Readonly<{ progress: Readonly<Record<string, WalkthroughProgress>>; statuses: Stored }>,
+  after: Readonly<{ progress: Readonly<Record<string, WalkthroughProgress>>; statuses: Stored }>,
+): StoredChanges | undefined => {
+  const walkthroughs = dictionary<WalkthroughProgress | null>();
+  const tasks = dictionary<Stored[string] | null>();
+  for (const id of new Set([...Object.keys(before.progress), ...Object.keys(after.progress)])) {
+    if (before.progress[id] !== after.progress[id]) walkthroughs[id] = after.progress[id] ?? null;
+  }
+  for (const id of new Set([...Object.keys(before.statuses), ...Object.keys(after.statuses)])) {
+    if (before.statuses[id] !== after.statuses[id]) tasks[id] = after.statuses[id] ?? null;
+  }
+  if (Object.keys(walkthroughs).length === 0 && Object.keys(tasks).length === 0) return undefined;
+  return { version: VERSION, walkthroughs, tasks };
+};
+
+/**
+ * The stored record with a save's changes made to it, or `null` once nothing
+ * is left, for an adapter or a server to write in its place. It throws on a
+ * record it cannot read, such as one a newer Waymark wrote, rather than write
+ * over it.
+ */
+export function applyChanges(stored: unknown, changes: StoredChanges): StoredRecord | null {
+  const parsed = parseRecord(stored);
+  if (!parsed.ok) throw new Error(`Waymark did not save over a record it cannot read. ${parsed.error.message}`);
+  const walkthroughs = Object.assign(dictionary<WalkthroughProgress>(), parsed.value?.walkthroughs);
+  const tasks = copy(parsed.value?.tasks ?? {});
+  for (const [id, progress] of Object.entries(changes.walkthroughs)) {
+    if (progress === null) delete walkthroughs[id];
+    else walkthroughs[id] = progress;
+  }
+  for (const [id, status] of Object.entries(changes.tasks)) {
+    if (status === null) delete tasks[id];
+    else tasks[id] = status;
+  }
+  const next = storedRecord(walkthroughs, tasks);
+  return isEmptyRecord(next) ? null : next;
+}
 
 export const storedRecord = (
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>,

@@ -150,7 +150,7 @@ export type RunOptions<TWalkthrough extends Walkthrough = Walkthrough> = Readonl
    * the Run. Until a Promise from the adapter's `load` settles, the Run is
    * `loading` and holds its commands.
    */
-  storage?: string | StorageAdapter<StoredRecord>;
+  storage?: string | StorageAdapter;
   /** A record already in hand, such as one fetched for a server render. The Run starts from it and does not load, though it still saves. */
   initial?: StoredRecord;
   /** Hears the record each time it changes, for an app that keeps it itself. */

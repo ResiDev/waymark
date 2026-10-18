@@ -582,7 +582,7 @@ describe("WaymarkRoot with storage", () => {
 
   it("reads storage once as it mounts, and picks up its place on the next mount", async () => {
     const { root, render } = mountTour();
-    const storage = localStorageAdapter<StoredRecord>("tour");
+    const storage = localStorageAdapter("tour");
     const load = vi.spyOn(storage, "load");
     await render(view(), { storage });
     await act(async () => buttonNamed("Next")!.click());

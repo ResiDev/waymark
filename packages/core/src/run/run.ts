@@ -18,8 +18,8 @@ import { problemReporter, recordDropped, recordUnreadable, storageFailed } from 
 import type { WaymarkProblem } from "../problems";
 import { createQueue } from "../queue";
 import { adapterOf, loadFrom, saveTo } from "../storage/adapter";
-import { DEFAULT_MAX_AGE, isEmptyRecord, parseRecord, staleness, storedRecord } from "../storage/records";
-import type { Parsed, Read } from "../storage/records";
+import { changesBetween, DEFAULT_MAX_AGE, parseRecord, staleness, storedRecord } from "../storage/records";
+import type { Parsed, Read, StoredChanges } from "../storage/records";
 import { listen } from "../subscribe";
 import { checkOf, hasWaymark, selectorOf } from "../walkthrough/walkthrough";
 import type { Walkthrough, WalkthroughProgress } from "../walkthrough/types";
@@ -120,7 +120,7 @@ type Attachment = Readonly<{ ui: () => UiElements; padding: number }>;
 type Flags = Readonly<{
   /** No checklist events: the change came from storage or a checklist arriving, not the user. */
   silent?: boolean;
-  /** False: the record is neither saved nor handed to `onChange`. */
+  /** False: the change came from storage, so it is neither saved nor handed to `onChange`. */
   persist?: boolean;
 }>;
 
@@ -147,12 +147,6 @@ export function createRun(options: RunOptions = {}): Run {
   let progress = NO_PROGRESS;
   const statuses = createStatuses();
   let storageStatus: StorageStatus = adapter !== undefined && options.initial === undefined ? "loading" : "ready";
-  /**
-   * The stored record could not be read. It may be fine, as with a newer
-   * version, so what the Run does by itself does not save over it; a change
-   * the user makes does.
-   */
-  let storedUnread = false;
   let context = options.context;
   /** From `requestStart`, oldest first. */
   const waiting: Walkthrough[] = [];
@@ -528,7 +522,8 @@ export function createRun(options: RunOptions = {}): Run {
 
     if (changed) queue.notify(listeners, snapshot);
     for (const view of refreshed.changed) queue.notify(view.listeners, view.snapshot);
-    if (flags.persist !== false && (after.progress !== before.progress || after.statuses !== before.statuses)) save();
+    const changes = flags.persist === false ? undefined : changesBetween(before, after);
+    if (changes !== undefined) save(changes);
     // After notify, so a handler sees a renderer that has already redrawn.
     for (const problem of announced.problems) queue.invoke(() => report(problem));
     const onEvent = options.onEvent;
@@ -551,15 +546,14 @@ export function createRun(options: RunOptions = {}): Run {
     for (const message of messages) change(() => obey(message));
   };
 
-  const save = () => {
-    storedUnread = false;
-    const stored = storedRecord(progress, statuses.record());
-    if (adapter !== undefined) {
-      const saved = isEmptyRecord(stored) ? null : stored;
-      queue.invoke(() => saveTo(adapter, saved, (error) => report(storageFailed(error))));
-    }
+  /** Storage gets only what changed, so a save never writes over what this Run doesn't know. */
+  const save = (changes: StoredChanges) => {
+    if (adapter !== undefined) queue.invoke(() => saveTo(adapter, changes, (error) => report(storageFailed(error))));
     const onChange = options.onChange;
-    if (onChange !== undefined) queue.callApp("onChange", () => onChange(stored));
+    if (onChange !== undefined) {
+      const stored = storedRecord(progress, statuses.record());
+      queue.callApp("onChange", () => onChange(stored));
+    }
   };
 
   /** While the record loads, a command waits, so it acts on the user's progress rather than none. */
@@ -799,7 +793,7 @@ export function createRun(options: RunOptions = {}): Run {
           for (const walkthrough of walkthroughs) arrive(walkthrough);
           conditions();
         },
-        { silent: true, persist: !storedUnread },
+        { silent: true },
       );
     }
   };
@@ -861,7 +855,6 @@ export function createRun(options: RunOptions = {}): Run {
           return;
         }
         if (read !== "failed") problems.push(recordUnreadable(read.error));
-        storedUnread = true;
         storageStatus = "error";
       },
       // Restoring saves nothing: storage already holds it.
@@ -872,18 +865,65 @@ export function createRun(options: RunOptions = {}): Run {
         for (const walkthrough of definitions.values()) arrive(walkthrough);
         conditions();
       },
-      { silent: true, persist: !storedUnread },
+      { silent: true },
     );
   };
 
-  /** Statuses changed elsewhere. The open walkthrough keeps its place, and the next save wins. */
+  /**
+   * A walkthrough's entry in a record saved elsewhere: kept as this Run has it
+   * when it is open here or this Run changed it since, and collapsed when it
+   * is open there, so only one is open here.
+   */
+  const heardEntry = (id: string, heard: WalkthroughProgress | undefined): WalkthroughProgress | undefined => {
+    const ours = progress[id];
+    if (machine?.walkthrough.id === id) return ours;
+    if (heard === undefined) return undefined;
+    if (ours !== undefined && ours.changedAt > heard.changedAt) return ours;
+    const taken = heard.status === "running" && !heard.collapsed ? { ...heard, collapsed: true } : heard;
+    const same =
+      ours !== undefined &&
+      ours.status === taken.status &&
+      ours.step === taken.step &&
+      ours.stepCount === taken.stepCount &&
+      ours.collapsed === taken.collapsed &&
+      ours.changedAt === taken.changedAt;
+    return same ? ours : taken;
+  };
+
+  /** A record saved elsewhere, such as in another tab: statuses take it whole, and each walkthrough as `heardEntry` says. */
   const hear = (value: unknown) => {
     const parsed = parseRecord(value);
     if (!parsed.ok) {
       report(recordUnreadable(parsed.error));
       return;
     }
-    change(() => statuses.replace(parsed.value?.tasks ?? EMPTY), { silent: true, persist: false });
+    const heard = parsed.value?.walkthroughs ?? NO_PROGRESS;
+    change(
+      () => {
+        statuses.replace(parsed.value?.tasks ?? EMPTY);
+        const next = dictionary<WalkthroughProgress>();
+        let moved = false;
+        for (const id of new Set([...Object.keys(progress), ...Object.keys(heard)])) {
+          const entry = heardEntry(id, heard[id]);
+          if (entry === progress[id]) {
+            if (entry !== undefined) next[id] = entry;
+            continue;
+          }
+          moved = true;
+          if (entry === undefined) {
+            restored.delete(id);
+            continue;
+          }
+          next[id] = entry;
+          // One whose definition has not arrived waits to be checked, as one loaded does.
+          if (!definitions.has(id)) restored.add(id);
+        }
+        if (moved) progress = next;
+      },
+      { silent: true, persist: false },
+    );
+    // A Task held done by its condition stays done, though the record heard lacks it.
+    change(conditions, { silent: true });
   };
 
   const loaded = (read: Parsed<Read> | "failed") => {
@@ -959,7 +999,7 @@ export function createRun(options: RunOptions = {}): Run {
       if (Object.is(next, context)) return;
       context = next;
       // Not held: only the latest context matters, and it is checked once the record is in.
-      if (storageStatus !== "loading") change(conditions, { persist: !storedUnread });
+      if (storageStatus !== "loading") change(conditions);
     },
     checklist,
     skipTask: (id) => later(() => change(() => skip(id, undefined))),

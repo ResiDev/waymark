@@ -2,48 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { createRun } from "./run";
 import { everyProblem } from "../problems";
 import type { RunOptions, WaymarkEvent } from "./types";
-import type { StorageAdapter } from "../storage/adapter";
 import type { StoredRecord } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Dismiss, WalkthroughProgress } from "../walkthrough/types";
 import { localKey } from "../test/dom";
 import { progressOf, watch } from "../test/run";
+import { held, later } from "../test/storage";
 import { fakeFrames, fakeTimers } from "../test/time";
 
 const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
-
-const held = (value: StoredRecord | null) =>
-  ({
-    load: vi.fn(() => value),
-    save: vi.fn<(value: StoredRecord | null) => void>(),
-  }) satisfies StorageAdapter<StoredRecord>;
-
-/** An adapter whose `load` answers when the test says so. */
-function later(value: StoredRecord | null = null) {
-  let answer: (value: StoredRecord | null) => void = () => {};
-  let refuse: (error: unknown) => void = () => {};
-  const adapter = {
-    load: vi.fn(
-      () =>
-        new Promise<StoredRecord | null>((resolve, reject) => {
-          answer = resolve;
-          refuse = reject;
-        }),
-    ),
-    save: vi.fn<(value: StoredRecord | null) => void>(),
-  } satisfies StorageAdapter<StoredRecord>;
-  return {
-    adapter,
-    answer: async (given: StoredRecord | null = value) => {
-      answer(given);
-      await Promise.resolve();
-    },
-    refuse: async (error: unknown) => {
-      refuse(error);
-      await Promise.resolve();
-    },
-  };
-}
 
 const progress = (overrides: Partial<WalkthroughProgress> = {}): WalkthroughProgress => ({
   status: "running",
@@ -65,27 +32,27 @@ const failed = (error: unknown) => ({ type: "storageFailed", error });
 const types = (onEvent: { mock: { calls: [WaymarkEvent][] } }) => onEvent.mock.calls.map(([event]) => event.type);
 
 describe("run storage", () => {
-  it("saves one record, as the step changes, it collapses and it ends", () => {
+  it("saves the walkthrough's entry as the step changes, it collapses and it ends", () => {
     fakeTimers(1_000);
     const storage = held(null);
     const run = createRun({ storage });
     expect(storage.save).not.toHaveBeenCalled();
 
     run.start(tour);
-    expect(storage.save).toHaveBeenLastCalledWith(
-      record({ tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) }),
-    );
+    expect(storage.save).toHaveBeenLastCalledWith({
+      version: 4,
+      walkthroughs: { tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) },
+      tasks: {},
+    });
     run.act("advance");
     run.act("collapse");
-    expect(storage.save).toHaveBeenLastCalledWith(record({ tour: progress({ changedAt: 1_000 }) }));
+    expect(storage.stored()).toEqual(record({ tour: progress({ changedAt: 1_000 }) }));
     // Asking again changes nothing, so nothing is saved.
     run.act("collapse", tour);
     expect(storage.save).toHaveBeenCalledTimes(3);
 
     run.act("exit", tour);
-    expect(storage.save).toHaveBeenLastCalledWith(
-      record({ tour: progress({ status: "exited", collapsed: false, changedAt: 1_000 }) }),
-    );
+    expect(storage.stored()).toEqual(record({ tour: progress({ status: "exited", collapsed: false, changedAt: 1_000 }) }));
   });
 
   it("does not save a look that moves nothing it keeps", () => {
@@ -135,7 +102,7 @@ describe("run storage", () => {
 
       run.start(tour);
       expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
-      expect(storage.save).toHaveBeenLastCalledWith(
+      expect(storage.stored()).toEqual(
         expect.objectContaining({ walkthroughs: { tour: expect.objectContaining({ status: "running", step: 0 }) } }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
       );
     },
@@ -153,7 +120,7 @@ describe("run storage", () => {
     run.requestStart(tour);
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", walkthrough: "tour", reason });
     expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
-    expect(storage.save).toHaveBeenLastCalledWith(
+    expect(storage.stored()).toEqual(
       record({ tour: expect.objectContaining({ step: 0, stepCount: 3 }) }, { hello: "done" }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
     );
   });
@@ -165,7 +132,7 @@ describe("run storage", () => {
     // Collapsing it hands the Run its definition, which drops the stored progress.
     run.act("collapse", tour);
     expect(run.getSnapshot().open?.walkthrough.id).toBe("tour");
-    expect(storage.save.mock.lastCall?.[0]?.walkthroughs["tour"]).toMatchObject({ status: "running", step: 0 });
+    expect(storage.save.mock.lastCall?.[0].walkthroughs["tour"]).toMatchObject({ status: "running", step: 0 });
   });
 
   it("honours a custom maxAge", () => {
@@ -202,9 +169,10 @@ describe("run storage", () => {
     },
   );
 
-  it("reports a record it cannot read, starts afresh, and saves nothing over it until the user changes something", () => {
+  it("reports a record it cannot read, starts afresh, and never saves over it", () => {
     const onProblem = vi.fn();
-    const storage = held({ version: 4, walkthroughs: { tour: { status: "running", step: 9, stepCount: 3 } }, tasks: {} } as unknown as StoredRecord);
+    const unreadable = { version: 4, walkthroughs: { tour: { status: "running", step: 9, stepCount: 3 } }, tasks: {} } as unknown as StoredRecord;
+    const storage = held(unreadable);
     const run = createRun({ storage, problemHandlers: everyProblem(onProblem) });
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
@@ -214,7 +182,10 @@ describe("run storage", () => {
     expect(storage.save).not.toHaveBeenCalled();
 
     run.requestStart(tour);
-    expect(storage.save).toHaveBeenCalledOnce();
+    run.act("advance");
+    expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(1);
+    expect(storage.stored()).toBe(unreadable);
+    expect(onProblem).toHaveBeenLastCalledWith(failed(expect.objectContaining({ message: expect.stringMatching(/did not save over/) }))); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
   });
 
   it("names a newer version it cannot read", () => {
@@ -304,7 +275,7 @@ describe("run storage", () => {
     expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(1);
 
     run.act("advance");
-    expect(storage.save).toHaveBeenLastCalledWith(record({ tour: expect.objectContaining({ step: 2 }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    expect(storage.stored()).toEqual(record({ tour: expect.objectContaining({ step: 2 }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
   });
 
   it("hands each change of the record to onChange, with or without storage", () => {
@@ -315,16 +286,20 @@ describe("run storage", () => {
     expect(onChange).toHaveBeenLastCalledWith(record({ tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) }));
   });
 
-  it("hears a change made elsewhere without moving the open walkthrough, whose next save wins", () => {
-    let push: (value: StoredRecord | null) => void = () => {};
-    const storage = {
-      load: () => record({}),
-      save: vi.fn(),
-      subscribe: (listener: (value: StoredRecord | null) => void) => {
+  /** An adapter that hears what the test pushes, as if another tab saved it. */
+  const elsewhere = (value: StoredRecord | null = null) => {
+    let push: (heard: StoredRecord | null) => void = () => {};
+    const storage = Object.assign(held(value), {
+      subscribe: (listener: (heard: StoredRecord | null) => void) => {
         push = listener;
         return () => {};
       },
-    };
+    });
+    return { storage, push: (heard: StoredRecord | null) => push(heard) };
+  };
+
+  it("hears a change made elsewhere without moving the open walkthrough, and saves only its own next change", () => {
+    const { storage, push } = elsewhere(record({}));
     const onEvent = vi.fn<(event: WaymarkEvent) => void>();
     const run = createRun({ storage, onEvent });
     run.start(tour);
@@ -337,9 +312,60 @@ describe("run storage", () => {
     expect(onEvent).not.toHaveBeenCalled();
 
     run.act("advance");
-    expect(storage.save).toHaveBeenLastCalledWith(
-      record({ tour: expect.objectContaining({ step: 1 }) }, { hello: "done" }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
-    );
+    expect(storage.save).toHaveBeenLastCalledWith({
+      version: 4,
+      walkthroughs: { tour: expect.objectContaining({ step: 1 }) }, // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+      tasks: {},
+    });
+  });
+
+  it("takes another tab's progress for every walkthrough not open here", () => {
+    const { storage, push } = elsewhere();
+    const run = createRun({ storage });
+    const hint = defineWalkthrough({ id: "hint", steps: [{}] });
+    run.start(hint);
+
+    push(record({ tour: progress({ status: "finished" }) }));
+    run.requestStart(tour);
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("hint");
+    expect(progressOf(run)?.status).toBe("finished");
+  });
+
+  it("collapses a walkthrough heard open elsewhere, so only one is open here", () => {
+    const { storage, push } = elsewhere();
+    const run = createRun({ storage });
+    run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    run.requestStart(tour);
+
+    push(record({ tour: progress({ collapsed: false }) }));
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("hint");
+    expect(progressOf(run)).toMatchObject({ status: "running", collapsed: true });
+  });
+
+  it("keeps its own change over an older one heard", () => {
+    fakeTimers(2_000);
+    const { storage, push } = elsewhere();
+    const run = createRun({ storage });
+    run.start(tour);
+    run.act("exit");
+
+    push(record({ tour: progress({ changedAt: 1_000 }) }));
+    expect(progressOf(run)?.status).toBe("exited");
+  });
+
+  it("keeps what another tab saved through localStorage, though this tab never heard it", () => {
+    const key = localKey("waymark");
+    const first = createRun({ storage: key });
+    const second = createRun({ storage: key });
+    first.start(tour);
+    first.act("advance");
+    first.act("advance");
+    first.act("advance");
+
+    second.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    const stored = JSON.parse(localStorage.getItem(key)!) as StoredRecord;
+    expect(stored.walkthroughs["tour"]?.status).toBe("finished");
+    expect(stored.walkthroughs["hint"]?.status).toBe("running");
   });
 
   it("gives a server snapshot from before storage was read", () => {

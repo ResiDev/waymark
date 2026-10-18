@@ -314,13 +314,21 @@ statuses. The waiting list is not saved; the app asks again on the next load.
   once it is in, as the controller's `whenLoaded` and a loading Run do today.
 - The Run's copy is the optimistic one. A click on Next moves the tour at once
   and the save follows.
+- A save carries only what the change changed: each walkthrough entry and
+  task status it lists replaces the stored one, `null` removes one, and the
+  rest stay as they are. Storage makes the changes in one write, with
+  `applyChanges`, so a Run never writes over an entry it didn't change: not
+  another tab's, and not one a failed or unreadable load kept from it.
+- `applyChanges` refuses to change a record it can't read, such as a newer
+  version, so the save fails instead of writing over it.
 - A save that fails keeps the new step and reports `storageFailed`.
 - When the adapter hears a change made elsewhere, from another tab or a server
-  push, checklist statuses take it at once. The open walkthrough keeps its
-  place, and its next save wins.
+  push, checklist statuses take it at once. Each walkthrough takes its heard
+  progress too, unless it is open here or this Run changed it later, by
+  `changedAt`. One open elsewhere is collapsed here, so only one is open.
 
 A server is one more adapter. For Convex, `load` and `subscribe` are a query
-subscription and `save` is a mutation.
+subscription and `save` is a mutation that calls `applyChanges`.
 
 A new user means a new Run. It reads that user's record and leaves the last
 user's record alone. With no storage, switching users loses the last user's

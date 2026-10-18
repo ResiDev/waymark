@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { localStorageAdapter } from "./adapter";
-import type { StoredRecord } from "./records";
 import { defineChecklists } from "../checklists/checklists";
 import { createRun } from "../run/run";
 import { everyProblem } from "../problems";
@@ -28,11 +27,19 @@ describe("localStorageAdapter", () => {
     expect(localStorage.getItem(key)).toBeNull();
   });
 
+  it("saves only what changed, leaving what another tab wrote since", () => {
+    const key = localKey("setup");
+    const main = createRun({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {}, b: {} } }).checklists.main);
+    localStorage.setItem(key, JSON.stringify({ version: 4, walkthroughs: {}, tasks: { b: "skipped" } }));
+    main.markDone("a");
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 4, walkthroughs: {}, tasks: { a: "done", b: "skipped" } });
+  });
+
   it("hands text that is not JSON on, to be reported as a record Waymark did not write", () => {
     const key = localKey("setup");
     localStorage.setItem(key, "not json");
     const onProblem = vi.fn();
-    const run = createRun({ storage: localStorageAdapter<StoredRecord>(key), problemHandlers: everyProblem(onProblem) });
+    const run = createRun({ storage: localStorageAdapter(key), problemHandlers: everyProblem(onProblem) });
     expect(run.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
@@ -58,17 +65,22 @@ describe("localStorageAdapter", () => {
   });
 
   it("stops hearing other tabs once unsubscribed", () => {
+    const key = localKey("other-tab");
     const listener = vi.fn();
-    const stop = localStorageAdapter("other-tab").subscribe!(listener);
-    const hear = (key: string | null, newValue: string | null) =>
-      globalThis.dispatchEvent(new StorageEvent("storage", { key, newValue, storageArea: localStorage }));
+    const stop = localStorageAdapter(key).subscribe!(listener);
+    // As another tab would: write, then tell this one.
+    const hear = (newValue: string | null) => {
+      if (newValue === null) localStorage.clear();
+      else localStorage.setItem(key, newValue);
+      globalThis.dispatchEvent(new StorageEvent("storage", { key: newValue === null ? null : key, newValue, storageArea: localStorage }));
+    };
 
-    hear("other-tab", '{"version":4,"walkthroughs":{},"tasks":{}}');
-    hear(null, null);
+    hear('{"version":4,"walkthroughs":{},"tasks":{}}');
+    hear(null);
     expect(listener.mock.calls).toEqual([[{ version: 4, walkthroughs: {}, tasks: {} }], [null]]);
 
     stop();
-    hear("other-tab", "{}");
+    hear("{}");
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });

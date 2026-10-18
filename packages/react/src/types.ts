@@ -98,7 +98,7 @@ export type WaymarkRootProps = Readonly<{
    * A localStorage key, or an adapter, for this user's record. Read as the
    * root mounts: for another user, give the root a new `key`.
    */
-  storage?: string | StorageAdapter<StoredRecord>;
+  storage?: string | StorageAdapter;
   /** A record already in hand, such as one fetched for a server render. */
   initial?: StoredRecord;
   /** Hears the record each time it changes. */

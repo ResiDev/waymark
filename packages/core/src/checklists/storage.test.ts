@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { defineChecklists } from "./checklists";
 import { createRun } from "../run/run";
 import type { RunOptions, WaymarkEvent } from "../run/types";
-import type { StorageAdapter } from "../storage/adapter";
 import type { StoredRecord } from "../storage/records";
 import { everyProblem } from "../problems";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { localKey } from "../test/dom";
+import { held, later } from "../test/storage";
 
 const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
 
@@ -25,40 +25,6 @@ const saved = (tasks: StoredRecord["tasks"], walkthroughs: StoredRecord["walkthr
   walkthroughs,
   tasks,
 });
-
-/** An adapter whose `load` answers when the test says so. */
-function later(value: StoredRecord | null = null) {
-  let answer: (value: StoredRecord | null) => void = () => {};
-  let refuse: (error: unknown) => void = () => {};
-  const adapter = {
-    load: vi.fn(
-      () =>
-        new Promise<StoredRecord | null>((resolve, reject) => {
-          answer = resolve;
-          refuse = reject;
-        }),
-    ),
-    save: vi.fn<(value: StoredRecord | null) => void>(),
-  } satisfies StorageAdapter<StoredRecord>;
-  return {
-    adapter,
-    answer: async (given: StoredRecord | null = value) => {
-      answer(given);
-      await Promise.resolve();
-    },
-    refuse: async (error: unknown) => {
-      refuse(error);
-      await Promise.resolve();
-    },
-  };
-}
-
-function held(value: StoredRecord | null) {
-  return {
-    load: vi.fn(() => value),
-    save: vi.fn<(value: StoredRecord | null) => void>(),
-  } satisfies StorageAdapter<StoredRecord>;
-}
 
 /** A Run with the home checklist in use. */
 const create = (options: RunOptions = {}) => {
@@ -86,17 +52,18 @@ describe("checklists storage", () => {
     expect(statuses(created)).toMatchObject({ hello: "done", invite: "todo" });
   });
 
-  it("saves each change, and clears the adapter when nothing is left", () => {
-    const storage = held(null);
+  it("saves each change as only what changed, and hands onChange the whole record", () => {
+    const storage = held(saved({ invite: "skipped" }));
     const onChange = vi.fn();
     const { home } = create({ storage, onChange });
     home.markDone("hello");
-    expect(storage.save).toHaveBeenLastCalledWith(saved({ hello: "done" }));
-    expect(onChange).toHaveBeenLastCalledWith(saved({ hello: "done" }));
+    expect(storage.save).toHaveBeenLastCalledWith({ version: 4, walkthroughs: {}, tasks: { hello: "done" } });
+    expect(storage.stored()).toEqual(saved({ invite: "skipped", hello: "done" }));
+    expect(onChange).toHaveBeenLastCalledWith(saved({ invite: "skipped", hello: "done" }));
 
     home.markTodo("hello");
-    expect(storage.save).toHaveBeenLastCalledWith(null);
-    expect(onChange).toHaveBeenLastCalledWith(saved({}));
+    expect(storage.save).toHaveBeenLastCalledWith({ version: 4, walkthroughs: {}, tasks: { hello: null } });
+    expect(storage.stored()).toEqual(saved({ invite: "skipped" }));
   });
 
   it("is loading until a Promise settles, then shows the statuses without announcing them", async () => {
@@ -120,7 +87,7 @@ describe("checklists storage", () => {
   });
 
   it("holds commands while loading and runs them on the stored statuses, in order", async () => {
-    const { adapter, answer } = later(saved({ hello: "done", invite: "done" }));
+    const { adapter, answer, stored } = later(saved({ hello: "done", invite: "done" }));
     const onEvent = vi.fn();
     const created = create({ storage: adapter, onEvent });
     const { home } = created;
@@ -136,7 +103,7 @@ describe("checklists storage", () => {
 
     expect(statuses(created)).toMatchObject({ hello: "done", invite: "todo", met: "done" });
     expect(events(onEvent)).toEqual(["taskReopened:invite", "taskComplete:met"]);
-    expect(adapter.save).toHaveBeenLastCalledWith(saved({ hello: "done", met: "done" }));
+    expect(stored()).toEqual(saved({ hello: "done", met: "done" }));
   });
 
   it("holds a start, so a task's walkthrough started on page load picks up where the user left it", async () => {
@@ -151,7 +118,7 @@ describe("checklists storage", () => {
   });
 
   it("checks the latest context once the statuses are in, not before", async () => {
-    const { adapter, answer } = later(saved({}));
+    const { adapter, answer, stored } = later(saved({}));
     const onEvent = vi.fn();
     const created = create({ storage: adapter, onEvent });
     created.run.setContext({ met: true });
@@ -160,10 +127,11 @@ describe("checklists storage", () => {
     await answer();
     expect(statuses(created)).toMatchObject({ met: "done" });
     expect(onEvent).not.toHaveBeenCalled();
-    expect(adapter.save).toHaveBeenCalledExactlyOnceWith(saved({ met: "done" }));
+    expect(adapter.save).toHaveBeenCalledOnce();
+    expect(stored()).toEqual(saved({ met: "done" }));
   });
 
-  it("reports a failed load, starts empty with an error status, and saves no condition", async () => {
+  it("reports a failed load, starts empty with an error status, and saves only what it changed", async () => {
     const { adapter, refuse } = later();
     const onProblem = vi.fn();
     const created = create({ storage: adapter, context: { met: true }, problemHandlers: everyProblem(onProblem) });
@@ -174,17 +142,24 @@ describe("checklists storage", () => {
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "storageFailed", error: offline });
     expect(created.home.getSnapshot().storageStatus).toBe("error");
     expect(statuses(created)).toMatchObject({ met: "done" });
-    expect(adapter.save).not.toHaveBeenCalled();
+    expect(adapter.save).toHaveBeenCalledExactlyOnceWith({ version: 4, walkthroughs: {}, tasks: { met: "done" } });
   });
 
-  it("saves no condition over a record it cannot read, until the user changes something", () => {
-    const storage = held({ version: 5, tasks: { hello: "done" } } as unknown as StoredRecord);
-    const created = create({ storage, problemHandlers: { recordUnreadable: () => {} }, context: { met: true } });
+  it("never saves over a record it cannot read, and reports each save that could not land", () => {
+    const newer = { version: 5, tasks: { hello: "done" } } as unknown as StoredRecord;
+    const storage = held(newer);
+    const onProblem = vi.fn();
+    const created = create({ storage, problemHandlers: everyProblem(onProblem), context: { met: true } });
     expect(statuses(created)).toMatchObject({ met: "done" });
-    expect(storage.save).not.toHaveBeenCalled();
 
     created.home.markDone("invite");
-    expect(storage.save).toHaveBeenLastCalledWith(saved({ met: "done", invite: "done" }));
+    expect(statuses(created)).toMatchObject({ met: "done", invite: "done" });
+    expect(storage.stored()).toBe(newer);
+    expect(onProblem.mock.calls.map(([problem]) => (problem as { type: string }).type)).toEqual([
+      "recordUnreadable",
+      "storageFailed",
+      "storageFailed",
+    ]);
   });
 
   it("reports each record it cannot read", () => {

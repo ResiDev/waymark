@@ -11,7 +11,7 @@ export {
   ChecklistTaskTitle,
   ChecklistTrigger,
 } from "./parts";
-export { DEFAULT_CHECKLIST, localStorageAdapter } from "waymark-core";
+export { applyChanges, DEFAULT_CHECKLIST, localStorageAdapter } from "waymark-core";
 
 export type {
   AnyReactTask,
@@ -57,6 +57,7 @@ export type {
   SelectedTask,
   StorageAdapter,
   StorageStatus,
+  StoredChanges,
   StoredRecord,
   Task,
   TaskCommands,

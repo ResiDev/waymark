@@ -3,6 +3,7 @@ export { createRun } from "./run/run";
 export { defineChecklists } from "./checklists/checklists";
 export { DEFAULT_CHECKLIST } from "./checklists/types";
 export { localStorageAdapter } from "./storage/adapter";
+export { applyChanges } from "./storage/records";
 export { everyProblem } from "./problems";
 export { actions } from "./run/types";
 export type { Exactly } from "./exact";
@@ -59,4 +60,4 @@ export type {
 } from "./checklists/types";
 export type { CallbackName, DropReason, ProblemHandlers, WaymarkProblem } from "./problems";
 export type { StorageAdapter } from "./storage/adapter";
-export type { StoredRecord } from "./storage/records";
+export type { StoredChanges, StoredRecord } from "./storage/records";

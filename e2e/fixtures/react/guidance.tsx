@@ -204,18 +204,19 @@ const RECORD_KEY = "waymark-react";
 export const stored = createStore<StoredRecord | null>(null);
 
 /** localStorage, with each load, each save and each change another tab makes shown in the lab. */
-function shownLocally(key: string): StorageAdapter<StoredRecord> {
-  const local = localStorageAdapter<StoredRecord>(key);
+function shownLocally(key: string): StorageAdapter {
+  const local = localStorageAdapter(key);
+  const read = () => local.load() as StoredRecord | null;
   return {
     load: () => {
-      const value = local.load() as StoredRecord | null;
+      const value = read();
       // The root makes its Run, which loads, while it renders: the lab hears it after.
       queueMicrotask(() => stored.set(value));
       return value;
     },
-    save: (value) => {
-      void local.save(value);
-      stored.set(value);
+    save: (changes) => {
+      void local.save(changes);
+      stored.set(read());
     },
     subscribe: (listener) =>
       local.subscribe!((value) => {
@@ -226,33 +227,33 @@ function shownLocally(key: string): StorageAdapter<StoredRecord> {
 }
 
 const answer = async (response: Promise<Response>): Promise<StoredRecord | null> => {
-  const value = (await (await response).json()) as StoredRecord | null;
+  const answered = await response;
+  if (!answered.ok) throw new Error(`The record server answered ${answered.status}.`);
+  const value = (await answered.json()) as StoredRecord | null;
   stored.set(value);
   return value;
 };
 
 /** The dev server's /api/record: slow, and without `subscribe`, so tabs don't hear each other. */
-const serverRecord: StorageAdapter<StoredRecord> = {
+const serverRecord: StorageAdapter = {
   load: () => answer(fetch("/api/record")),
-  save: async (value) => {
-    await answer(
-      value === null
-        ? fetch("/api/record", { method: "DELETE" })
-        : fetch("/api/record", { method: "PUT", body: JSON.stringify(value) }),
-    );
+  save: async (changes) => {
+    await answer(fetch("/api/record", { method: "PATCH", body: JSON.stringify(changes) }));
   },
 };
 
 const localRecord = shownLocally(RECORD_KEY);
-
-const storageOf = () => (setup.get().storage === "server" ? serverRecord : localRecord);
 
 /** Bumped to give `<WaymarkRoot>` a new key: a new Run, as for another user. */
 const generation = createStore(0);
 
 /** Clears the stored record and starts a new Run on it, without a reload. */
 export const forgetRecord = async () => {
-  await storageOf().save(null);
+  if (setup.get().storage === "server") await answer(fetch("/api/record", { method: "DELETE" }));
+  else {
+    localStorage.removeItem(RECORD_KEY);
+    stored.set(null);
+  }
   generation.set(generation.get() + 1);
 };
 

@@ -4,13 +4,27 @@ import { defineConfig, type Plugin } from "vite";
 
 const LATENCY = 800;
 
+type Entries = Record<string, unknown>;
+type Changes = Readonly<{ version: number; walkthroughs: Entries; tasks: Entries }>;
+
+/** As Waymark's `applyChanges` does, without loading its source into the config. */
+const applyChanges = (record: Changes | null, changes: Changes): Changes | null => {
+  const merge = (entries: Entries = {}, changed: Entries) =>
+    Object.fromEntries(Object.entries({ ...entries, ...changed }).filter(([, value]) => value !== null));
+  const walkthroughs = merge(record?.walkthroughs, changes.walkthroughs);
+  const tasks = merge(record?.tasks, changes.tasks);
+  if (Object.keys(walkthroughs).length === 0 && Object.keys(tasks).length === 0) return null;
+  return { version: changes.version, walkthroughs, tasks };
+};
+
 /**
  * A stand-in server for the React fixture's `?storage=server`: it keeps the
  * Run's record, every walkthrough's progress and every task's status, in
- * memory at /api/record, slowly, so the loading state shows.
+ * memory at /api/record, slowly, so the loading state shows. A PATCH makes
+ * a save's changes to it, as an app's server would.
  */
 function recordApi(): Plugin {
-  let record: unknown = null;
+  let record: Changes | null = null;
   return {
     name: "record-api",
     configureServer(server) {
@@ -19,7 +33,7 @@ function recordApi(): Plugin {
         req.on("data", (chunk: Buffer) => (body += chunk));
         req.on("end", () => {
           setTimeout(() => {
-            if (req.method === "PUT") record = JSON.parse(body);
+            if (req.method === "PATCH") record = applyChanges(record, JSON.parse(body) as Changes);
             else if (req.method === "DELETE") record = null;
             res.setHeader("content-type", "application/json");
             res.end(JSON.stringify(record));
