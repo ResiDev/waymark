@@ -27,11 +27,11 @@ const isPromise = (value: unknown): value is PromiseLike<unknown> =>
  * Calls `onValue` before returning when the adapter answers synchronously. A
  * throw from `onValue` is not a storage failure, so it is left to propagate.
  */
-export function loadFrom(
-  adapter: StorageAdapter,
-  onValue: (value: unknown) => void,
-  fail: Report,
-): void {
+export function loadFrom({
+  adapter,
+  onValue,
+  fail,
+}: Readonly<{ adapter: StorageAdapter; onValue: (value: unknown) => void; fail: Report }>): void {
   let value: unknown;
   try {
     value = adapter.load();
@@ -43,7 +43,11 @@ export function loadFrom(
   else onValue(value);
 }
 
-export function saveTo(adapter: StorageAdapter, changes: StoredChanges, fail: Report): void {
+export function saveTo({
+  adapter,
+  changes,
+  fail,
+}: Readonly<{ adapter: StorageAdapter; changes: StoredChanges; fail: Report }>): void {
   try {
     const saved = adapter.save(changes);
     if (isPromise(saved)) saved.then(undefined, fail);
@@ -68,14 +72,10 @@ export const adapterOf = (storage: string | StorageAdapter): StorageAdapter =>
 
 /**
  * Keeps the record in localStorage under `name`, and hears other tabs change
- * it. Outside a browser it stores nothing.
+ * it. localStorage is read only as the Run uses it, which is after it connects
+ * in the browser, so making one on a server is safe.
  */
 export function localStorageAdapter(name: string): StorageAdapter {
-  // Not `typeof localStorage`: where storage is blocked, reading it throws, and
-  // that belongs in `load` and `save`, where core reports it.
-  if (typeof window === "undefined") {
-    return { load: () => null, save: () => {} };
-  }
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- core checks every value it reads.
   const read = () => parse(localStorage.getItem(name)) as StoredRecord | null;
   return {

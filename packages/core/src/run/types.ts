@@ -87,7 +87,7 @@ export type Beacon<TWalkthrough extends Walkthrough = Walkthrough> = Readonly<{
 
 /** A new object only when something in it changed. */
 export type RunSnapshot<TWalkthrough extends Walkthrough = Walkthrough> = Readonly<{
-  /** `loading` until the record is in; `error` when it could not be read, and every walkthrough starts afresh. */
+  /** `loading` until the record is in, which is after the first `connect`; `error` when it could not be read, and every walkthrough starts afresh. */
   storageStatus: StorageStatus;
   /**
    * Every walkthrough the user has started, by id. Progress restored for a
@@ -147,11 +147,11 @@ export type RunOptions<TWalkthrough extends Walkthrough = Walkthrough> = Readonl
   root?: Document | Element;
   /**
    * A localStorage key, or an adapter. Without one, progress lasts as long as
-   * the Run. Until a Promise from the adapter's `load` settles, the Run is
-   * `loading` and holds its commands.
+   * the Run. Nothing is read until the first `connect`. Until the record is
+   * in, the Run is `loading` and holds its commands.
    */
   storage?: string | StorageAdapter;
-  /** A record already in hand, such as one fetched for a server render. The Run starts from it and does not load, though it still saves. */
+  /** A record already in hand, such as one fetched for a server render. The Run starts from it and does not load, though it still saves, and hears storage once connected. */
   initial?: StoredRecord;
   /** Hears the record each time it changes, for an app that keeps it itself. */
   onChange?: (stored: StoredRecord) => void;
@@ -212,6 +212,13 @@ export type Run<TWalkthrough extends Walkthrough = Walkthrough> = Readonly<{
    * Returns a function that detaches.
    */
   attach: (ui: () => UiElements, options?: AttachOptions) => () => void;
+  /**
+   * Starts the Run's storage: the first call loads the record, and while one
+   * is open the Run hears changes made elsewhere. Call it where the app runs
+   * in the browser, never in a server render, which then reads nothing.
+   * Returns a function that stops hearing. Saves carry on without it.
+   */
+  connect: () => () => void;
   /** New facts for checklists' completion conditions, which are checked again. */
   setContext: (context: unknown) => void;
   /** A checklist's live state and commands. The same object each time for one definition. */

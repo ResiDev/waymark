@@ -1,6 +1,14 @@
 import { onTestFinished } from "vitest";
-import type { AttachOptions, Run, Running, UiElements } from "../run/types";
+import { createRun } from "../run/run";
+import type { AttachOptions, Run, RunOptions, Running, UiElements } from "../run/types";
 import type { WalkthroughProgress } from "../walkthrough/types";
+
+/** A Run whose storage has started, as a renderer starts it in the browser, until the test ends. */
+export const connected = (options: RunOptions = {}): Run => {
+  const run = createRun(options);
+  onTestFinished(run.connect());
+  return run;
+};
 
 /**
  * Attaches as a renderer would, until the test ends, and reads what the

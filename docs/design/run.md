@@ -196,7 +196,7 @@ What `subscribe` does today beyond calling its listener moves to `attach`:
 props and provides it through context, which is how a button or `useChecklist`
 deep in the tree finds it. And it is the one renderer: it draws the open
 walkthrough and the visible beacons in a portal at the end of `<body>`, and
-attaches the Run while mounted. With one renderer drawing at most one open
+attaches and connects the Run while mounted. With one renderer drawing at most one open
 walkthrough, two tours can't fight.
 
 | Prop                             | What it does                                    |
@@ -219,6 +219,13 @@ Mounting it calls `run.requestStart(x)`. It draws nothing itself, since
 JavaScript, or a React app that wants to. It takes the same options. Svelte
 provides it with `setContext`, Vue with `provide`. A plain-JavaScript app that
 only runs in the browser can export it from a module.
+
+Every renderer does the same three things, whatever its framework: make the
+Run anywhere, server included; in a hook that runs only in the browser after
+mount, call `attach` and `connect` and keep what they return to call on
+unmount; and render from `getServerSnapshot` until hydrated. Core decides what
+starting storage means. The framework only says when, since only it knows a
+server render from a browser.
 
 The Run is not a global. On a server, a global is shared by every request, and
 the checklist renders there through `getServerSnapshot`. Tests would share it,
@@ -310,8 +317,14 @@ with it, one set per Run.
 Each user has one record: every walkthrough's progress and the checklist
 statuses. The waiting list is not saved; the app asks again on the next load.
 
-- While the record loads, the Run holds every command and runs them in order
-  once it is in, as the controller's `whenLoaded` and a loading Run do today.
+- The Run touches storage only once connected. `connect` loads the record the
+  first time and subscribes to the adapter while a connection is open; the
+  last one closed unsubscribes. A server render never connects, so it never
+  calls the adapter, and a Run thrown away, by StrictMode or a new `key`,
+  stops listening. Saves don't need a connection.
+- While the record loads, and before the first `connect`, the Run holds every
+  command and runs them in order once it is in, as the controller's
+  `whenLoaded` and a loading Run do today.
 - The Run's copy is the optimistic one. A click on Next moves the tour at once
   and the save follows.
 - A save carries only what the change changed: each walkthrough entry and

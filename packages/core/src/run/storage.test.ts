@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createRun } from "./run";
 import { everyProblem } from "../problems";
 import type { RunOptions, WaymarkEvent } from "./types";
@@ -6,7 +6,7 @@ import type { StoredRecord } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Dismiss, WalkthroughProgress } from "../walkthrough/types";
 import { localKey } from "../test/dom";
-import { progressOf, watch } from "../test/run";
+import { connected, progressOf, watch } from "../test/run";
 import { held, later } from "../test/storage";
 import { fakeFrames, fakeTimers } from "../test/time";
 
@@ -35,7 +35,7 @@ describe("run storage", () => {
   it("saves the walkthrough's entry as the step changes, it collapses and it ends", () => {
     fakeTimers(1_000);
     const storage = held(null);
-    const run = createRun({ storage });
+    const run = connected({ storage });
     expect(storage.save).not.toHaveBeenCalled();
 
     run.start(tour);
@@ -58,7 +58,7 @@ describe("run storage", () => {
   it("does not save a look that moves nothing it keeps", () => {
     const { flush } = fakeFrames();
     const storage = held(null);
-    const run = createRun({ storage });
+    const run = connected({ storage });
     run.start(defineWalkthrough({ id: "tour", steps: [{ waymark: "save" }] }));
     watch(run);
     storage.save.mockClear();
@@ -70,7 +70,7 @@ describe("run storage", () => {
 
   it("picks a walkthrough up where it was once its definition arrives, without saving", () => {
     const storage = held(record({ tour: progress({ collapsed: false }) }));
-    const run = createRun({ storage });
+    const run = connected({ storage });
     expect(run.getSnapshot().open).toBeNull();
 
     run.requestStart(tour);
@@ -85,7 +85,7 @@ describe("run storage", () => {
   ])("sends start only when it %s", (_, stored, sent) => {
     fakeFrames();
     const onEvent = vi.fn<(event: WaymarkEvent) => void>();
-    const run = createRun({ storage: held(stored), onEvent, problemHandlers: { recordDropped: () => {} } });
+    const run = connected({ storage: held(stored), onEvent, problemHandlers: { recordDropped: () => {} } });
     run.requestStart(tour);
     watch(run);
     expect(types(onEvent)).toEqual(sent);
@@ -95,7 +95,7 @@ describe("run storage", () => {
     "stays %s, even once its steps change, until started again",
     (status) => {
       const storage = held(record({ tour: progress({ status, stepCount: 2 }) }));
-      const run = createRun({ storage });
+      const run = connected({ storage });
       run.requestStart(tour);
       expect(run.getSnapshot().open).toBeNull();
       expect(progressOf(run)?.status).toBe(status);
@@ -114,7 +114,7 @@ describe("run storage", () => {
   ])("drops and reports progress part way through when %s, once the definition arrives", (_, stored, reason) => {
     const storage = held(record({ tour: stored }, { hello: "done" }));
     const onProblem = vi.fn();
-    const run = createRun({ storage, problemHandlers: everyProblem(onProblem) });
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
     expect(onProblem).not.toHaveBeenCalled();
 
     run.requestStart(tour);
@@ -127,7 +127,7 @@ describe("run storage", () => {
 
   it("keeps the progress a handler starts on hearing the stored progress was dropped", () => {
     const storage = held(record({ tour: progress({ stepCount: 4 }) }));
-    const run = createRun({ storage, problemHandlers: { recordDropped: () => run.start(tour) } });
+    const run = connected({ storage, problemHandlers: { recordDropped: () => run.start(tour) } });
 
     // Collapsing it hands the Run its definition, which drops the stored progress.
     run.act("collapse", tour);
@@ -137,14 +137,14 @@ describe("run storage", () => {
 
   it("honours a custom maxAge", () => {
     const storage = held(record({ tour: progress({ changedAt: Date.now() - 60_000, collapsed: false }) }));
-    const run = createRun({ storage, problemHandlers: { recordDropped: () => {} } });
+    const run = connected({ storage, problemHandlers: { recordDropped: () => {} } });
     run.requestStart(defineWalkthrough({ id: "tour", steps: [{}, {}, {}], maxAge: 30_000 }));
     expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 0 });
   });
 
   it("waits for its definition, showing no beacon and holding off no request", () => {
     const storage = held(record({ tour: progress({ collapsed: false }), aside: progress() }));
-    const run = createRun({ storage });
+    const run = connected({ storage });
     expect(run.getSnapshot()).toMatchObject({ open: null, beacons: [] });
 
     run.requestStart(defineWalkthrough({ id: "whatsNew", steps: [{}] }));
@@ -159,7 +159,7 @@ describe("run storage", () => {
     (dismiss: Dismiss, after) => {
       const storage = held(record({ tour: progress({ collapsed: false }) }));
       const onEvent = vi.fn<(event: WaymarkEvent) => void>();
-      const run = createRun({ storage, onEvent });
+      const run = connected({ storage, onEvent });
       run.start(defineWalkthrough({ id: "whatsNew", steps: [{}] }));
 
       run.requestStart(defineWalkthrough({ id: "tour", steps: [{}, {}, {}], dismiss }));
@@ -173,7 +173,7 @@ describe("run storage", () => {
     const onProblem = vi.fn();
     const unreadable = { version: 4, walkthroughs: { tour: { status: "running", step: 9, stepCount: 3 } }, tasks: {} } as unknown as StoredRecord;
     const storage = held(unreadable);
-    const run = createRun({ storage, problemHandlers: everyProblem(onProblem) });
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
       error: expect.any(Error), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
@@ -190,7 +190,7 @@ describe("run storage", () => {
 
   it("names a newer version it cannot read", () => {
     const onProblem = vi.fn();
-    createRun({ storage: held({ version: 5 } as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
+    connected({ storage: held({ version: 5 } as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
       error: expect.objectContaining({ message: expect.stringMatching(/version 5.*reads up to 4/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
@@ -200,7 +200,7 @@ describe("run storage", () => {
   it("is loading until a Promise settles, then runs the commands held meanwhile in order", async () => {
     const { adapter, answer } = later(record({ tour: progress({ collapsed: false }) }));
     const onEvent = vi.fn<(event: WaymarkEvent) => void>();
-    const run = createRun({ storage: adapter, onEvent });
+    const run = connected({ storage: adapter, onEvent });
     const listener = vi.fn();
     run.subscribe(listener);
     expect(run.getSnapshot()).toMatchObject({ storageStatus: "loading", open: null });
@@ -224,7 +224,7 @@ describe("run storage", () => {
   it("starts empty with an error status when its load fails, and reports it", async () => {
     const { adapter, refuse } = later();
     const onProblem = vi.fn();
-    const run = createRun({ storage: adapter, problemHandlers: everyProblem(onProblem) });
+    const run = connected({ storage: adapter, problemHandlers: everyProblem(onProblem) });
     const offline = new Error("offline");
     run.requestStart(tour);
 
@@ -240,7 +240,7 @@ describe("run storage", () => {
     ["rejects", () => Promise.reject(new Error("quota"))],
   ])("keeps the new step when a save %s, and reports storageFailed", async (_, save) => {
     const onProblem = vi.fn();
-    const run = createRun({ storage: { load: () => null, save }, problemHandlers: everyProblem(onProblem) });
+    const run = connected({ storage: { load: () => null, save }, problemHandlers: everyProblem(onProblem) });
     run.start(tour);
     run.act("advance");
     await Promise.resolve();
@@ -255,7 +255,7 @@ describe("run storage", () => {
   ])("logs storage failures when given %s", (_, handlers) => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const blocked = new Error("blocked");
-    createRun({
+    connected({
       storage: {
         load: () => {
           throw blocked;
@@ -269,7 +269,7 @@ describe("run storage", () => {
 
   it("takes `initial` in place of loading, and still saves", () => {
     const storage = held(record({ tour: progress({ status: "finished" }) }));
-    const run = createRun({ storage, initial: record({ tour: progress({ collapsed: false }) }) });
+    const run = connected({ storage, initial: record({ tour: progress({ collapsed: false }) }) });
     expect(storage.load).not.toHaveBeenCalled();
     run.requestStart(tour);
     expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(1);
@@ -301,7 +301,7 @@ describe("run storage", () => {
   it("hears a change made elsewhere without moving the open walkthrough, and saves only its own next change", () => {
     const { storage, push } = elsewhere(record({}));
     const onEvent = vi.fn<(event: WaymarkEvent) => void>();
-    const run = createRun({ storage, onEvent });
+    const run = connected({ storage, onEvent });
     run.start(tour);
     onEvent.mockClear();
     storage.save.mockClear();
@@ -321,7 +321,7 @@ describe("run storage", () => {
 
   it("takes another tab's progress for every walkthrough not open here", () => {
     const { storage, push } = elsewhere();
-    const run = createRun({ storage });
+    const run = connected({ storage });
     const hint = defineWalkthrough({ id: "hint", steps: [{}] });
     run.start(hint);
 
@@ -333,7 +333,7 @@ describe("run storage", () => {
 
   it("collapses a walkthrough heard open elsewhere, so only one is open here", () => {
     const { storage, push } = elsewhere();
-    const run = createRun({ storage });
+    const run = connected({ storage });
     run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
     run.requestStart(tour);
 
@@ -345,7 +345,7 @@ describe("run storage", () => {
   it("keeps its own change over an older one heard", () => {
     fakeTimers(2_000);
     const { storage, push } = elsewhere();
-    const run = createRun({ storage });
+    const run = connected({ storage });
     run.start(tour);
     run.act("exit");
 
@@ -355,8 +355,8 @@ describe("run storage", () => {
 
   it("keeps what another tab saved through localStorage, though this tab never heard it", () => {
     const key = localKey("waymark");
-    const first = createRun({ storage: key });
-    const second = createRun({ storage: key });
+    const first = connected({ storage: key });
+    const second = connected({ storage: key });
     first.start(tour);
     first.act("advance");
     first.act("advance");
@@ -369,24 +369,84 @@ describe("run storage", () => {
   });
 
   it("gives a server snapshot from before storage was read", () => {
-    const run = createRun({ storage: held(record({ tour: progress() })) });
-    expect(run.getSnapshot()).toMatchObject({ storageStatus: "ready", progress: { tour: progress() } });
+    const stored = progress();
+    const run = connected({ storage: held(record({ tour: stored })) });
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "ready", progress: { tour: stored } });
     expect(run.getServerSnapshot()).toEqual({ storageStatus: "loading", progress: {}, open: null, beacons: [] });
 
     // Nothing to read: the server shows what the client will.
-    const plain = createRun({ initial: record({ tour: progress() }) });
+    const plain = createRun({ initial: record({ tour: stored }) });
     expect(plain.getServerSnapshot()).toBe(plain.getSnapshot());
+  });
+
+  it("reads nothing until it connects, and holds its commands till the record is in", () => {
+    const storage = held(record({}, { met: "done" }));
+    const run = createRun({ storage });
+    run.start(tour);
+    expect(storage.load).not.toHaveBeenCalled();
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "loading", progress: {} });
+
+    onTestFinished(run.connect());
+    expect(storage.load).toHaveBeenCalledOnce();
+    expect(progressOf(run)?.status).toBe("running");
+    expect(storage.stored()).toMatchObject({ tasks: { met: "done" }, walkthroughs: { tour: { status: "running" } } });
+  });
+
+  it("hears storage while a connection is open, and loads only once", () => {
+    const unsubscribe = vi.fn();
+    const subscribe = vi.fn(() => unsubscribe);
+    const storage = { ...held(null), subscribe };
+    const run = createRun({ storage });
+
+    const first = run.connect();
+    const second = run.connect();
+    expect(subscribe).toHaveBeenCalledOnce();
+    first();
+    first();
+    expect(unsubscribe).not.toHaveBeenCalled();
+    second();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+
+    onTestFinished(run.connect());
+    expect(subscribe).toHaveBeenCalledTimes(2);
+    expect(storage.load).toHaveBeenCalledOnce();
+  });
+
+  it("hears storage only once the record is in, and not at all if it disconnected first", async () => {
+    const subscribe = vi.fn(() => () => {});
+    const storage = later();
+    const run = createRun({ storage: { ...storage.adapter, subscribe } });
+    run.connect()();
+    await storage.answer(null);
+    expect(subscribe).not.toHaveBeenCalled();
+
+    const waiting = later();
+    const next = createRun({ storage: { ...waiting.adapter, subscribe } });
+    onTestFinished(next.connect());
+    expect(subscribe).not.toHaveBeenCalled();
+    await waiting.answer(null);
+    expect(subscribe).toHaveBeenCalledOnce();
+  });
+
+  it("starts from a record given it, and hears storage, without loading, once it connects", () => {
+    const subscribe = vi.fn(() => () => {});
+    const storage = { ...held(null), subscribe };
+    const run = createRun({ storage, initial: record({}, { met: "done" }) });
+    expect(subscribe).not.toHaveBeenCalled();
+    onTestFinished(run.connect());
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(storage.load).not.toHaveBeenCalled();
   });
 
   it("keeps a finished walkthrough finished across a reload through localStorage", () => {
     const key = localKey("waymark");
-    const first = createRun({ storage: key });
+    const first = connected({ storage: key });
     first.start(tour);
     first.act("advance");
     first.act("advance");
     first.act("advance");
 
-    const reloaded = createRun({ storage: key });
+    const reloaded = connected({ storage: key });
     reloaded.requestStart(tour);
     expect(reloaded.getSnapshot().open).toBeNull();
     expect(progressOf(reloaded)?.status).toBe("finished");
@@ -395,9 +455,9 @@ describe("run storage", () => {
   it("reads each user's own record, and leaves the last user's alone", () => {
     const ada = localKey("waymark:ada");
     const grace = localKey("waymark:grace");
-    createRun({ storage: ada }).start(tour);
+    connected({ storage: ada }).start(tour);
 
-    const next = createRun({ storage: grace });
+    const next = connected({ storage: grace });
     expect(next.getSnapshot().progress).toEqual({});
     next.start(defineWalkthrough({ id: "hint", steps: [{}] }));
     expect(Object.keys((JSON.parse(localStorage.getItem(ada)!) as StoredRecord).walkthroughs)).toEqual(["tour"]);

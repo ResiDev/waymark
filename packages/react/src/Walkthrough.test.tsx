@@ -644,6 +644,39 @@ describe("WaymarkRoot with storage", () => {
     },
   );
 
+  const watchedStorage = () => {
+    const unsubscribe = vi.fn();
+    return {
+      load: vi.fn(() => null),
+      save: vi.fn(),
+      subscribe: vi.fn(() => unsubscribe),
+      unsubscribe,
+    };
+  };
+
+  it("never touches storage in a server render", () => {
+    const storage = watchedStorage();
+    renderToString(<WaymarkRoot storage={storage}>{view()}</WaymarkRoot>);
+    expect(storage.load).not.toHaveBeenCalled();
+    expect(storage.subscribe).not.toHaveBeenCalled();
+  });
+
+  it("stops hearing storage as it unmounts, through Strict Mode's mount cycle too", async () => {
+    const { root } = mountTour();
+    const storage = watchedStorage();
+    await act(async () =>
+      root.render(
+        <StrictMode>
+          <WaymarkRoot storage={storage}>{view()}</WaymarkRoot>
+        </StrictMode>,
+      ),
+    );
+    expect(storage.load).toHaveBeenCalledOnce();
+    expect(storage.subscribe).toHaveBeenCalled();
+    await act(async () => root.unmount());
+    expect(storage.unsubscribe).toHaveBeenCalledTimes(storage.subscribe.mock.calls.length);
+  });
+
   it("shows nothing for a walkthrough storage says was finished", async () => {
     const { render } = mountTour();
     localStorage.setItem("tour", record({ status: "finished", step: 2, collapsed: false }));

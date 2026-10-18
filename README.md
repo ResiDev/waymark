@@ -459,11 +459,11 @@ const record = applyChanges(await db.waymark.get(user.id), await request.json())
 await db.waymark.set(user.id, record); // null once nothing is left
 ```
 
-`load` and `save` can be synchronous or return a promise. Until `load` settles, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for `save`. A click on Next moves the walkthrough at once, and a save that fails keeps the change and reports `storageFailed`.
+`load` and `save` can be synchronous or return a promise. The Run reads nothing until it is connected. `<WaymarkRoot>` connects it in the browser, before the first paint, so a server render never calls the adapter. Until the record is in, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for `save`. A click on Next moves the walkthrough at once, and a save that fails keeps the change and reports `storageFailed`.
 
 Without `storage`, progress lasts as long as the Run, which is until the page reloads or the root gets a new `key`. The root reads `storage` only when it mounts. Give each user their own key, and `key={user.id}`, so a new user gets a new Run that reads their record and leaves the last user's alone.
 
-An adapter can also have `subscribe(listener)` to hear the record when it changes elsewhere, as the localStorage adapter does for other tabs. Task statuses take it at once. Each walkthrough takes its progress too, except the one open in this tab and one this tab changed since. A walkthrough open in the other tab shows collapsed in this one, so only one is ever open.
+An adapter can also have `subscribe(listener)` to hear the record when it changes elsewhere, as the localStorage adapter does for other tabs. The Run listens while it is connected, and unsubscribes when `<WaymarkRoot>` unmounts. Task statuses take it at once. Each walkthrough takes its progress too, except the one open in this tab and one this tab changed since. A walkthrough open in the other tab shows collapsed in this one, so only one is ever open.
 
 Waymark checks every record it loads. A record it can't read, such as one a newer Waymark wrote, is a `recordUnreadable` problem, and the user starts fresh. `applyChanges` throws rather than save over it, so each save fails, as a `storageFailed`, and the record is there for a Waymark that can read it. Each walkthrough's progress is checked when its definition reaches the Run. Progress part way through is dropped, and the walkthrough starts fresh, if the walkthrough's number of steps has changed since, or if the user left it for longer than its `maxAge`, a day by default. A finished or exited walkthrough stays that way. Each drop reaches your [problem handlers](#problem-handlers).
 
@@ -471,7 +471,7 @@ A walkthrough's definition reaches the Run when something uses it, such as `star
 
 If you already have the record, from a server render for example, pass it as `initial`. The Run then doesn't load from storage, though it still saves to it. `onChange` hears the whole record each time it changes, for an app that keeps it itself.
 
-On the server, `<WaymarkRoot>` draws no walkthrough, and checklists render their state from before storage was read, so hydration matches.
+On the server, `<WaymarkRoot>` draws no walkthrough and reads no storage, and checklists render their state from before storage was read, so hydration matches.
 
 ## Events and analytics
 
@@ -568,6 +568,7 @@ const invite = defineWalkthrough({ id: "invite", steps: [{ waymark: "invite", ad
 const popover = document.querySelector("#walkthrough-popover");
 const run = createRun({ storage: "waymark" });
 const detach = run.attach(() => ({ dialog: popover }), { waymarkPadding: 20 });
+const disconnect = run.connect();
 const unsubscribe = run.subscribe((snapshot) => {
   // Draw snapshot.open.snapshot.step while a walkthrough is open. Once its
   // waymark.status is "found", waymark.rect says where it is. With none open,
@@ -579,6 +580,8 @@ run.start(invite);
 `createRun` makes a Run, as `<WaymarkRoot>` does. Make one per user, and hand it down as your framework does, such as with `setContext` in Svelte or `provide` in Vue. A plain JavaScript app that only runs in the browser can export it from a module. On a server, a Run kept in a module would be shared by every request.
 
 `attach` tells the Run you are drawing it. Only while attached does the Run listen for keys and clicks, measure waymarks each frame, and mark the open step's waymark with aria. Clicks on the `dialog` you pass, or inside anything marked `data-waymark-ui`, don't count as clicking away. `waymarkPadding` defaults to 0 here, and `<WaymarkRoot>` passes 20. `attach` returns a function that detaches. In development, Waymark warns when two Runs are attached to one page.
+
+`connect` starts the Run's storage. The first call loads the record, and while a connection is open the Run hears changes made elsewhere. It returns a function that stops listening; saves carry on without it. Call it where your app runs in the browser, as you call `attach`, in your framework's mount hook such as `onMount` in Svelte or `onMounted` in Vue. A server render never calls it, so it never touches storage. Until the first `connect`, a Run with `storage` is `"loading"` and holds its commands.
 
 `subscribe` only tells you when the snapshot changes, so analytics can follow a Run without changing anything on the page. It calls the listener straight away, as Svelte's store contract asks, so a Svelte component can read a Run with `$run`. `getSnapshot()` reads it without subscribing.
 

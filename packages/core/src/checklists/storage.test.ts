@@ -6,6 +6,7 @@ import type { StoredRecord } from "../storage/records";
 import { everyProblem } from "../problems";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { localKey } from "../test/dom";
+import { connected } from "../test/run";
 import { held, later } from "../test/storage";
 
 const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
@@ -28,7 +29,7 @@ const saved = (tasks: StoredRecord["tasks"], walkthroughs: StoredRecord["walkthr
 
 /** A Run with the home checklist in use. */
 const create = (options: RunOptions = {}) => {
-  const run = createRun({ context: { met: false }, ...options });
+  const run = connected({ context: { met: false }, ...options });
   const home = run.checklist(onboarding.checklists.home);
   home.subscribe(() => {});
   return { run, home };
@@ -166,7 +167,7 @@ describe("checklists storage", () => {
     const onProblem = vi.fn();
     for (const value of ["text", [], { version: 4 }, { version: 4, walkthroughs: {}, tasks: { a: "finished" } }, { version: 3 }]) {
       onProblem.mockClear();
-      createRun({ storage: held(value as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
+      connected({ storage: held(value as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
       expect(onProblem).toHaveBeenCalledExactlyOnceWith({
         type: "recordUnreadable",
         error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
@@ -215,7 +216,7 @@ describe("checklists storage", () => {
     first.run.act("advance");
     expect(JSON.parse(localStorage.getItem(key)!)).toMatchObject({ walkthroughs: { tour: { step: 1 } } });
 
-    const reloaded = createRun({ storage: key });
+    const reloaded = connected({ storage: key });
     expect(reloaded.getSnapshot().open).toBeNull();
     reloaded.checklist(onboarding.checklists.side).subscribe(() => {});
     expect(reloaded.getSnapshot().open).toMatchObject({ task: "tour", snapshot: { stepIndex: 1 } });

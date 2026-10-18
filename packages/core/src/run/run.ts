@@ -158,6 +158,12 @@ export function createRun(options: RunOptions = {}): Run {
   const attachments: Attachment[] = [];
   /** Commands given while the record loads, run in order once it is in. */
   const held: (() => void)[] = [];
+  /** How many `connect`s are open. Storage is heard while there is one. */
+  let connections = 0;
+  /** Whether storage has been asked for the record, which it is once, on the first `connect`. */
+  let asked = options.initial !== undefined;
+  /** Stops hearing storage, while it is heard. */
+  let unsubscribe: (() => void) | undefined;
   const listeners = new Set<(snapshot: RunSnapshot) => void>();
   /** The checklist whose Start began each running walkthrough, by its id, so a skip from its popover names it. */
   const startedFrom = new Map<string, string>();
@@ -548,7 +554,9 @@ export function createRun(options: RunOptions = {}): Run {
 
   /** Storage gets only what changed, so a save never writes over what this Run doesn't know. */
   const save = (changes: StoredChanges) => {
-    if (adapter !== undefined) queue.invoke(() => saveTo(adapter, changes, (error) => report(storageFailed(error))));
+    if (adapter !== undefined) {
+      queue.invoke(() => saveTo({ adapter, changes, fail: (error) => report(storageFailed(error)) }));
+    }
     const onChange = options.onChange;
     if (onChange !== undefined) {
       const stored = storedRecord(progress, statuses.record());
@@ -926,13 +934,49 @@ export function createRun(options: RunOptions = {}): Run {
     change(conditions, { silent: true });
   };
 
+  /** Hears storage while connected, once the record is in, so a change heard lands on the record rather than on none. */
+  const hearStorage = () => {
+    if (adapter?.subscribe === undefined || unsubscribe !== undefined) return;
+    if (connections === 0 || storageStatus === "loading") return;
+    unsubscribe = adapter.subscribe(hear);
+  };
+
   const loaded = (read: Parsed<Read> | "failed") => {
     try {
       load(read);
       for (const command of held.splice(0)) command();
     } finally {
-      adapter?.subscribe?.(hear);
+      hearStorage();
     }
+  };
+
+  /** Storage is the renderer's to start, in the browser: until then the Run reads and hears none. */
+  const connect = () => {
+    connections += 1;
+    if (adapter !== undefined && !asked) {
+      asked = true;
+      loadFrom({
+        adapter,
+        onValue: (value) => loaded(parseRecord(value)),
+        fail: (error) => {
+          try {
+            report(storageFailed(error));
+          } finally {
+            loaded("failed");
+          }
+        },
+      });
+    }
+    hearStorage();
+    let connected = true;
+    return () => {
+      if (!connected) return;
+      connected = false;
+      connections -= 1;
+      if (connections > 0) return;
+      unsubscribe?.();
+      unsubscribe = undefined;
+    };
   };
 
   if (options.initial !== undefined) loaded(parseRecord(options.initial));
@@ -940,19 +984,6 @@ export function createRun(options: RunOptions = {}): Run {
   /** What a server render shows: it cannot see the browser's storage. */
   const server: Seen = seen();
   const serverSnapshot = snapshot;
-  if (adapter !== undefined && options.initial === undefined) {
-    loadFrom(
-      adapter,
-      (value) => loaded(parseRecord(value)),
-      (error) => {
-        try {
-          report(storageFailed(error));
-        } finally {
-          loaded("failed");
-        }
-      },
-    );
-  }
 
   return {
     start: (walkthrough) => {
@@ -995,6 +1026,7 @@ export function createRun(options: RunOptions = {}): Run {
     getServerSnapshot: () => serverSnapshot,
     subscribe: listen(queue, listeners, () => snapshot),
     attach,
+    connect,
     setContext: (next) => {
       if (Object.is(next, context)) return;
       context = next;

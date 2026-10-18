@@ -223,6 +223,8 @@ function drawRun(snapshot: RunSnapshot) {
 run.subscribe(drawRun);
 // This page draws the Run, so it attaches: keys, clicks and the frame loop.
 run.attach(() => ({ dialog: ui.popover }), { waymarkPadding: 8 });
+// And it runs in the browser, so it starts storage.
+run.connect();
 
 $("#previous").addEventListener("click", () => run.act("previous"));
 $("#advance").addEventListener("click", () => run.act("advance"));

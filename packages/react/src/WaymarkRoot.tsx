@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createRun } from "waymark-core";
 import { RunView } from "./RunView";
 import type { ProblemHandlers, Walkthrough, WaymarkRootProps } from "./types";
@@ -34,6 +34,12 @@ const latestHandlers = (latest: RefObject<WaymarkRootProps>): ProblemHandlers =>
 };
 
 /**
+ * Before the browser paints, so a record read at once is drawn in the first
+ * frame. A server runs no effect, and React 18 warns of a layout effect there.
+ */
+const useBeforePaint = typeof document === "undefined" ? useEffect : useLayoutEffect;
+
+/**
  * Makes one user's Run from its props, provides it to the components below,
  * which reach it with `useRun`, and draws it: the open walkthrough and the
  * visible beacons. Give it `key={user.id}`, so another user gets a Run of
@@ -67,6 +73,8 @@ export function WaymarkRoot(props: WaymarkRootProps) {
       onChange: (stored) => latest.current.onChange?.(stored),
     }),
   );
+  // Storage starts here, in the browser: a server render reads none.
+  useBeforePaint(() => run.connect(), [run]);
   useEffect(() => {
     run.setContext(context);
   }, [run, context]);

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { localStorageAdapter } from "./adapter";
 import { defineChecklists } from "../checklists/checklists";
-import { createRun } from "../run/run";
 import { everyProblem } from "../problems";
 import { localKey } from "../test/dom";
+import { connected } from "../test/run";
 
 const statuses = (view: { getSnapshot: () => { tasks: readonly { task: { id: string }; status: string }[] } }) =>
   Object.fromEntries(view.getSnapshot().tasks.map((row) => [row.task.id, row.status]));
@@ -13,14 +13,14 @@ describe("localStorageAdapter", () => {
     const key = localKey("setup");
     const tasks = { [id]: {}, other: {} };
     const definition = defineChecklists({ tasks }).checklists.main;
-    createRun({ storage: localStorageAdapter(key) }).checklist(definition).skip(id);
-    const reloaded = createRun({ storage: localStorageAdapter(key) }).checklist(definition);
+    connected({ storage: localStorageAdapter(key) }).checklist(definition).skip(id);
+    const reloaded = connected({ storage: localStorageAdapter(key) }).checklist(definition);
     expect(statuses(reloaded)).toEqual({ [id]: "skipped", other: "todo" });
   });
 
   it("writes JSON under its name, and removes the key once nothing is left", () => {
     const key = localKey("setup");
-    const main = createRun({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
+    const main = connected({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
     main.markDone("a");
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 4, walkthroughs: {}, tasks: { a: "done" } });
     main.markTodo("a");
@@ -29,7 +29,7 @@ describe("localStorageAdapter", () => {
 
   it("saves only what changed, leaving what another tab wrote since", () => {
     const key = localKey("setup");
-    const main = createRun({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {}, b: {} } }).checklists.main);
+    const main = connected({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {}, b: {} } }).checklists.main);
     localStorage.setItem(key, JSON.stringify({ version: 4, walkthroughs: {}, tasks: { b: "skipped" } }));
     main.markDone("a");
     expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 4, walkthroughs: {}, tasks: { a: "done", b: "skipped" } });
@@ -39,7 +39,7 @@ describe("localStorageAdapter", () => {
     const key = localKey("setup");
     localStorage.setItem(key, "not json");
     const onProblem = vi.fn();
-    const run = createRun({ storage: localStorageAdapter(key), problemHandlers: everyProblem(onProblem) });
+    const run = connected({ storage: localStorageAdapter(key), problemHandlers: everyProblem(onProblem) });
     expect(run.getSnapshot().storageStatus).toBe("error");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({
       type: "recordUnreadable",
@@ -56,7 +56,7 @@ describe("localStorageAdapter", () => {
       throw blocked;
     });
     const onProblem = vi.fn();
-    const run = createRun({ storage: localStorageAdapter("setup"), problemHandlers: everyProblem(onProblem) });
+    const run = connected({ storage: localStorageAdapter("setup"), problemHandlers: everyProblem(onProblem) });
     const main = run.checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
     main.markDone("a");
     expect(statuses(main)).toEqual({ a: "done" });
