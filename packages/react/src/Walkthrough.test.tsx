@@ -570,7 +570,7 @@ describe("WaymarkRoot with storage", () => {
   /** A record holding only this walkthrough's progress, as an earlier visit left it. */
   const record = (progress: Omit<WalkthroughProgress, "stepCount" | "changedAt">) =>
     JSON.stringify({
-      version: 4,
+      version: 1,
       walkthroughs: { tour: { ...progress, stepCount: 3, changedAt: Date.now() } },
       tasks: {},
     } satisfies StoredRecord);

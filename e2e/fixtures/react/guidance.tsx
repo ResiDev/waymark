@@ -263,7 +263,7 @@ const describeProblem = (problem: WaymarkProblem): string => {
     case "recordUnreadable":
       return `${problem.type}: ${String(problem.error)}`;
     case "recordDropped":
-      return `${problem.type} ${problem.walkthrough} (${problem.reason})`;
+      return `${problem.type} ${"walkthrough" in problem ? problem.walkthrough : problem.task} (${problem.reason})`;
     case "waymarkLost":
     case "waymarkMissing":
       return `${problem.type} in ${problem.walkthrough} on step ${problem.stepIndex + 1}`;

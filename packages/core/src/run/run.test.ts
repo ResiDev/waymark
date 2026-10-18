@@ -29,7 +29,7 @@ const started = (steps: readonly Step[], options: RunOptions = {}) => {
 /** A record that has the tour open at `step`, as an earlier page left it. */
 const openAt = (step: number, stepCount: number): RunOptions => ({
   initial: {
-    version: 4,
+    version: 1,
     walkthroughs: { tour: { status: "running", step, stepCount, collapsed: false, changedAt: Date.now() } },
     tasks: {},
   },

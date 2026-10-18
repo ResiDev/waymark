@@ -14,12 +14,19 @@ import { createView, refresh } from "../checklists/views";
 import type { View, ViewSource } from "../checklists/views";
 import { inDevelopment } from "../dev";
 import { dictionary } from "../dictionary";
-import { problemReporter, recordDropped, recordUnreadable, storageFailed } from "../problems";
+import { entryDropped, problemReporter, recordDropped, recordUnreadable, storageFailed } from "../problems";
 import type { WaymarkProblem } from "../problems";
 import { createQueue } from "../queue";
 import { adapterOf, loadFrom, saveTo } from "../storage/adapter";
-import { changesBetween, DEFAULT_MAX_AGE, parseRecord, staleness, storedRecord } from "../storage/records";
-import type { Parsed, Read, StoredChanges } from "../storage/records";
+import {
+  changesBetween,
+  DEFAULT_MAX_AGE,
+  isRecordUnreadable,
+  parseRecord,
+  staleness,
+  storedRecord,
+} from "../storage/records";
+import type { Parsed, RecordUnreadableError, StoredChanges, StoredRecord } from "../storage/records";
 import { listen } from "../subscribe";
 import { checkOf, hasWaymark, selectorOf } from "../walkthrough/walkthrough";
 import type { Walkthrough, WalkthroughProgress } from "../walkthrough/types";
@@ -122,6 +129,8 @@ type Flags = Readonly<{
   silent?: boolean;
   /** False: the change came from storage, so it is neither saved nor handed to `onChange`. */
   persist?: boolean;
+  /** The whole record is saved, in place of whatever is stored: the app replaced a record Waymark could not read. */
+  replace?: boolean;
 }>;
 
 /** What checklists are drawn from. */
@@ -164,6 +173,8 @@ export function createRun(options: RunOptions = {}): Run {
   let asked = options.initial !== undefined;
   /** Stops hearing storage, while it is heard. */
   let unsubscribe: (() => void) | undefined;
+  /** Whether a record Waymark cannot read has been reported, which it is once, until a record it can read comes. */
+  let unreadable = false;
   const listeners = new Set<(snapshot: RunSnapshot) => void>();
   /** The checklist whose Start began each running walkthrough, by its id, so a skip from its popover names it. */
   const startedFrom = new Map<string, string>();
@@ -528,7 +539,12 @@ export function createRun(options: RunOptions = {}): Run {
 
     if (changed) queue.notify(listeners, snapshot);
     for (const view of refreshed.changed) queue.notify(view.listeners, view.snapshot);
-    const changes = flags.persist === false ? undefined : changesBetween(before, after);
+    const changes =
+      flags.persist === false
+        ? undefined
+        : flags.replace === true
+          ? { ...storedRecord(after.progress, after.statuses), replace: true as const }
+          : changesBetween(before, after);
     if (changes !== undefined) save(changes);
     // After notify, so a handler sees a renderer that has already redrawn.
     for (const problem of announced.problems) queue.invoke(() => report(problem));
@@ -554,9 +570,7 @@ export function createRun(options: RunOptions = {}): Run {
 
   /** Storage gets only what changed, so a save never writes over what this Run doesn't know. */
   const save = (changes: StoredChanges) => {
-    if (adapter !== undefined) {
-      queue.invoke(() => saveTo({ adapter, changes, fail: (error) => report(storageFailed(error)) }));
-    }
+    if (adapter !== undefined) queue.invoke(() => saveTo({ adapter, changes, fail: saveFailed }));
     const onChange = options.onChange;
     if (onChange !== undefined) {
       const stored = storedRecord(progress, statuses.record());
@@ -852,17 +866,61 @@ export function createRun(options: RunOptions = {}): Run {
 
   // Loading
 
-  const load = (read: Parsed<Read> | "failed") => {
+  /**
+   * The app's record in place of one Waymark could not read. The Run takes it,
+   * with what it holds on top, which is what the user has done since, and
+   * saves the whole in place of what is stored.
+   */
+  const replace = (replacement: StoredRecord | null) => {
+    const parsed = parseRecord(replacement);
+    if (!parsed.ok) throw new Error(`Waymark cannot take the record given to replace. ${parsed.error.message}`);
+    unreadable = false;
+    const given = parsed.value;
+    change(
+      () => {
+        const next = Object.assign(dictionary<WalkthroughProgress>(), given?.walkthroughs, progress);
+        for (const id of Object.keys(given?.walkthroughs ?? {})) {
+          if (progress[id] === undefined) restored.add(id);
+        }
+        progress = next;
+        statuses.replace({ ...given?.tasks, ...statuses.record() });
+        for (const entry of given?.dropped ?? []) problems.push(entryDropped(entry));
+        storageStatus = "ready";
+        for (const walkthrough of definitions.values()) arrive(walkthrough);
+        conditions();
+      },
+      { silent: true, replace: true },
+    );
+  };
+
+  /** A record Waymark cannot read is reported once, with `replace`, until one it can read comes. */
+  const found = (error: RecordUnreadableError, deliver: (problem: ReturnType<typeof recordUnreadable>) => void) => {
+    if (unreadable) return;
+    unreadable = true;
+    deliver(recordUnreadable(error, error.stored, replace));
+  };
+
+  /** Storage refusing to save over a record it cannot read is that record's problem, not storage failing. */
+  const saveFailed = (error: unknown) => {
+    if (isRecordUnreadable(error)) found(error, report);
+    else report(storageFailed(error));
+  };
+
+  const load = (read: Parsed | "failed") => {
     change(
       () => {
         if (read !== "failed" && read.ok) {
+          unreadable = false;
           progress = read.value?.walkthroughs ?? NO_PROGRESS;
           statuses.replace(read.value?.tasks ?? EMPTY);
           for (const id of Object.keys(progress)) restored.add(id);
+          for (const entry of read.value?.dropped ?? []) problems.push(entryDropped(entry));
           storageStatus = "ready";
           return;
         }
-        if (read !== "failed") problems.push(recordUnreadable(read.error));
+        if (read !== "failed") found(read.error, (problem) => {
+            problems.push(problem);
+          });
         storageStatus = "error";
       },
       // Restoring saves nothing: storage already holds it.
@@ -902,13 +960,15 @@ export function createRun(options: RunOptions = {}): Run {
   const hear = (value: unknown) => {
     const parsed = parseRecord(value);
     if (!parsed.ok) {
-      report(recordUnreadable(parsed.error));
+      found(parsed.error, report);
       return;
     }
+    unreadable = false;
     const heard = parsed.value?.walkthroughs ?? NO_PROGRESS;
     change(
       () => {
         statuses.replace(parsed.value?.tasks ?? EMPTY);
+        for (const entry of parsed.value?.dropped ?? []) problems.push(entryDropped(entry));
         const next = dictionary<WalkthroughProgress>();
         let moved = false;
         for (const id of new Set([...Object.keys(progress), ...Object.keys(heard)])) {
@@ -941,7 +1001,7 @@ export function createRun(options: RunOptions = {}): Run {
     unsubscribe = adapter.subscribe(hear);
   };
 
-  const loaded = (read: Parsed<Read> | "failed") => {
+  const loaded = (read: Parsed | "failed") => {
     try {
       load(read);
       for (const command of held.splice(0)) command();

@@ -22,7 +22,7 @@ describe("localStorageAdapter", () => {
     const key = localKey("setup");
     const main = connected({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
     main.markDone("a");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 4, walkthroughs: {}, tasks: { a: "done" } });
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 1, walkthroughs: {}, tasks: { a: "done" } });
     main.markTodo("a");
     expect(localStorage.getItem(key)).toBeNull();
   });
@@ -30,9 +30,9 @@ describe("localStorageAdapter", () => {
   it("saves only what changed, leaving what another tab wrote since", () => {
     const key = localKey("setup");
     const main = connected({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {}, b: {} } }).checklists.main);
-    localStorage.setItem(key, JSON.stringify({ version: 4, walkthroughs: {}, tasks: { b: "skipped" } }));
+    localStorage.setItem(key, JSON.stringify({ version: 1, walkthroughs: {}, tasks: { b: "skipped" } }));
     main.markDone("a");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 4, walkthroughs: {}, tasks: { a: "done", b: "skipped" } });
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 1, walkthroughs: {}, tasks: { a: "done", b: "skipped" } });
   });
 
   it("hands text that is not JSON on, to be reported as a record Waymark did not write", () => {
@@ -41,10 +41,13 @@ describe("localStorageAdapter", () => {
     const onProblem = vi.fn();
     const run = connected({ storage: localStorageAdapter(key), problemHandlers: everyProblem(onProblem) });
     expect(run.getSnapshot().storageStatus).toBe("error");
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
-      type: "recordUnreadable",
-      error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
-    });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        type: "recordUnreadable",
+        error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+        stored: "not json",
+      }),
+    );
   });
 
   it("lets core report blocked storage, and keeps progress in memory", () => {
@@ -75,9 +78,9 @@ describe("localStorageAdapter", () => {
       globalThis.dispatchEvent(new StorageEvent("storage", { key: newValue === null ? null : key, newValue, storageArea: localStorage }));
     };
 
-    hear('{"version":4,"walkthroughs":{},"tasks":{}}');
+    hear('{"version":1,"walkthroughs":{},"tasks":{}}');
     hear(null);
-    expect(listener.mock.calls).toEqual([[{ version: 4, walkthroughs: {}, tasks: {} }], [null]]);
+    expect(listener.mock.calls).toEqual([[{ version: 1, walkthroughs: {}, tasks: {} }], [null]]);
 
     stop();
     hear("{}");

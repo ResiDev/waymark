@@ -2,6 +2,7 @@ import { copy } from "../checklists/record";
 import type { Stored } from "../checklists/record";
 import { dictionary } from "../dictionary";
 import type { WalkthroughProgress } from "../walkthrough/types";
+import { migrate, VERSION } from "./migrations";
 
 /**
  * One user's record: each walkthrough they have started, by id, and each
@@ -9,7 +10,7 @@ import type { WalkthroughProgress } from "../walkthrough/types";
  * back from done, and is stored like the others.
  */
 export type StoredRecord = Readonly<{
-  version: 4;
+  version: typeof VERSION;
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
   tasks: Readonly<Record<string, "done" | "skipped" | "reopened">>;
 }>;
@@ -20,35 +21,59 @@ export type StoredRecord = Readonly<{
  * are, so a save never touches what this Run did not change.
  */
 export type StoredChanges = Readonly<{
-  version: 4;
+  version: typeof VERSION;
   walkthroughs: Readonly<Record<string, WalkthroughProgress | null>>;
   tasks: Readonly<Record<string, "done" | "skipped" | "reopened" | null>>;
+  /**
+   * The whole record, written in place of whatever is stored, read or not:
+   * what `replace` on a `recordUnreadable` problem saves.
+   */
+  replace?: true;
 }>;
+
+/** An entry left out of a record because Waymark could not read it. */
+export type DroppedEntry = Readonly<{ walkthrough: string }> | Readonly<{ task: string }>;
 
 /** What a record holds once read: copies, with no prototype, so any id is an ordinary key. */
 export type Read = Readonly<{
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
   tasks: Stored;
+  dropped: readonly DroppedEntry[];
 }>;
 
 /** `null`: nothing is stored. */
-export type Parsed<T> =
-  | Readonly<{ ok: true; value: T | null }>
-  | Readonly<{ ok: false; error: Error }>;
+export type Parsed =
+  | Readonly<{ ok: true; value: Read | null }>
+  | Readonly<{ ok: false; error: RecordUnreadableError }>;
+
+/**
+ * A stored record Waymark cannot read: one a newer Waymark wrote, or not
+ * Waymark's. `applyChanges` throws it rather than save over the record, and a
+ * server's adapter can throw it too, so the Run reports `recordUnreadable`
+ * rather than `storageFailed`. `stored` is the record, when it is known.
+ */
+export class RecordUnreadableError extends Error {
+  override readonly name = "RecordUnreadableError";
+  readonly stored: unknown;
+
+  constructor(message: string, stored?: unknown) {
+    super(message);
+    this.stored = stored;
+  }
+}
+
+/** By name, not `instanceof`, so an error from another copy of Waymark, such as a server's, counts. */
+export const isRecordUnreadable = (error: unknown): error is RecordUnreadableError =>
+  error instanceof Error && error.name === "RecordUnreadableError";
 
 /** Progress part way through restores for a day after its last change. */
 export const DEFAULT_MAX_AGE = 24 * 60 * 60 * 1000;
 
-const VERSION = 4;
-
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isTaskMap = (value: unknown): value is Stored =>
-  isRecord(value) &&
-  Object.values(value).every(
-    (status) => status === "done" || status === "skipped" || status === "reopened",
-  );
+const isStatus = (value: unknown): value is Stored[string] =>
+  value === "done" || value === "skipped" || value === "reopened";
 
 const isIndex = (value: unknown): value is number =>
   typeof value === "number" && Number.isInteger(value) && value >= 0;
@@ -63,40 +88,48 @@ const isProgress = (value: unknown): value is WalkthroughProgress =>
   typeof value["collapsed"] === "boolean" &&
   Number.isFinite(value["changedAt"]);
 
-const invalid = (value: unknown): Parsed<never> => {
-  const version = isRecord(value) ? value["version"] : undefined;
-  const message =
-    typeof version === "number" && version > VERSION
-      ? `The stored record is version ${version}; this Waymark reads up to ${VERSION}.`
-      : "The stored record is not one Waymark wrote.";
-  return { ok: false, error: new Error(message) };
-};
+const NOT_OURS = "The stored record is not one Waymark wrote.";
 
-const progressOf = (value: Readonly<Record<string, unknown>>): Record<string, WalkthroughProgress> | undefined => {
-  const walkthroughs = dictionary<WalkthroughProgress>();
-  for (const [id, progress] of Object.entries(value)) {
-    if (!isProgress(progress)) return undefined;
-    const { status, step, stepCount, collapsed, changedAt } = progress;
-    walkthroughs[id] = { status, step, stepCount, collapsed, changedAt };
-  }
-  return walkthroughs;
-};
+const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Versions 2 and 3 are the old records of task statuses alone, with no walkthrough in them. */
-export function parseRecord(value: unknown): Parsed<Read> {
+/**
+ * Brought up to this version, then read entry by entry: an entry that cannot
+ * be read is left out and named in `dropped`, and the rest are kept. Only a
+ * record that is not Waymark's, or that a newer Waymark wrote, cannot be read.
+ */
+export function parseRecord(value: unknown): Parsed {
   if (value === null || value === undefined) return { ok: true, value: null };
-  if (!isRecord(value)) return invalid(value);
-  if (value["version"] === VERSION) {
-    const walkthroughs = isRecord(value["walkthroughs"]) ? progressOf(value["walkthroughs"]) : undefined;
-    const tasks = value["tasks"];
-    if (walkthroughs !== undefined && isTaskMap(tasks)) {
-      return { ok: true, value: { walkthroughs, tasks: copy(tasks) } };
-    }
-    return invalid(value);
+  const unreadable = (why: string): Parsed => ({ ok: false, error: new RecordUnreadableError(why, value) });
+  if (!isRecord(value)) return unreadable(NOT_OURS);
+  const version = value["version"];
+  if (!isIndex(version) || version === 0) return unreadable(NOT_OURS);
+  if (version > VERSION) return unreadable(`The stored record is version ${version}; this Waymark reads up to ${VERSION}.`);
+  let current: Readonly<Record<string, unknown>>;
+  try {
+    current = migrate(value);
+  } catch (error) {
+    return unreadable(message(error));
   }
-  const tasks = value["version"] === 3 ? value["tasks"] : value["version"] === 2 ? value["record"] : undefined;
-  if (isTaskMap(tasks)) return { ok: true, value: { walkthroughs: dictionary(), tasks: copy(tasks) } };
-  return invalid(value);
+  const walkthroughs = current["walkthroughs"];
+  const tasks = current["tasks"];
+  if (!isRecord(walkthroughs) || !isRecord(tasks)) return unreadable(NOT_OURS);
+
+  const dropped: DroppedEntry[] = [];
+  const progress = dictionary<WalkthroughProgress>();
+  for (const [id, entry] of Object.entries(walkthroughs)) {
+    if (!isProgress(entry)) {
+      dropped.push({ walkthrough: id });
+      continue;
+    }
+    const { status, step, stepCount, collapsed, changedAt } = entry;
+    progress[id] = { status, step, stepCount, collapsed, changedAt };
+  }
+  const statuses = copy({});
+  for (const [id, status] of Object.entries(tasks)) {
+    if (isStatus(status)) statuses[id] = status;
+    else dropped.push({ task: id });
+  }
+  return { ok: true, value: { walkthroughs: progress, tasks: statuses, dropped } };
 }
 
 /** Progress part way through that its walkthrough cannot pick up again. Ended progress stays ended. */
@@ -129,13 +162,17 @@ export const changesBetween = (
 
 /**
  * The stored record with a save's changes made to it, or `null` once nothing
- * is left, for an adapter or a server to write in its place. It throws on a
- * record it cannot read, such as one a newer Waymark wrote, rather than write
- * over it.
+ * is left, for an adapter or a server to write in its place. An older record
+ * is brought up to this version, and entries it cannot read are left out. It
+ * throws a `RecordUnreadableError` on a record it cannot read at all, such as
+ * one a newer Waymark wrote, rather than write over it, unless the changes
+ * `replace` it.
  */
 export function applyChanges(stored: unknown, changes: StoredChanges): StoredRecord | null {
-  const parsed = parseRecord(stored);
-  if (!parsed.ok) throw new Error(`Waymark did not save over a record it cannot read. ${parsed.error.message}`);
+  const parsed = changes.replace === true ? { ok: true as const, value: null } : parseRecord(stored);
+  if (!parsed.ok) {
+    throw new RecordUnreadableError(`Waymark did not save over a record it cannot read. ${parsed.error.message}`, stored);
+  }
   const walkthroughs = Object.assign(dictionary<WalkthroughProgress>(), parsed.value?.walkthroughs);
   const tasks = copy(parsed.value?.tasks ?? {});
   for (const [id, progress] of Object.entries(changes.walkthroughs)) {

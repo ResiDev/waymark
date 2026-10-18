@@ -332,8 +332,17 @@ statuses. The waiting list is not saved; the app asks again on the next load.
   rest stay as they are. Storage makes the changes in one write, with
   `applyChanges`, so a Run never writes over an entry it didn't change: not
   another tab's, and not one a failed or unreadable load kept from it.
-- `applyChanges` refuses to change a record it can't read, such as a newer
-  version, so the save fails instead of writing over it.
+- The record has a version, 1 today. `storage/migrations.ts` holds a step from
+  each older version to the next, and `parseRecord` runs them before reading.
+  It reads entry by entry: an entry it can't read is dropped and reported as
+  `recordDropped`, and the rest is kept, so one bad entry never loses the
+  record.
+- A record it can't read at all, a newer version or not Waymark's, is
+  `recordUnreadable`, reported once. `applyChanges` throws a
+  `RecordUnreadableError` rather than change it, so saves leave it alone, and
+  the Run reports a refused save as that problem, not `storageFailed`. The
+  problem's `replace` lets the app write a record in its place: the Run takes
+  it with its own entries on top and saves the whole, marked `replace`.
 - A save that fails keeps the new step and reports `storageFailed`.
 - When the adapter hears a change made elsewhere, from another tab or a server
   push, checklist statuses take it at once. Each walkthrough takes its heard

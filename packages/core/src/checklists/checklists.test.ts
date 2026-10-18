@@ -33,7 +33,7 @@ const onboarding = defineChecklists({
 
 /** Task statuses as the record holds them. */
 const saved = (tasks: StoredRecord["tasks"], walkthroughs: StoredRecord["walkthroughs"] = {}): StoredRecord => ({
-  version: 4,
+  version: 1,
   walkthroughs,
   tasks,
 });

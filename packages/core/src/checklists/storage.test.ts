@@ -22,7 +22,7 @@ const onboarding = defineChecklists({
 });
 
 const saved = (tasks: StoredRecord["tasks"], walkthroughs: StoredRecord["walkthroughs"] = {}): StoredRecord => ({
-  version: 4,
+  version: 1,
   walkthroughs,
   tasks,
 });
@@ -58,12 +58,12 @@ describe("checklists storage", () => {
     const onChange = vi.fn();
     const { home } = create({ storage, onChange });
     home.markDone("hello");
-    expect(storage.save).toHaveBeenLastCalledWith({ version: 4, walkthroughs: {}, tasks: { hello: "done" } });
+    expect(storage.save).toHaveBeenLastCalledWith({ version: 1, walkthroughs: {}, tasks: { hello: "done" } });
     expect(storage.stored()).toEqual(saved({ invite: "skipped", hello: "done" }));
     expect(onChange).toHaveBeenLastCalledWith(saved({ invite: "skipped", hello: "done" }));
 
     home.markTodo("hello");
-    expect(storage.save).toHaveBeenLastCalledWith({ version: 4, walkthroughs: {}, tasks: { hello: null } });
+    expect(storage.save).toHaveBeenLastCalledWith({ version: 1, walkthroughs: {}, tasks: { hello: null } });
     expect(storage.stored()).toEqual(saved({ invite: "skipped" }));
   });
 
@@ -143,11 +143,11 @@ describe("checklists storage", () => {
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "storageFailed", error: offline });
     expect(created.home.getSnapshot().storageStatus).toBe("error");
     expect(statuses(created)).toMatchObject({ met: "done" });
-    expect(adapter.save).toHaveBeenCalledExactlyOnceWith({ version: 4, walkthroughs: {}, tasks: { met: "done" } });
+    expect(adapter.save).toHaveBeenCalledExactlyOnceWith({ version: 1, walkthroughs: {}, tasks: { met: "done" } });
   });
 
-  it("never saves over a record it cannot read, and reports each save that could not land", () => {
-    const newer = { version: 5, tasks: { hello: "done" } } as unknown as StoredRecord;
+  it("never saves over a record it cannot read, and reports it once", () => {
+    const newer = { version: 2, tasks: { hello: "done" } } as unknown as StoredRecord;
     const storage = held(newer);
     const onProblem = vi.fn();
     const created = create({ storage, problemHandlers: everyProblem(onProblem), context: { met: true } });
@@ -156,35 +156,33 @@ describe("checklists storage", () => {
     created.home.markDone("invite");
     expect(statuses(created)).toMatchObject({ met: "done", invite: "done" });
     expect(storage.stored()).toBe(newer);
-    expect(onProblem.mock.calls.map(([problem]) => (problem as { type: string }).type)).toEqual([
-      "recordUnreadable",
-      "storageFailed",
-      "storageFailed",
-    ]);
+    expect(onProblem.mock.calls.map(([problem]) => (problem as { type: string }).type)).toEqual(["recordUnreadable"]);
   });
 
   it("reports each record it cannot read", () => {
     const onProblem = vi.fn();
-    for (const value of ["text", [], { version: 4 }, { version: 4, walkthroughs: {}, tasks: { a: "finished" } }, { version: 3 }]) {
+    for (const value of ["text", [], { version: 1 }, { version: 0, walkthroughs: {}, tasks: {} }, { walkthroughs: {}, tasks: {} }]) {
       onProblem.mockClear();
       connected({ storage: held(value as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
-      expect(onProblem).toHaveBeenCalledExactlyOnceWith({
-        type: "recordUnreadable",
-        error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
-      });
+      expect(onProblem).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          type: "recordUnreadable",
+          error: expect.objectContaining({ message: expect.stringMatching(/not one Waymark wrote/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+          stored: value,
+        }),
+      );
     }
   });
 
-  it.each([
-    ["2", { version: 2, record: { hello: "skipped" } }],
-    ["3", { version: 3, tasks: { hello: "skipped" } }],
-  ])("reads the version %s record the old task storage wrote, and saves it as one record", (_, old) => {
-    const key = localKey("app");
-    localStorage.setItem(key, JSON.stringify(old));
-    const created = create({ storage: key });
-    expect(statuses(created)).toMatchObject({ hello: "skipped" });
-    created.home.markDone("invite");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual(saved({ hello: "skipped", invite: "done" }));
+  it("keeps the rest of a record when a task's status cannot be read, and drops that one from storage", () => {
+    const storage = held({ version: 1, walkthroughs: {}, tasks: { hello: "finished", invite: "done" } } as unknown as StoredRecord);
+    const onProblem = vi.fn();
+    const created = create({ storage, problemHandlers: everyProblem(onProblem) });
+    expect(statuses(created)).toMatchObject({ hello: "todo", invite: "done" });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", task: "hello", reason: "unreadable" });
+
+    created.home.skip("met");
+    expect(storage.stored()).toEqual(saved({ invite: "done", met: "skipped" }));
   });
 
   it("follows statuses another tab changes through a localStorage key", () => {

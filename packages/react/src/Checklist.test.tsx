@@ -256,7 +256,7 @@ describe("useChecklist", () => {
 describe("Checklist with storage", () => {
   /** The record an earlier visit left in storage, cleared when the test finishes. */
   const save = (tasks: StoredRecord["tasks"]) => {
-    localStorage.setItem(localKey("setup"), JSON.stringify({ version: 4, walkthroughs: {}, tasks } satisfies StoredRecord));
+    localStorage.setItem(localKey("setup"), JSON.stringify({ version: 1, walkthroughs: {}, tasks } satisfies StoredRecord));
   };
 
   const { checklists } = defineChecklists({

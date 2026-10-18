@@ -1,22 +1,38 @@
+import type { DroppedEntry, StoredRecord } from "./storage/records";
 import type { Step } from "./walkthrough/types";
 
 /** The app's own functions that Waymark calls. */
 export type CallbackName = "subscriber" | "onEvent" | "onChange" | "stateCheck" | "isComplete";
 
-/** Why stored progress was dropped and its walkthrough starts again. */
+/** Why a stored entry was dropped: its walkthrough starts again, or its task is todo. */
 export type DropReason =
   /** Part way through, and older than its walkthrough's `maxAge`. */
   | "expired"
   /** Saved when the walkthrough had a different number of steps. */
-  | "stepsChanged";
+  | "stepsChanged"
+  /** Not progress or a status Waymark can read. The rest of the record is kept. */
+  | "unreadable";
 
 export type WaymarkProblem<TStep extends Step = Step> =
   /** The storage adapter's `load` or `save` threw or rejected. */
   | Readonly<{ type: "storageFailed"; error: unknown }>
-  /** A stored record Waymark did not write, or a newer version than it reads. */
-  | Readonly<{ type: "recordUnreadable"; error: Error }>
-  /** A walkthrough's stored progress was dropped once its definition arrived, and it starts again. */
+  /**
+   * A stored record Waymark did not write, or a newer version than it reads.
+   * The user starts afresh, and saves leave the record as it is. Reported once,
+   * until a record Waymark can read comes. `stored` is the record, when
+   * Waymark has it. `replace` writes a record in its place, `null` for none,
+   * and the Run takes it, with what the user has done since on top.
+   */
+  | Readonly<{
+      type: "recordUnreadable";
+      error: Error;
+      stored: unknown;
+      replace: (record: StoredRecord | null) => void;
+    }>
+  /** A walkthrough's stored progress was dropped, and it starts again. */
   | Readonly<{ type: "recordDropped"; walkthrough: string; reason: DropReason }>
+  /** A task's stored status could not be read, and it is todo. */
+  | Readonly<{ type: "recordDropped"; task: string; reason: "unreadable" }>
   /** The Waymark was found, then left the page. */
   | Readonly<{ type: "waymarkLost"; walkthrough: string; step: TStep; stepIndex: number }>
   /** The Waymark was never found: often a selector that does not match. */
@@ -58,16 +74,22 @@ export const storageFailed = (error: unknown): WaymarkProblem<never> => ({
   error,
 });
 
-export const recordUnreadable = (error: Error): WaymarkProblem<never> => ({
-  type: "recordUnreadable",
-  error,
-});
+export const recordUnreadable = (
+  error: Error,
+  stored: unknown,
+  replace: (record: StoredRecord | null) => void,
+): WaymarkProblem<never> => ({ type: "recordUnreadable", error, stored, replace });
 
 export const recordDropped = (walkthrough: string, reason: DropReason): WaymarkProblem<never> => ({
   type: "recordDropped",
   walkthrough,
   reason,
 });
+
+export const entryDropped = (entry: DroppedEntry): WaymarkProblem<never> =>
+  "walkthrough" in entry
+    ? { type: "recordDropped", walkthrough: entry.walkthrough, reason: "unreadable" }
+    : { type: "recordDropped", task: entry.task, reason: "unreadable" };
 
 export const callbackThrew = (callback: CallbackName, error: unknown): WaymarkProblem<never> => ({
   type: "callbackThrew",

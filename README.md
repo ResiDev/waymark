@@ -434,7 +434,7 @@ A click anywhere else in your app counts as clicking away, and collapses the wal
 Give `<WaymarkRoot>` a `storage`, and Waymark keeps one record for the user: every walkthrough's progress and every task's status. A string is a localStorage key. For anything else, pass an adapter:
 
 ```ts
-import type { StorageAdapter } from "react-waymark";
+import { RecordUnreadableError, type StorageAdapter } from "react-waymark";
 
 export const server: StorageAdapter = {
   load: async () => {
@@ -444,7 +444,9 @@ export const server: StorageAdapter = {
     return response.json();
   },
   save: async (changes) => {
-    await fetch("/api/waymark", { method: "PATCH", body: JSON.stringify(changes) });
+    const response = await fetch("/api/waymark", { method: "PATCH", body: JSON.stringify(changes) });
+    if (response.status === 409) throw new RecordUnreadableError(await response.text());
+    if (!response.ok) throw new Error(`Saving Waymark progress failed: ${response.status}`);
   },
 };
 ```
@@ -452,12 +454,19 @@ export const server: StorageAdapter = {
 `load` returns `null` only when nothing is stored: a load that fails throws or rejects. `save` gets only what changed. Each walkthrough and task it lists replaces the stored one, `null` removes it, and everything it leaves out stays as it is, so a tab never saves over what another tab or device did. The server makes the changes in one write, with `applyChanges`:
 
 ```ts
-import { applyChanges } from "react-waymark";
+import { applyChanges, RecordUnreadableError } from "react-waymark";
 
 // PATCH /api/waymark
-const record = applyChanges(await db.waymark.get(user.id), await request.json());
-await db.waymark.set(user.id, record); // null once nothing is left
+try {
+  const record = applyChanges(await db.waymark.get(user.id), await request.json());
+  await db.waymark.set(user.id, record); // null once nothing is left
+} catch (error) {
+  if (error instanceof RecordUnreadableError) return new Response(error.message, { status: 409 });
+  throw error;
+}
 ```
+
+`applyChanges` throws a `RecordUnreadableError` rather than save over a record it can't read. Answering it with a 409, which the adapter throws again, tells the Run the record was the problem and not the network.
 
 `load` and `save` can be synchronous or return a promise. The Run reads nothing until it is connected. `<WaymarkRoot>` connects it in the browser, before the first paint, so a server render never calls the adapter. Until the record is in, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for `save`. A click on Next moves the walkthrough at once, and a save that fails keeps the change and reports `storageFailed`.
 
@@ -465,7 +474,22 @@ Without `storage`, progress lasts as long as the Run, which is until the page re
 
 An adapter can also have `subscribe(listener)` to hear the record when it changes elsewhere, as the localStorage adapter does for other tabs. The Run listens while it is connected, and unsubscribes when `<WaymarkRoot>` unmounts. Task statuses take it at once. Each walkthrough takes its progress too, except the one open in this tab and one this tab changed since. A walkthrough open in the other tab shows collapsed in this one, so only one is ever open.
 
-Waymark checks every record it loads. A record it can't read, such as one a newer Waymark wrote, is a `recordUnreadable` problem, and the user starts fresh. `applyChanges` throws rather than save over it, so each save fails, as a `storageFailed`, and the record is there for a Waymark that can read it. Each walkthrough's progress is checked when its definition reaches the Run. Progress part way through is dropped, and the walkthrough starts fresh, if the walkthrough's number of steps has changed since, or if the user left it for longer than its `maxAge`, a day by default. A finished or exited walkthrough stays that way. Each drop reaches your [problem handlers](#problem-handlers).
+Waymark checks every record it loads, and every one it hears. A record from an older Waymark is brought up to date. One entry it can't read, a walkthrough's progress or a task's status, is dropped as a `recordDropped` problem with the reason `unreadable`, and the rest of the record is kept. A record it can't read at all, because a newer Waymark wrote it or it isn't Waymark's, is a `recordUnreadable` problem, reported once, and the user starts fresh. Saves leave that record as it is, for a Waymark that can read it. If your app knows better, the problem's `replace` writes a record in its place:
+
+```tsx
+<WaymarkRoot
+  problemHandlers={{
+    recordUnreadable: ({ error, stored, replace }) => {
+      log(error, stored);
+      replace(null); // start this user over, keeping what they have done since
+    },
+  }}
+/>
+```
+
+The Run takes the record you give, with what it holds on top, and saves the whole in place of what was stored. After a record it couldn't read, what it holds is what the user has done since. Replacing a record a newer Waymark wrote loses what that version saved.
+
+Each walkthrough's progress is checked when its definition reaches the Run. Progress part way through is dropped, and the walkthrough starts fresh, if the walkthrough's number of steps has changed since, or if the user left it for longer than its `maxAge`, a day by default. A finished or exited walkthrough stays that way. Each drop reaches your [problem handlers](#problem-handlers).
 
 A walkthrough's definition reaches the Run when something uses it, such as `start`, a mounted `<Walkthrough>`, or a mounted `<Checklist>` that lists its task. Until then its restored progress waits, and shows no beacon. A walkthrough that was open when the page unloaded opens again once its definition arrives, if nothing else is open. Otherwise it is set aside as its `dismiss` says.
 
@@ -521,13 +545,13 @@ Each handler hears only its own type, so `waymarkMissing` reads `problem.stepInd
 | `type` | When | Carries | Default |
 | --- | --- | --- | --- |
 | `storageFailed` | An adapter's `load` or `save` threw or rejected | `error` | logged |
-| `recordUnreadable` | A stored record Waymark didn't write, or a newer version than it reads | `error` | logged |
-| `recordDropped` | Waymark dropped a walkthrough's stored progress rather than resume it | `walkthrough`, `reason` | nothing |
+| `recordUnreadable` | A stored record Waymark didn't write, or a newer version than it reads, reported once | `error`, `stored`, `replace` | logged |
+| `recordDropped` | Waymark dropped a stored entry: a walkthrough's progress rather than resume it, or a task's status it couldn't read | `walkthrough` or `task`, `reason` | nothing |
 | `waymarkMissing` | A step's waymark wasn't found within `missingAfterMs`, reported once per step | `walkthrough`, `step`, `stepIndex` | nothing |
 | `waymarkLost` | A step's waymark was found, then left the page, reported each time it goes | `walkthrough`, `step`, `stepIndex` | nothing |
 | `callbackThrew` | One of your own functions threw | `callback`, `error` | thrown |
 
-`walkthrough` is the walkthrough's id. A dropped walkthrough's `reason` is `expired` or `stepsChanged`. `callback` names the function that threw: `subscriber`, `onEvent`, `onChange`, `stateCheck` or `isComplete`. Since one set of handlers hears every walkthrough, `step` is typed as any walkthrough's step, and its `meta` as `unknown`.
+`walkthrough` is the walkthrough's id. A dropped walkthrough's `reason` is `expired`, `stepsChanged` or `unreadable`, and a dropped task's is `unreadable`. `callback` names the function that threw: `subscriber`, `onEvent`, `onChange`, `stateCheck` or `isComplete`. Since one set of handlers hears every walkthrough, `step` is typed as any walkthrough's step, and its `meta` as `unknown`.
 
 The defaults behave like plain JavaScript. Waymark throws the errors from your functions. Storage problems go to `console.error` instead, because they come from the user's browser rather than a bug in your app, and a throw would break the click that caused the save.
 

@@ -5,14 +5,15 @@ import { defineConfig, type Plugin } from "vite";
 const LATENCY = 800;
 
 type Entries = Record<string, unknown>;
-type Changes = Readonly<{ version: number; walkthroughs: Entries; tasks: Entries }>;
+type Changes = Readonly<{ version: number; walkthroughs: Entries; tasks: Entries; replace?: true }>;
 
 /** As Waymark's `applyChanges` does, without loading its source into the config. */
 const applyChanges = (record: Changes | null, changes: Changes): Changes | null => {
   const merge = (entries: Entries = {}, changed: Entries) =>
     Object.fromEntries(Object.entries({ ...entries, ...changed }).filter(([, value]) => value !== null));
-  const walkthroughs = merge(record?.walkthroughs, changes.walkthroughs);
-  const tasks = merge(record?.tasks, changes.tasks);
+  const base = changes.replace === true ? null : record;
+  const walkthroughs = merge(base?.walkthroughs, changes.walkthroughs);
+  const tasks = merge(base?.tasks, changes.tasks);
   if (Object.keys(walkthroughs).length === 0 && Object.keys(tasks).length === 0) return null;
   return { version: changes.version, walkthroughs, tasks };
 };

@@ -2,6 +2,7 @@ import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createRun } from "./run";
 import { everyProblem } from "../problems";
 import type { RunOptions, WaymarkEvent } from "./types";
+import { RecordUnreadableError } from "../storage/records";
 import type { StoredRecord } from "../storage/records";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Dismiss, WalkthroughProgress } from "../walkthrough/types";
@@ -22,7 +23,7 @@ const progress = (overrides: Partial<WalkthroughProgress> = {}): WalkthroughProg
 });
 
 const record = (walkthroughs: StoredRecord["walkthroughs"], tasks: StoredRecord["tasks"] = {}): StoredRecord => ({
-  version: 4,
+  version: 1,
   walkthroughs,
   tasks,
 });
@@ -40,7 +41,7 @@ describe("run storage", () => {
 
     run.start(tour);
     expect(storage.save).toHaveBeenLastCalledWith({
-      version: 4,
+      version: 1,
       walkthroughs: { tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) },
       tasks: {},
     });
@@ -169,15 +170,14 @@ describe("run storage", () => {
     },
   );
 
-  it("reports a record it cannot read, starts afresh, and never saves over it", () => {
+  it("reports a record it cannot read once, starts afresh, and never saves over it", () => {
     const onProblem = vi.fn();
-    const unreadable = { version: 4, walkthroughs: { tour: { status: "running", step: 9, stepCount: 3 } }, tasks: {} } as unknown as StoredRecord;
+    const unreadable = { version: 2, walkthroughs: {}, tasks: {} } as unknown as StoredRecord;
     const storage = held(unreadable);
     const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
-      type: "recordUnreadable",
-      error: expect.any(Error), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
-    });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ type: "recordUnreadable", error: expect.any(Error), stored: unreadable }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    );
     expect(run.getSnapshot()).toMatchObject({ storageStatus: "error", progress: {} });
     expect(storage.save).not.toHaveBeenCalled();
 
@@ -185,15 +185,92 @@ describe("run storage", () => {
     run.act("advance");
     expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(1);
     expect(storage.stored()).toBe(unreadable);
-    expect(onProblem).toHaveBeenLastCalledWith(failed(expect.objectContaining({ message: expect.stringMatching(/did not save over/) }))); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    expect(storage.save).toHaveBeenCalled();
+    expect(onProblem).toHaveBeenCalledOnce();
   });
 
   it("names a newer version it cannot read", () => {
     const onProblem = vi.fn();
-    connected({ storage: held({ version: 5 } as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
-    expect(onProblem).toHaveBeenCalledExactlyOnceWith({
-      type: "recordUnreadable",
-      error: expect.objectContaining({ message: expect.stringMatching(/version 5.*reads up to 4/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    connected({ storage: held({ version: 2 } as unknown as StoredRecord), problemHandlers: everyProblem(onProblem) });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        type: "recordUnreadable",
+        error: expect.objectContaining({ message: expect.stringMatching(/version 2.*reads up to 1/) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+      }),
+    );
+  });
+
+  it("keeps the rest of a record when a walkthrough's progress cannot be read, and drops that one from storage", () => {
+    const onProblem = vi.fn();
+    const hint = progress({ status: "finished" });
+    const storage = held({ version: 1, walkthroughs: { tour: { status: "running", step: 9, stepCount: 3 }, hint }, tasks: {} } as unknown as StoredRecord);
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "ready", progress: { hint } });
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "recordDropped", walkthrough: "tour", reason: "unreadable" });
+
+    run.start(tour);
+    expect(storage.stored()).toMatchObject({ walkthroughs: { hint, tour: { status: "running", step: 0 } } });
+  });
+
+  it("reports a save storage refused as the record it cannot read, once, with the record it holds", () => {
+    const onProblem = vi.fn();
+    const newer = { version: 2 };
+    const save = vi.fn(() => {
+      throw new RecordUnreadableError("newer", newer);
+    });
+    const run = connected({ storage: { load: () => null, save }, problemHandlers: everyProblem(onProblem) });
+    run.start(tour);
+    run.act("advance");
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ type: "recordUnreadable", stored: newer }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    );
+  });
+
+  describe("replace", () => {
+    /** A Run on a record it cannot read, and the `replace` its problem brings. */
+    const unreadableRun = () => {
+      const storage = held({ version: 2 } as unknown as StoredRecord);
+      let replace: ((record: StoredRecord | null) => void) | undefined;
+      const run = connected({
+        storage,
+        problemHandlers: {
+          recordUnreadable: (problem) => {
+            replace = problem.replace;
+          },
+        },
+      });
+      if (replace === undefined) throw new Error("No recordUnreadable came.");
+      return { run, storage, replace };
+    };
+
+    it("takes the app's record in place of one it cannot read, with what the user did since on top, and saves the whole", () => {
+      const { run, storage, replace } = unreadableRun();
+      run.start(tour);
+      run.act("advance");
+      const hint = progress({ status: "finished" });
+
+      replace(record({ hint, tour: progress({ step: 2 }) }, { met: "done" }));
+      expect(run.getSnapshot()).toMatchObject({ storageStatus: "ready", progress: { hint, tour: { step: 1 } } });
+      expect(storage.stored()).toMatchObject({ version: 1, walkthroughs: { hint, tour: { step: 1 } }, tasks: { met: "done" } });
+
+      // Storage reads again, so the next change saves as any does.
+      run.act("advance");
+      expect(storage.stored()).toMatchObject({ walkthroughs: { hint, tour: { step: 2 } }, tasks: { met: "done" } });
+    });
+
+    it("starts over from what the user did since, given none", () => {
+      const { run, storage, replace } = unreadableRun();
+      run.start(tour);
+      replace(null);
+      expect(storage.stored()).toEqual(record({ tour: expect.objectContaining({ status: "running", step: 0 }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+      expect(run.getSnapshot().storageStatus).toBe("ready");
+    });
+
+    it("throws on a record it cannot take, and leaves storage as it was", () => {
+      const { storage, replace } = unreadableRun();
+      expect(() => replace({ version: 2 } as unknown as StoredRecord)).toThrow(/cannot take the record given to replace/);
+      expect(storage.stored()).toEqual({ version: 2 });
     });
   });
 
@@ -313,7 +390,7 @@ describe("run storage", () => {
 
     run.act("advance");
     expect(storage.save).toHaveBeenLastCalledWith({
-      version: 4,
+      version: 1,
       walkthroughs: { tour: expect.objectContaining({ step: 1 }) }, // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
       tasks: {},
     });

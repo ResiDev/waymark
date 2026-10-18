@@ -251,7 +251,7 @@ describe("Run types", () => {
           expectTypeOf(problem.walkthrough).toEqualTypeOf<string>();
         },
         recordDropped: (problem) => {
-          expectTypeOf(problem.reason).toEqualTypeOf<"expired" | "stepsChanged">();
+          expectTypeOf(problem.reason).toEqualTypeOf<"expired" | "stepsChanged" | "unreadable">();
         },
       },
     });
