@@ -13,13 +13,31 @@
 //
 // "Open question" marks state that might go or change. STATE.md lists them.
 
-import type { AnyTask, Checklist, ChecklistDefinition, ChecklistGroup, ChecklistSnapshot, DefinedTask, StorageStatus } from "../../../../packages/core/src/checklists/types";
+import type {
+  AnyTask,
+  Checklist,
+  ChecklistDefinition,
+  ChecklistGroup,
+  ChecklistSnapshot,
+  DefinedTask,
+  StorageStatus,
+} from "../../../../packages/core/src/checklists/types";
 import type { WaymarkProblem } from "../../../../packages/core/src/problems";
-import type { WaymarkAria, WaymarkEvents } from "../../../../packages/core/src/run/rules";
-import type { State } from "../../../../packages/core/src/run/state";
-import type { Location, RunEvent, RunSnapshot, UiElements } from "../../../../packages/core/src/run/types";
+import type {
+  WaymarkAria,
+  WaymarkEvents,
+} from "../../../../packages/core/src/run/rules";
+import type {
+  Location,
+  RunEvent,
+  RunSnapshot,
+  UiElements,
+} from "../../../../packages/core/src/run/types";
 import type { StorageAdapter } from "../../../../packages/core/src/storage/adapter";
-import type { Walkthrough } from "../../../../packages/core/src/walkthrough/types";
+import type {
+  Walkthrough,
+  WalkthroughProgress,
+} from "../../../../packages/core/src/walkthrough/types";
 
 // ─── RunState ───────────────────────────────────────────────────────────────
 //
@@ -31,12 +49,17 @@ import type { Walkthrough } from "../../../../packages/core/src/walkthrough/type
 export type RunState = Readonly<{
   walkthroughs: Walkthroughs;
   checklists: Checklists;
-  sightings: Sightings;
+  /** The walkthrough whose popover shows, if any. At most one. */
+  activeStep: ActiveStep | undefined;
   /** `loading` until the record is in, `error` if it could not be read. Shown in every snapshot. */
   storageStatus: StorageStatus;
+  /** This visit to the step's serial number. A click or measurement carrying another is ignored. */
+  lastSerialNumber: number;
 }>;
 
 // ─── walkthroughs (written only by walkthroughs.ts) ─────────────────────────
+//
+type WalkthroughId = string;
 
 export type Walkthroughs = Readonly<{
   /**
@@ -44,99 +67,68 @@ export type Walkthroughs = Readonly<{
    * uses them: `run.start(tour)`, a `<Walkthrough>` mounting, a checklist with
    * a Task that has one. Never saved: they are code, not data.
    */
-  definitions: ReadonlyMap<string, Walkthrough>;
-
-  /** The user's place in each walkthrough, by id. This is what is saved. */
-  progress: Progress;
+  definitions: ReadonlyMap<WalkthroughId, Walkthrough>;
 
   /**
-   * Ids whose progress came from storage before their definition arrived.
-   *
-   * The record loads with every walkthrough the user has touched, but the
-   * definitions only arrive as the app uses them. Until one does, its
-   * progress cannot be checked (has the walkthrough lost steps since? is the
-   * entry too old to pick up?) or drawn (a beacon needs the steps to find its
-   * Waymark). So it waits here as data. When the definition arrives,
-   * `arrive` checks it: drops it with a `recordDropped` problem, reopens it if
-   * it was open, or leaves it collapsed.
-   *
-   * Open question: derive it as "has progress, has no definition" instead.
-   * True at the end of every change today, except between load's two changes
-   * (restore, then check). Load would have to restore and check in one change.
+   * Where each on-screen walkthrough's Waymark was last seen: the active one,
+   * and every collapsed one showing a beacon. The step it is for is the
+   * walkthrough's `progress[id].step`. Never saved.
    */
-  restored: ReadonlySet<string>;
+  waymarks: ReadonlyMap<WalkthroughId, LastWaymarkSighting>;
 
-  /** The walkthrough on screen, if any. Only `seat` writes it, and writes its progress entry in the same step. */
-  open: Machine | undefined;
+  /** The user's place in each walkthrough, by id. This is what is saved. */
+  progress: Readonly<Record<WalkthroughId, WalkthroughProgress>>;
 
   /** From `requestStart`: walkthroughs asking to open once nothing is open, oldest first. Not saved. */
   waiting: readonly Walkthrough[];
-
-  /**
-   * The last step generation handed out, so the next walkthrough's steps
-   * carry on from it.
-   *
-   * A step generation is a number each shown step gets. Anything measured or
-   * clicked carries the number of the step it was for: a frame's read, a
-   * click, a Waymark event. `rules.ts` ignores one whose number is not the
-   * current step's. That's how a frame measured on step 2, arriving after the
-   * user moved to step 3, is ignored. When walkthrough A closes and B opens,
-   * B's numbers must carry on after A's, or a late message from A's step 1
-   * could pass for B's step 1.
-   *
-   * Open question: it is a Run-wide counter that only goes up, so name it so,
-   * `stepGenerations` or `nextStepGeneration`.
-   */
-  lastGeneration: number;
 }>;
 
-export type Progress = Readonly<Record<string, WalkthroughProgress>>;
-
-/** One walkthrough's saved place. Today's `WalkthroughProgress`, written out. */
-export type WalkthroughProgress = Readonly<{
-  status: "running" | "finished" | "exited";
-  step: number;
-  /** The step count when saved, so a walkthrough that lost steps since can be dropped. */
-  stepCount: number;
-  /** Hidden behind its beacon, keeping its place. */
-  collapsed: boolean;
-  /** Epoch ms. Newer wins when two tabs disagree; too old is dropped on arrival. */
-  changedAt: number;
+export type LastWaymarkSighting = Readonly<{
+  /** Found at a rect, still being searched for, missing or lost. */
+  waymark: Location;
+  /** Since when it has not been seen, so it turns missing or lost after a while. */
+  unseenSince: number | undefined;
+  /** The element last found, reused next frame if it still matches, to skip a querySelector. */
+  element: Element | null;
 }>;
 
-/** The open walkthrough, and the live state rules.ts works on. */
-export type Machine = Readonly<{
-  walkthrough: Walkthrough;
+/**
+ * The walkthrough whose popover shows, and what is happening on its step
+ * right now. Today this is `machine`: `{ walkthrough, state, looked }`, with
+ * these fields inside `state`. Flattened here, the walkthrough replaced by
+ * its id, `looked` gone (see `started`), and its Waymark in
+ * `walkthroughs.waymarks`, beside the beacons'.
+ *
+ * Between changes it is always running and not collapsed: the end of every
+ * change lets go of one that ended or collapsed.
+ */
+export type ActiveStep = Readonly<{
+  /** Look the walkthrough up in `walkthroughs.definitions`. */
+  id: string;
   /**
-   * rules.ts's State, written out:
-   * - `snapshot`: what is shown (phase, step, where the Waymark is)
-   * - `stepGeneration`: the shown step's number, as above
-   * - `started`: `start` has been sent, so clicks and checks count
-   * - `resumed`: picked up where it was left, so `start` is not announced again
-   * - `attached`: a renderer draws it, so time spent unseen counts
-   * - `element`: the Waymark element last found, reused if it still matches
-   * - `satisfied`, `unlocked`, `heldSince`: the advance condition's progress
-   * - `scrolled`: the Waymark has been scrolled into view once
-   * - `unseenSince`: since when the Waymark has not been seen, for missing and lost
+   * Its `start` has gone through, so clicks and checks count. Not started
+   * while attached means it has just appeared, and is due its first look: the
+   * Run measures its Waymark and starts it at once, not a frame later. This
+   * replaces `looked`, and fixes the bug where a walkthrough started and
+   * advanced in one go never starts.
    */
-  state: State;
-  /**
-   * Its first look has gone out since it opened or the Run last attached.
-   *
-   * The first look: as soon as a walkthrough is drawn, the Run measures its
-   * Waymark and sends `start` at once, rather than a frame later, so a
-   * listener sees it placed. This flag stops it happening twice. Detaching
-   * clears it, so the next attach looks again.
-   *
-   * Open question: drop it. The machine already has `state.started`. A first
-   * look is due while it is open, attached and not started, or as `attached`
-   * turns true, which `commit` can see by comparing before with after. That
-   * is also the first-look bug's fix.
-   */
-  looked: boolean;
+  started: boolean;
+
+  /** Picked up where the user left it, so `start` is not announced again. */
+  resumed: boolean;
+  /** The step's advance condition has been met. */
+  satisfied: boolean;
+  /** Next is unlocked: the condition was met, or the step has none. */
+  unlocked: boolean;
+  /** When a "must hold for a while" condition started holding. */
+  heldSince: number | undefined;
+  /** The Waymark has been scrolled into view on this visit. */
+  scrolled: boolean;
 }>;
 
 // ─── checklists (written only by checklists.ts) ─────────────────────────────
+type ChecklistName = string;
+type TaskId = string;
 
 export type Checklists = Readonly<{
   /** Each Task's status, by id. Only Tasks off todo are here. Saved. */
@@ -147,18 +139,7 @@ export type Checklists = Readonly<{
    * each id, in the order they arrived. The order is the order checklist
    * events go in. Merges today's `tasks` array and `taskById` map.
    */
-  tasks: ReadonlyMap<string, DefinedTask>;
-
-  /**
-   * The checklist groups (one per `defineChecklists` call) whose Tasks have
-   * been added to `tasks`. Every checklist command calls `join(group)` first,
-   * and this makes the second and later calls return at once.
-   *
-   * Open question: move it out of RunState. Nothing is drawn, saved or
-   * decided from it; it only saves `join` from doing its work twice. It could
-   * live in run.ts beside the checklist handles.
-   */
-  groups: ReadonlySet<ChecklistGroup>;
+  tasks: ReadonlyMap<TaskId, DefinedTask>;
 
   /**
    * Which checklist's Start button opened each walkthrough still running, by
@@ -172,32 +153,7 @@ export type Checklists = Readonly<{
    * Open question: it is about a walkthrough, so it could live in
    * `walkthroughs`, or on `progress` entries if it should survive a reload.
    */
-  startedFrom: ReadonlyMap<string, string>;
-}>;
-
-// ─── sightings (written only by beacons.ts) ─────────────────────────────────
-
-/**
- * Not the open walkthrough: the collapsed ones.
- *
- * A collapsed walkthrough shows a beacon, a small marker on its Waymark the
- * user can press to pick it up again. Each entry here says where that
- * Waymark was last found, by walkthrough id, followed frame by frame while
- * nothing is open. The snapshot's `beacons` are drawn from it.
- *
- * Open question: the name. `beaconWaymarks` says what it is.
- */
-export type Sightings = ReadonlyMap<string, Sighting>;
-
-export type Sighting = Readonly<{
-  /** The step whose Waymark the beacon sits on. */
-  stepIndex: number;
-  /** Found at a rect, still being searched for, missing or lost. */
-  waymark: Location;
-  /** Since when it has not been seen, so it turns missing or lost after a while. */
-  unseenSince: number | undefined;
-  /** The element last found, reused next frame if it still matches, to skip a querySelector. */
-  element: Element | null;
+  startedFrom: ReadonlyMap<WalkthroughId, ChecklistName>;
 }>;
 
 // ─── ShellState (run.ts) ────────────────────────────────────────────────────
@@ -228,7 +184,12 @@ export type ShellState = {
   /** The Run's own snapshot: `getSnapshot` and `subscribe`. */
   readonly run: Published<RunSnapshot>;
   /** Each checklist the app asked for, with the object `run.checklist(definition)` hands back, made once. */
-  readonly checklists: Map<ChecklistDefinition<AnyTask>, Published<ChecklistSnapshot<AnyTask>> & { readonly checklist: Checklist<AnyTask> }>;
+  readonly checklists: Map<
+    ChecklistDefinition<AnyTask>,
+    Published<ChecklistSnapshot<AnyTask>> & {
+      readonly checklist: Checklist<AnyTask>;
+    }
+  >;
   /**
    * Commands given while the record loads, run in order once it is in, so
    * they act on the user's progress rather than on none.
@@ -262,10 +223,13 @@ export type LinkState = {
 };
 
 export type Link = Readonly<{ connect: () => () => void }>;
-export type CreateStorageLink = (adapter: StorageAdapter, on: Readonly<{
-  record: (read: unknown) => void;
-  heard: (value: unknown) => void;
-}>) => Link;
+export type CreateStorageLink = (
+  adapter: StorageAdapter,
+  on: Readonly<{
+    record: (read: unknown) => void;
+    heard: (value: unknown) => void;
+  }>,
+) => Link;
 
 // ─── PageState (run/page.ts) ────────────────────────────────────────────────
 
