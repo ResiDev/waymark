@@ -1,43 +1,39 @@
-// Every piece of state option E keeps, as types. Typechecks against today's
-// packages/core/src (see the bottom of this file for how).
+// Every piece of state option E keeps, as types. A design sketch: nothing
+// imports it yet. `pnpm typecheck` checks it against the code beside it.
 //
 // Five places, each written by one file:
 //
 //   RunState      what the Run knows: one value, replaced once per change by `commit`
-//   ShellState    run.ts: what was published, held commands, context
+//   RunInternals  run.ts: what was published, the starting record, context
 //   LinkState     storage/link.ts: the connection to storage
 //   PageState     run/page.ts: the DOM
 //   QueueState    queue.ts, unchanged
 //
-// Plus the Change: what one change says, thrown away when it ends.
+// Plus the Change: what one change says, thrown away when it ends, and the
+// Command: every public command as data.
 //
-// "Open question" marks state that might go or change. STATE.md lists them.
+// "Open question" marks state that might go or change. docs/design/run-architecture/
+// option-e-owners-as-values/STATE.md lists them.
 
 import type {
   AnyTask,
   Checklist,
   ChecklistDefinition,
-  ChecklistGroup,
   ChecklistSnapshot,
   DefinedTask,
-  StorageStatus,
-} from "../../../../packages/core/src/checklists/types";
-import type { WaymarkProblem } from "../../../../packages/core/src/problems";
+} from "./checklists/types";
+import type { WaymarkProblem } from "./problems";
+import type { WaymarkAria, WaymarkEvents } from "./run/rules";
 import type {
-  WaymarkAria,
-  WaymarkEvents,
-} from "../../../../packages/core/src/run/rules";
-import type {
+  Action,
   Location,
   RunEvent,
   RunSnapshot,
   UiElements,
-} from "../../../../packages/core/src/run/types";
-import type { StorageAdapter } from "../../../../packages/core/src/storage/adapter";
-import type {
-  Walkthrough,
-  WalkthroughProgress,
-} from "../../../../packages/core/src/walkthrough/types";
+} from "./run/types";
+import type { StorageAdapter } from "./storage/adapter";
+import type { StoredRecord } from "./storage/records";
+import type { Walkthrough, WalkthroughProgress } from "./walkthrough/types";
 
 // ─── RunState ───────────────────────────────────────────────────────────────
 //
@@ -50,12 +46,61 @@ export type RunState = Readonly<{
   walkthroughs: Walkthroughs;
   checklists: Checklists;
   /** The walkthrough whose popover shows, if any. At most one. */
-  activeStep: ActiveStep | undefined;
-  /** `loading` until the record is in, `error` if it could not be read. Shown in every snapshot. */
+  activeStep: StepState | undefined;
   storageStatus: StorageStatus;
+  /**
+   * Commands given while `storageStatus` is `loading`, oldest first. The change that
+   * takes the record in runs them in order, on the user's progress, then
+   * empties this. Empty whenever `storageStatus` is not `loading`.
+   */
+  held: readonly Command[];
   /** This visit to the step's serial number. A click or measurement carrying another is ignored. */
   lastSerialNumber: number;
 }>;
+
+/**
+ * Where this Run's record is. Replaces the public `StorageStatus`, which gains
+ * `unreadable`, and the report-once `unreadable` flag. Not on the record: it
+ * is this tab's view of the record, and `loading` and `unreadable` describe a
+ * record the Run does not have.
+ *
+ * An unreadable record is reported when this turns to `unreadable`, by the
+ * before-and-after comparison every event uses. A refused save, or another
+ * unreadable record heard, finds it `unreadable` already and reports nothing;
+ * a readable record turns it back to `ready`. Shown in every snapshot, so an
+ * app can say the user's progress could not be read.
+ */
+export type StorageStatus = "loading" | "ready" | "unreadable" | "error";
+
+// ─── Command ────────────────────────────────────────────────────────────────
+
+/**
+ * Every public command, as data. Each public method hands the Run any
+ * walkthrough or checklist it names, at once, then turns its arguments into
+ * one of these. While `storageStatus` is `loading` it goes on `held`; otherwise it
+ * is applied in a change of its own.
+ *
+ * Not commands: `requestStart` (it goes on `waiting`), `setContext` (only the
+ * latest counts), `connect`, `attach` and `subscribe`.
+ */
+export type Command =
+  | Readonly<{ type: "start"; walkthrough: WalkthroughId }>
+  | Readonly<{
+      type: "act";
+      action: Action;
+      walkthrough: WalkthroughId | undefined;
+    }>
+  | Readonly<{ type: "reset"; walkthrough: WalkthroughId }>
+  | Readonly<{
+      type: "task";
+      task: TaskId;
+      do: "start" | "markDone" | "markTodo" | "skip" | "toggle";
+      /** The checklist whose button it was, for the event. `undefined` from the popover's Skip, `run.skipTask`. */
+      checklist: ChecklistName | undefined;
+    }>;
+
+/** The one function every command, held or not, goes through. */
+export type ApplyCommand = (state: RunState, command: Command) => RunState;
 
 // ─── walkthroughs (written only by walkthroughs.ts) ─────────────────────────
 //
@@ -79,8 +124,12 @@ export type Walkthroughs = Readonly<{
   /** The user's place in each walkthrough, by id. This is what is saved. */
   progress: Readonly<Record<WalkthroughId, WalkthroughProgress>>;
 
-  /** From `requestStart`: walkthroughs asking to open once nothing is open, oldest first. Not saved. */
-  waiting: readonly Walkthrough[];
+  /**
+   * From `requestStart`: walkthroughs asking to open once `storageStatus` is no
+   * longer `loading` and nothing is open, oldest first. Withdrawing one takes
+   * it off. Not saved.
+   */
+  waiting: readonly WalkthroughId[];
 }>;
 
 export type LastWaymarkSighting = Readonly<{
@@ -102,9 +151,7 @@ export type LastWaymarkSighting = Readonly<{
  * Between changes it is always running and not collapsed: the end of every
  * change lets go of one that ended or collapsed.
  */
-export type ActiveStep = Readonly<{
-  /** Look the walkthrough up in `walkthroughs.definitions`. */
-  id: string;
+export type StepState = Readonly<{
   /**
    * Its `start` has gone through, so clicks and checks count. Not started
    * while attached means it has just appeared, and is due its first look: the
@@ -156,31 +203,36 @@ export type Checklists = Readonly<{
   startedFrom: ReadonlyMap<WalkthroughId, ChecklistName>;
 }>;
 
-// ─── ShellState (run.ts) ────────────────────────────────────────────────────
+// ─── RunInternals (run.ts) ──────────────────────────────────────────────────
 //
-// Not inputs: outputs, or plumbing. Mutable, but only run.ts writes them.
+// Not inputs: outputs, or what outputs are worked out from. Mutable, but only
+// run.ts writes them.
 
 /**
  * What the Run, or one checklist, last handed out, and who is listening.
  *
- * Outputs, not inputs: each snapshot is selected from RunState. Kept because
- * React's `useSyncExternalStore` must get the same object back while nothing
- * changed, or it renders again and again. The selectors take the last one and
- * hand it back when nothing in it changed.
+ * `snapshot` is kept so a reader gets the same object while nothing changed,
+ * which React's `useSyncExternalStore` and Solid's signals rely on, and so
+ * listeners are called only when it is a new one.
+ *
+ * `serverSnapshot` is what a server render shows. Storage is read only by
+ * `connect`, which a server never calls, so it is worked out from
+ * `RunInternals.initial` and the definitions, on the first
+ * `getServerSnapshot`, and kept. Its inputs never change, so it cannot go
+ * stale. A checklist that hydrates late, inside a `<Suspense>`, after
+ * `connect` has read storage, still matches the server's HTML.
  */
 export type Published<T> = {
   snapshot: T;
-  /** What a server render showed, before storage was read, so hydration matches it. */
-  readonly serverSnapshot: T;
-  /** `subscribe`'s listeners. */
+  serverSnapshot: T | undefined;
   readonly listeners: Set<(snapshot: T) => void>;
 };
 
-export type ShellState = {
+export type RunInternals<TContext> = {
   /** The one variable holding RunState. `commit` alone assigns it. */
   state: RunState;
-  /** RunState before storage was read. Every server snapshot is selected from it. Fixed once made. */
-  readonly server: RunState;
+  /** `options.initial`: the record a server render starts from, and so every server snapshot. */
+  readonly initial: StoredRecord | undefined;
   /** The Run's own snapshot: `getSnapshot` and `subscribe`. */
   readonly run: Published<RunSnapshot>;
   /** Each checklist the app asked for, with the object `run.checklist(definition)` hands back, made once. */
@@ -191,14 +243,12 @@ export type ShellState = {
     }
   >;
   /**
-   * Commands given while the record loads, run in order once it is in, so
-   * they act on the user's progress rather than on none.
+   * The app's facts, for Task completion conditions only. Kept because Tasks
+   * and the record arrive later, and both are checked against the latest one.
+   * Typed by the Run's `TContext`, inferred from `createRun({ context })`, so
+   * `setContext` and each checklist's conditions are checked against it.
    */
-  readonly held: (() => void)[];
-  /** The app's facts, for checklists' completion conditions. `setContext` replaces it. */
-  context: unknown;
-  /** An unreadable record has been reported, which it is once, until one Waymark can read comes. */
-  unreadable: boolean;
+  context: TContext | undefined;
 };
 
 // ─── LinkState (storage/link.ts) ────────────────────────────────────────────
@@ -301,7 +351,3 @@ export type Gathered = Readonly<{
   /** Elements to scroll into view. */
   scrolls: readonly Element[];
 }>;
-
-// To typecheck from the worktree root:
-//   npx tsc --noEmit --strict --target es2022 --moduleResolution bundler --module esnext \
-//     --skipLibCheck --lib es2022,dom,dom.iterable docs/design/run-architecture/option-e-owners-as-values/state.ts

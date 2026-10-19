@@ -1,7 +1,7 @@
 # Option E: every piece of state
 
-The types are in [state.ts](state.ts), each field with what it is for. That
-file typechecks against today's `packages/core/src`. This file says where
+The types are in [packages/core/src/state.ts](../../../../packages/core/src/state.ts),
+each field with what it is for. Core's typecheck checks it. This file says where
 state lives, the rule for what goes in `RunState`, and the questions still
 open about it.
 
@@ -100,12 +100,21 @@ Each function hands back the object it was given when nothing changed. So
   found. It is not the open walkthrough.
 - **Proposal:** `beaconWaymarks`.
 
-### `unreadable`: a flag or state?
+### Decided
 
-- **Now:** a report-once flag in `run.ts`.
-- **Alternative:** a `RunState` field, "the last record seen was unreadable",
-  reported when it flips. No flag, but an unreadable record from another tab
-  becomes a change.
+- **`unreadable`** is a storage status: `storageStatus: "loading" | "ready" |
+  "unreadable" | "error"`, reported when it turns to `unreadable`. No flag.
+  The public `StorageStatus` gains `unreadable`.
+- **Held commands** are data: `RunState.held: Command[]`, run by one
+  `apply(state, command)` when the record is in. `requestStart` goes straight
+  on `waiting`, which opens only once storage is not loading.
+- **The server snapshot** is worked out from `options.initial` and the
+  definitions on the first `getServerSnapshot`, and kept. No copy of an old
+  RunState.
+- **`context`** is typed by the Run's `TContext`.
+- **Every union tells its members apart by `type`.** `rules.ts`'s `Message`
+  is the only one on `kind` today; it moves to `type` with the rewrite, and
+  its `stepGeneration` becomes `serialNumber`.
 
 ### The watchers: merge three?
 
