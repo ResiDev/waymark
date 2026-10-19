@@ -2,6 +2,12 @@
 
 - Few comments. A comment gives a reason the code has to be this way, when that reason is not obvious from the code itself. Delete comments that only say what the code does.
 
+## State
+
+- Keep each fact in one place, and work out everything that follows from it where it is needed. Two copies of one fact drift apart, and the bug shows up far from the code that let them.
+- Keep a copy only when working it out where it is read would be too slow, such as every frame, or cannot be done, such as something the browser only tells you once. Name it for what it copies, write it in one place, and say in a comment why it cannot be worked out.
+- Keep apart state that changes at different rates or is kept for different lengths of time: what the app hands over once, what is saved, and what follows the page every frame. Mixed, a change to one looks like a change to the other.
+
 ## Tests
 
 - Test through what the packages' `index.ts` files export. Never export something only for a test. The one exception is a pure function that could only be reached by faking its inputs, like `placement.ts`; say why in a comment.
