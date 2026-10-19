@@ -8,7 +8,7 @@ import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Dismiss, WalkthroughProgress } from "../walkthrough/types";
 import { localKey } from "../test/dom";
 import { connected, progressOf, watch } from "../test/run";
-import { held, later } from "../test/storage";
+import { elsewhere, held, later } from "../test/storage";
 import { fakeFrames, fakeTimers } from "../test/time";
 
 const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
@@ -227,6 +227,39 @@ describe("run storage", () => {
     );
   });
 
+  it("reports a record it cannot read once, whether it loaded it, heard it or storage refused a save over it", () => {
+    const onProblem = vi.fn();
+    const newer = { version: 2, walkthroughs: {}, tasks: {} } as unknown as StoredRecord;
+    const { storage, push } = elsewhere(newer);
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
+    push({ version: 3 } as unknown as StoredRecord);
+    run.start(tour);
+    expect(storage.save).toHaveBeenCalledOnce();
+    expect(storage.stored()).toBe(newer);
+
+    expect(onProblem.mock.calls).toEqual([
+      [expect.objectContaining({ type: "recordUnreadable", stored: newer })], // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    ]);
+  });
+
+  it("reports a record it cannot read again once it has heard one it can read", () => {
+    const onProblem = vi.fn();
+    const { storage, push } = elsewhere(record({}));
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
+    const newer = { version: 2 } as unknown as StoredRecord;
+    const newest = { version: 3 } as unknown as StoredRecord;
+
+    push(newer);
+    push(record({ tour: progress() }));
+    expect(progressOf(run)).toMatchObject({ status: "running" });
+    push(newest);
+
+    expect(onProblem.mock.calls).toEqual([
+      [expect.objectContaining({ type: "recordUnreadable", stored: newer })], // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+      [expect.objectContaining({ type: "recordUnreadable", stored: newest })], // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    ]);
+  });
+
   describe("replace", () => {
     /** A Run on a record it cannot read, and the `replace` its problem brings. */
     const unreadableRun = () => {
@@ -363,18 +396,6 @@ describe("run storage", () => {
     expect(onChange).toHaveBeenLastCalledWith(record({ tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) }));
   });
 
-  /** An adapter that hears what the test pushes, as if another tab saved it. */
-  const elsewhere = (value: StoredRecord | null = null) => {
-    let push: (heard: StoredRecord | null) => void = () => {};
-    const storage = Object.assign(held(value), {
-      subscribe: (listener: (heard: StoredRecord | null) => void) => {
-        push = listener;
-        return () => {};
-      },
-    });
-    return { storage, push: (heard: StoredRecord | null) => push(heard) };
-  };
-
   it("hears a change made elsewhere without moving the open walkthrough, and saves only its own next change", () => {
     const { storage, push } = elsewhere(record({}));
     const onEvent = vi.fn<(event: WaymarkEvent) => void>();
@@ -454,6 +475,20 @@ describe("run storage", () => {
     // Nothing to read: the server shows what the client will.
     const plain = createRun({ initial: record({ tour: stored }) });
     expect(plain.getServerSnapshot()).toBe(plain.getSnapshot());
+  });
+
+  it("gives a server snapshot of the record it was given, not what it heard or did since, the same object each time", () => {
+    const given = progress();
+    const initial = record({ tour: given });
+    const { storage, push } = elsewhere(record({ tour: progress({ status: "finished" }) }));
+    const run = connected({ storage, initial });
+    push(record({ tour: progress({ status: "exited" }) }));
+    run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    expect(run.getSnapshot().progress).toMatchObject({ tour: { status: "exited" }, hint: { status: "running" } });
+
+    expect(run.getServerSnapshot()).toEqual({ storageStatus: "ready", progress: { tour: given }, open: null, beacons: [] });
+    expect(run.getServerSnapshot()).toEqual(createRun({ initial }).getSnapshot());
+    expect(run.getServerSnapshot()).toBe(run.getServerSnapshot());
   });
 
   it("reads nothing until it connects, and holds its commands till the record is in", () => {

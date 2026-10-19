@@ -7,7 +7,7 @@ import { everyProblem } from "../problems";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { localKey } from "../test/dom";
 import { connected } from "../test/run";
-import { held, later } from "../test/storage";
+import { elsewhere, held, later } from "../test/storage";
 
 const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
 
@@ -205,6 +205,29 @@ describe("checklists storage", () => {
     // Nothing to read: the server shows what the client will.
     const plain = createRun({ initial: saved({ hello: "done" }) }).checklist(onboarding.checklists.home);
     expect(plain.getServerSnapshot()).toEqual(plain.getSnapshot());
+  });
+
+  it("gives a checklist made once connected a server snapshot of the record the Run was given, the same object each time", () => {
+    const initial = saved({ hello: "done" });
+    const { storage, push } = elsewhere(saved({ invite: "skipped" }));
+    const run = connected({ storage, initial });
+    push(saved({ invite: "done" }));
+    const side = run.checklist(onboarding.checklists.side);
+    side.subscribe(() => {});
+    side.start("tour");
+
+    const home = run.checklist(onboarding.checklists.home);
+    expect(home.getSnapshot()).toMatchObject({
+      open: { id: "tour" },
+      tasks: [{ status: "todo" }, { status: "todo" }, { status: "done" }, { status: "todo" }],
+    });
+    expect(home.getServerSnapshot()).toMatchObject({
+      storageStatus: "ready",
+      open: null,
+      tasks: [{ status: "todo" }, { status: "done" }, { status: "todo" }, { status: "todo" }],
+    });
+    expect(home.getServerSnapshot()).toEqual(createRun({ initial }).checklist(onboarding.checklists.home).getSnapshot());
+    expect(home.getServerSnapshot()).toBe(home.getServerSnapshot());
   });
 
   it("keeps a task's walkthrough under a localStorage key, and picks it up once its checklist is used after a reload", () => {

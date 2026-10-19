@@ -49,3 +49,15 @@ export function later(value: StoredRecord | null = null) {
     },
   };
 }
+
+/** Storage in memory, as `held` keeps it, that hears what the test pushes, as if another tab saved it. */
+export function elsewhere(value: StoredRecord | null = null) {
+  let push: (heard: StoredRecord | null) => void = () => {};
+  const storage = Object.assign(held(value), {
+    subscribe: (listener: (heard: StoredRecord | null) => void) => {
+      push = listener;
+      return () => {};
+    },
+  });
+  return { storage, push: (heard: StoredRecord | null) => push(heard) };
+}

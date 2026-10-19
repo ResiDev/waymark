@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, Suspense, useSyncExternalStore, type ReactNode } from "react";
 import { hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -7,6 +7,7 @@ import {
   defineChecklists,
   defineWalkthrough,
   useChecklist,
+  useRun,
   WaymarkRoot,
   type ChecklistLabels,
   type StoredRecord,
@@ -268,23 +269,103 @@ describe("Checklist with storage", () => {
     </WaymarkRoot>
   );
 
+  /** Hydrates a server's HTML in a host of its own, in act, unmounted when the test ends. */
+  const hydrate = async (server: string, page: ReactNode) => {
+    const host = addHost();
+    host.innerHTML = server;
+    const onRecoverableError = vi.fn();
+    let hydrated: Root | undefined;
+    onTestFinished(() => act(async () => hydrated?.unmount()));
+    await act(async () => {
+      hydrated = hydrateRoot(host, page, { onRecoverableError });
+    });
+    return { host, onRecoverableError };
+  };
+
+  const busy = (host: HTMLElement) => host.querySelector('[role="group"]')?.getAttribute("aria-busy");
+
   it("hydrates a server render, which could not read storage, then shows what storage holds", async () => {
     save({ hello: "done" });
     const server = renderToString(app());
     expect(server).toContain("0<!-- --> of <!-- -->2<!-- --> done");
     expect(server).toContain('aria-busy="true"');
 
-    const host = addHost();
-    host.innerHTML = server;
-    const onRecoverableError = vi.fn();
-    let hydrated: Root | undefined;
-    await act(async () => {
-      hydrated = hydrateRoot(host, app(), { onRecoverableError });
-    });
-    onTestFinished(() => act(async () => hydrated?.unmount()));
+    const { host, onRecoverableError } = await hydrate(server, app());
 
     expect(onRecoverableError).not.toHaveBeenCalled();
     expect(host).toHaveTextContent("1 of 2 done");
-    expect(host.querySelector('[role="group"]')).toHaveAttribute("aria-busy", "false");
+    expect(busy(host)).toBe("false");
+  });
+
+  it("renders the record it is given on the server, and hydrates it as it is, without loading over it", async () => {
+    // What the browser holds says more is done, but a Run given a record does not load.
+    save({ hello: "done", invite: "done" });
+    const initial: StoredRecord = { version: 1, walkthroughs: {}, tasks: { hello: "done" } };
+    const given = () => (
+      <WaymarkRoot storage="setup" initial={initial}>
+        <Checklist checklist={checklists.main} />
+      </WaymarkRoot>
+    );
+    const server = renderToString(given());
+    expect(server).toContain("1<!-- --> of <!-- -->2<!-- --> done");
+    expect(server).toContain('aria-busy="false"');
+
+    const { host, onRecoverableError } = await hydrate(server, given());
+
+    expect(onRecoverableError).not.toHaveBeenCalled();
+    expect(host).toHaveTextContent("1 of 2 done");
+    expect(busy(host)).toBe("false");
+  });
+
+  it("hydrates a checklist whose Suspense boundary hydrates after storage was read, then shows what storage holds", async () => {
+    save({ hello: "done" });
+    let release = () => {};
+    const code = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let arrived = false;
+    void code.then(() => {
+      arrived = true;
+    });
+    /** In the browser, suspends until its code arrives, so its boundary hydrates after the rest of the page. */
+    function Lazy({ children, browser }: Readonly<{ children: ReactNode; browser: boolean }>) {
+      if (browser && !arrived) throw code; // oxlint-disable-line typescript/only-throw-error -- React 18's Suspense takes a thrown Promise.
+      return children;
+    }
+    function Storage() {
+      const run = useRun();
+      const status = useSyncExternalStore(
+        run.subscribe,
+        () => run.getSnapshot().storageStatus,
+        () => run.getServerSnapshot().storageStatus,
+      );
+      return <p>Storage {status}</p>;
+    }
+    const page = (browser: boolean) => (
+      <WaymarkRoot storage="setup">
+        <Storage />
+        <Suspense fallback={<p>Loading</p>}>
+          <Lazy browser={browser}>
+            <Checklist checklist={checklists.main} />
+          </Lazy>
+        </Suspense>
+      </WaymarkRoot>
+    );
+    const server = renderToString(page(false));
+    expect(server).toContain("0<!-- --> of <!-- -->2<!-- --> done");
+
+    const { host, onRecoverableError } = await hydrate(server, page(true));
+    // The root has hydrated and read storage, while the checklist is still the server's HTML.
+    expect(host).toHaveTextContent("Storage ready");
+    expect(host).toHaveTextContent("0 of 2 done");
+
+    await act(async () => {
+      release();
+      await code;
+    });
+
+    expect(onRecoverableError).not.toHaveBeenCalled();
+    expect(host).toHaveTextContent("1 of 2 done");
+    expect(busy(host)).toBe("false");
   });
 });
