@@ -40,7 +40,7 @@ describe("localStorageAdapter", () => {
     localStorage.setItem(key, "not json");
     const onProblem = vi.fn();
     const run = connected({ storage: localStorageAdapter(key), problemHandlers: everyProblem(onProblem) });
-    expect(run.getSnapshot().storageStatus).toBe("error");
+    expect(run.getSnapshot().storageStatus).toBe("unreadable");
     expect(onProblem).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         type: "recordUnreadable",

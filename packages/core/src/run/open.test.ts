@@ -192,6 +192,30 @@ describe("one Run", () => {
     expect(progressOf(run)?.collapsed).toBe(true);
   });
 
+  it("starts a walkthrough a handler starts and advances in one go, so its step hears the user", () => {
+    const { flush } = fakeFrames();
+    const target = addTarget("save");
+    const { events, onEvent } = recorder();
+    const other = define("other", [{}]);
+    const t = define("t", [{}, { waymark: "save", advance: "click" }]);
+    const run = createRun({
+      onEvent: (event) => {
+        onEvent(event);
+        if ("walkthrough" in event && event.walkthrough === "other" && event.type === "start") {
+          run.start(t);
+          run.act("advance", t);
+        }
+      },
+    });
+    watch(run);
+    run.start(other);
+    flush();
+
+    expect(events).toContain("t:start");
+    target.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1, clientX: 50, clientY: 40 }));
+    expect(events.slice(-2)).toEqual(["t:advance", "t:finish"]);
+  });
+
   it("lets a request be withdrawn while it waits", () => {
     const run = createRun();
     run.start(define("tour", [{}]));

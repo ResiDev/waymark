@@ -146,6 +146,24 @@ describe("checklists storage", () => {
     expect(adapter.save).toHaveBeenCalledExactlyOnceWith({ version: 1, walkthroughs: {}, tasks: { met: "done" } });
   });
 
+  it("shows a record it cannot read as unreadable in each checklist", () => {
+    const { home } = create({ storage: held({ version: 2 } as unknown as StoredRecord) });
+    expect(home.getSnapshot().storageStatus).toBe("unreadable");
+  });
+
+  it("takes the statuses in and runs every command held meanwhile as one change", async () => {
+    const { adapter, answer } = later(saved({ hello: "done", invite: "done" }));
+    const { home } = create({ storage: adapter });
+    const listener = vi.fn();
+    home.subscribe(listener);
+
+    home.skip("hello");
+    home.markTodo("invite");
+    await answer();
+
+    expect(listener).toHaveBeenCalledExactlyOnceWith(home.getSnapshot());
+  });
+
   it("never saves over a record it cannot read, and reports it once", () => {
     const newer = { version: 2, tasks: { hello: "done" } } as unknown as StoredRecord;
     const storage = held(newer);

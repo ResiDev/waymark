@@ -178,7 +178,7 @@ describe("run storage", () => {
     expect(onProblem).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ type: "recordUnreadable", error: expect.any(Error), stored: unreadable }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
     );
-    expect(run.getSnapshot()).toMatchObject({ storageStatus: "error", progress: {} });
+    expect(run.getSnapshot()).toMatchObject({ storageStatus: "unreadable", progress: {} });
     expect(storage.save).not.toHaveBeenCalled();
 
     run.requestStart(tour);
@@ -260,6 +260,24 @@ describe("run storage", () => {
     ]);
   });
 
+  it("shows a record it cannot read as unreadable, heard or loaded, until it reads one it can", () => {
+    const { storage, push } = elsewhere(record({}));
+    const run = connected({ storage });
+    expect(run.getSnapshot().storageStatus).toBe("ready");
+
+    push({ version: 3 } as unknown as StoredRecord);
+    expect(run.getSnapshot().storageStatus).toBe("unreadable");
+
+    push(record({ tour: progress() }));
+    expect(run.getSnapshot().storageStatus).toBe("ready");
+  });
+
+  it("shows an unreadable record given as `initial` as unreadable, on the server too", () => {
+    const run = createRun({ initial: { version: 2 } as unknown as StoredRecord });
+    expect(run.getSnapshot().storageStatus).toBe("unreadable");
+    expect(run.getServerSnapshot().storageStatus).toBe("unreadable");
+  });
+
   describe("replace", () => {
     /** A Run on a record it cannot read, and the `replace` its problem brings. */
     const unreadableRun = () => {
@@ -329,6 +347,39 @@ describe("run storage", () => {
     expect(progressOf(run)).toMatchObject({ step: 2, collapsed: true });
     expect(run.getSnapshot().open?.walkthrough.id).toBe("hint");
     expect(listener).toHaveBeenLastCalledWith(run.getSnapshot());
+  });
+
+  it("takes the record in and runs every command held meanwhile as one change", async () => {
+    const { adapter, answer } = later(record({ tour: progress({ collapsed: false }) }));
+    const run = connected({ storage: adapter });
+    const listener = vi.fn();
+    run.subscribe(listener);
+
+    run.act("advance", tour);
+    run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    await answer();
+
+    expect(progressOf(run)).toMatchObject({ step: 2, collapsed: true });
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("hint");
+    expect(listener).toHaveBeenCalledExactlyOnceWith(run.getSnapshot());
+  });
+
+  it("puts a request made while loading straight on the waiting list, so a start held meanwhile does not interrupt it", async () => {
+    const { adapter, answer } = later(record({}));
+    const onEvent = vi.fn<(event: WaymarkEvent) => void>();
+    const run = connected({ storage: adapter, onEvent });
+    const whatsNew = defineWalkthrough({ id: "whatsNew", steps: [{}] });
+
+    run.requestStart(whatsNew);
+    run.start(tour);
+    await answer();
+
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("tour");
+    expect(progressOf(run, "whatsNew")).toBeUndefined();
+    expect(types(onEvent)).not.toContain("interrupt");
+
+    run.act("exit");
+    expect(run.getSnapshot().open?.walkthrough.id).toBe("whatsNew");
   });
 
   it("starts empty with an error status when its load fails, and reports it", async () => {
