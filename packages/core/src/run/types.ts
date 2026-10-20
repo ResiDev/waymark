@@ -87,7 +87,7 @@ export type Beacon<TWalkthrough extends Walkthrough = Walkthrough> = Readonly<{
 
 /** A new object only when something in it changed. */
 export type RunSnapshot<TWalkthrough extends Walkthrough = Walkthrough> = Readonly<{
-  /** `loading` until the record is in, which is after the first `connect`; `error` when it could not be read, and every walkthrough starts afresh. */
+  /** `loading` until the record is in, which is after the first `connect`; `error` or `unreadable` when it could not be read, and every walkthrough starts afresh. */
   storageStatus: StorageStatus;
   /**
    * Every walkthrough the user has started, by id. Progress restored for a

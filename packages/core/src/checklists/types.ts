@@ -46,8 +46,11 @@ export type AnyTask = Readonly<{ id: string; meta?: unknown }>;
 
 export type TaskStatus = "todo" | "done" | "skipped";
 
-/** Of the stored record: `error` when it could not be read, and every Task starts todo. */
-export type StorageStatus = "loading" | "ready" | "error";
+/**
+ * Of the stored record: `error` when storage failed, and `unreadable` when it
+ * holds a record this Waymark cannot read. In both, every Task starts todo.
+ */
+export type StorageStatus = "loading" | "ready" | "error" | "unreadable";
 
 export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
   task: TTask;
