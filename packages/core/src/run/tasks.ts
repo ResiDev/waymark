@@ -63,7 +63,7 @@ export const markTodo =
   (facts, change) => {
     const task = taskOf(facts.given.groups, id);
     if (task === undefined) return facts;
-    change.credit(id, from);
+    change.credits.set(id, from);
     return reopen(facts, task);
   };
 
@@ -72,7 +72,7 @@ export const toggle =
   (facts, change) => {
     const task = taskOf(facts.given.groups, id);
     if (task === undefined) return facts;
-    change.credit(id, from);
+    change.credits.set(id, from);
     return statusIn(facts.recorded.statuses, id) === "todo" ? withStatus(facts, id, "done") : reopen(facts, task);
   };
 
@@ -85,7 +85,7 @@ export const skip =
     const next = withStatus(facts, id, "skipped");
     const walkthrough = task.walkthrough === undefined ? undefined : facts.given.walkthroughs.get(task.walkthrough.id);
     const credited = from ?? (walkthrough === undefined ? undefined : facts.asked.startedFrom.get(walkthrough.id));
-    if (credited !== undefined) change.credit(id, credited);
+    if (credited !== undefined) change.credits.set(id, credited);
     return walkthrough === undefined ? next : act("exit", walkthrough)(next, change);
   };
 

@@ -49,7 +49,7 @@ const unreadable = (recorded: Recorded, error: RecordUnreadableError): Recorded 
 export function loaded(recorded: Recorded, read: Parsed | "failed", change: Change): Recorded {
   if (read === "failed") return { ...recorded, storage: FAILED };
   if (!read.ok) return unreadable(recorded, read.error);
-  for (const entry of read.value?.dropped ?? []) change.problem(entryDropped(entry));
+  for (const entry of read.value?.dropped ?? []) change.problems.push(entryDropped(entry));
   const progress = read.value?.walkthroughs ?? NO_PROGRESS;
   return { progress, statuses: read.value?.tasks ?? EMPTY, unchecked: new Map(Object.entries(progress)), storage: READ };
 }
@@ -87,7 +87,7 @@ export function heard(
   change: Change,
 ): Recorded {
   if (!parsed.ok) return unreadable(recorded, parsed.error);
-  for (const entry of parsed.value?.dropped ?? []) change.problem(entryDropped(entry));
+  for (const entry of parsed.value?.dropped ?? []) change.problems.push(entryDropped(entry));
   const theirs = parsed.value?.walkthroughs ?? NO_PROGRESS;
   const { progress } = recorded;
   let next: Record<string, WalkthroughProgress> | undefined;
@@ -117,7 +117,7 @@ export function heard(
  * unchecked.
  */
 export function replaced(recorded: Recorded, given: Read | null, change: Change): Recorded {
-  for (const entry of given?.dropped ?? []) change.problem(entryDropped(entry));
+  for (const entry of given?.dropped ?? []) change.problems.push(entryDropped(entry));
   const theirs = given?.walkthroughs ?? NO_PROGRESS;
   const unchecked = new Map(recorded.unchecked);
   for (const [id, entry] of Object.entries(theirs)) if (recorded.progress[id] === undefined) unchecked.set(id, entry);

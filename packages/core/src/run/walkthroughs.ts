@@ -74,7 +74,7 @@ const snapshotOf = (walkthrough: Walkthrough, at: WalkthroughProgress, visit: Vi
  * interruption says only `interrupt`.
  */
 function follow(facts: Facts, on: OnStep, outcome: Outcome, change: Change, interruptedBy?: string): Facts {
-  if (outcome.scrollTo !== undefined) change.scrollTo(outcome.scrollTo);
+  if (outcome.scrollTo !== undefined) change.scrolls.push(outcome.scrollTo);
   const { walkthrough, entry } = on;
   if (
     outcome.at === entry &&
@@ -90,13 +90,13 @@ function follow(facts: Facts, on: OnStep, outcome: Outcome, change: Change, inte
   const step = stepAt(walkthrough, entry.step);
   if (outcome.waymarkGone !== undefined) {
     const type = outcome.waymarkGone === "lost" ? "waymarkLost" : "waymarkMissing";
-    change.problem({ type, walkthrough: id, step, stepIndex: entry.step });
+    change.problems.push({ type, walkthrough: id, step, stepIndex: entry.step });
   }
   const snapshot = snapshotOf(walkthrough, at, outcome.visit);
   if (interruptedBy !== undefined) {
-    change.event({ type: "interrupt", walkthrough: id, step, stepIndex: entry.step, snapshot, interruptedBy });
+    change.events.push({ type: "interrupt", walkthrough: id, step, stepIndex: entry.step, snapshot, interruptedBy });
   } else {
-    for (const type of outcome.events) change.event({ type, walkthrough: id, step, stepIndex: entry.step, snapshot });
+    for (const type of outcome.events) change.events.push({ type, walkthrough: id, step, stepIndex: entry.step, snapshot });
   }
   const recorded = put(facts.recorded, id, at);
   const live = outcome.visit === facts.live.visit ? facts.live : { ...facts.live, visit: outcome.visit };
@@ -118,7 +118,7 @@ function open(facts: Facts, walkthrough: Walkthrough, change: Change): Facts {
   const visit = enter(walkthrough, step, { started: false, resumed, looked: false });
   if (resumed && saved.collapsed) {
     const snapshot = running({ walkthrough, entry, visit });
-    change.event({ type: "resume", walkthrough: id, step: stepAt(walkthrough, step), stepIndex: step, snapshot });
+    change.events.push({ type: "resume", walkthrough: id, step: stepAt(walkthrough, step), stepIndex: step, snapshot });
   }
   return { ...facts, recorded: put(facts.recorded, id, entry), live: { ...facts.live, visit } };
 }
@@ -138,7 +138,7 @@ const checkOne = (facts: Facts, walkthrough: Walkthrough, change: Change): Facts
   const reason = staleness(entry, walkthrough.steps.length, walkthrough.maxAge ?? DEFAULT_MAX_AGE);
   if (reason !== undefined) {
     // Dropped before the handler hears, so a walkthrough it starts keeps its progress.
-    change.problem(recordDropped(id, reason));
+    change.problems.push(recordDropped(id, reason));
     return withRecorded(at, put(at.recorded, id, undefined));
   }
   if (entry.status !== "running" || entry.collapsed) return at;
@@ -218,7 +218,7 @@ export const act =
     const entry = next.recorded.progress[id];
     if (action !== "exit" || entry?.status !== "running") return next;
     const at = place(entry, { ...entry, status: "exited", collapsed: false }, change.now);
-    change.event({ type: "exit", walkthrough: id, step: stepAt(walkthrough, entry.step), stepIndex: entry.step, snapshot: ended(at) });
+    change.events.push({ type: "exit", walkthrough: id, step: stepAt(walkthrough, entry.step), stepIndex: entry.step, snapshot: ended(at) });
     return withRecorded(next, put(next.recorded, id, at));
   };
 
@@ -279,8 +279,9 @@ export const settle: Work = (facts, change) => {
   }
 
   const { waiting } = next.asked;
-  if (next.live.visit === undefined && waiting.length > 0 && next.recorded.storage.type !== "loading") {
-    const at = waiting.findIndex((id) => next.recorded.progress[id] === undefined);
+  const { progress, storage } = next.recorded;
+  if (next.live.visit === undefined && waiting.length > 0 && storage.type !== "loading") {
+    const at = waiting.findIndex((id) => progress[id] === undefined);
     next = withAsked(next, { ...next.asked, waiting: at === -1 ? [] : waiting.slice(at + 1) });
     const walkthrough = at === -1 ? undefined : next.given.walkthroughs.get(waiting[at] ?? "");
     if (walkthrough !== undefined) next = open(next, walkthrough, change);

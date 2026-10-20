@@ -160,15 +160,16 @@ export type Shown = Omit<Facts, "asked">;
 /** One step of a change. Pure: no DOM, no storage, no app code. Hands back `facts` itself when nothing moved. */
 export type Work = (facts: Facts, change: Change) => Facts;
 
-/** What one change tells, gathered while it runs and announced once its facts are in. */
+/** What one change tells, gathered in order while it runs and announced once its facts are in. Works only add to it. */
 export type Change = Readonly<{
   /** `Date.now()`, once per change. */
   now: number;
-  event: (event: RunEvent) => void;
-  problem: (problem: WaymarkProblem) => void;
-  /** The checklist a Task's status was changed from, for its event. */
-  credit: (task: TaskId, checklist: ChecklistName) => void;
-  scrollTo: (element: Element) => void;
+  events: RunEvent[];
+  problems: WaymarkProblem[];
+  /** The checklist each Task's status was changed from, for its event. */
+  credits: Map<TaskId, ChecklistName>;
+  /** Waymarks a rule asked to scroll into view. */
+  scrolls: Element[];
   /** What the completion conditions say of `context`, asked by the shell so no work runs app code. `undefined` when one threw. */
   verdicts: (tasks: readonly DefinedTask[], context: unknown) => ReadonlyMap<TaskId, boolean> | undefined;
 }>;
