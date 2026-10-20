@@ -64,13 +64,13 @@ const samePlace = (a: Place, b: Place): boolean =>
  */
 const heardEntry = (
   ours: WalkthroughProgress | undefined,
-  heard: WalkthroughProgress | undefined,
+  theirs: WalkthroughProgress | undefined,
   openHere: boolean,
 ): WalkthroughProgress | undefined => {
   if (openHere) return ours;
-  if (heard === undefined) return undefined;
-  if (ours !== undefined && ours.changedAt > heard.changedAt) return ours;
-  const taken = heard.status === "running" && !heard.collapsed ? { ...heard, collapsed: true } : heard;
+  if (theirs === undefined) return undefined;
+  if (ours !== undefined && ours.changedAt > theirs.changedAt) return ours;
+  const taken = theirs.status === "running" && !theirs.collapsed ? { ...theirs, collapsed: true } : theirs;
   return ours !== undefined && samePlace(ours, taken) && ours.changedAt === taken.changedAt ? ours : taken;
 };
 

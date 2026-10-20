@@ -1,147 +1,144 @@
-import type { ClickHit } from "./input";
-import {
-  end,
-  enter,
-  gate,
-  isGone,
-  ABSENT,
-  LOST,
-  SEARCHING,
-  WAITING,
-  MISSING,
-  NO_EVENTS,
-  noChange,
-  show,
-} from "./state";
-import type { Outcome, State } from "./state";
-import {
-  checkOf,
-  delayOf,
-  eventsOf,
-  hasWaymark,
-  isAuto,
-  isClick,
-} from "../walkthrough/walkthrough";
-import type { Action, Location, Rect, Running } from "./types";
-import type { Step, Walkthrough } from "../walkthrough/types";
+import { checkOf, delayOf, eventsOf, hasWaymark, isAuto, isClick } from "../walkthrough/walkthrough";
+import type { Step, Walkthrough, WalkthroughProgress } from "../walkthrough/types";
+import type { AdvanceRead, Message, Sighting, StepRead, Visit, VisitKey, WaymarkRead } from "../state";
+import type { Place } from "./record";
+import type { Action, Ended, Location, Rect, RunEventType, Running } from "./types";
 
 /**
- * Reads, clicks and Waymark events carry the step generation they were raised
- * in, so one queued behind a step change cannot act on the next step, even one
- * on the same element.
+ * A walkthrough on a step, as the rules see it: its entry is running, at the
+ * visit's step. The open one is also not collapsed; one just collapsed is
+ * still on its step, for the Snapshot its events carry.
  */
-export type Message =
-  | Readonly<{ kind: "act"; action: Action }>
-  | Readonly<{ kind: "stepRead"; stepGeneration: number; stepRead: StepRead }>
-  | Readonly<{ kind: "start"; stepGeneration: number }>
-  | Readonly<{
-      kind: "click";
-      stepGeneration: number;
-      hit: ClickHit;
-      now: number;
-    }>
-  | Readonly<{ kind: "event"; stepGeneration: number; now: number }>
-  | Readonly<{ kind: "attached" }>
-  | Readonly<{ kind: "detached" }>;
+export type OnStep = Readonly<{ walkthrough: Walkthrough; entry: WalkthroughProgress; visit: Visit }>;
 
-export function apply<TStep extends Step>(
-  state: State<TStep>,
-  message: Message,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  const snapshot = state.snapshot;
-  // A step index can repeat after reset or previous; its generation cannot.
-  const stepOf = (stepGeneration: number): TStep | undefined =>
-    snapshot.phase === "running" && stepGeneration === state.stepGeneration
-      ? snapshot.step
-      : undefined;
-  switch (message.kind) {
-    case "act":
-      return act(state, message.action, walkthrough);
-    case "stepRead":
-      return stepOf(message.stepGeneration)
-        ? observe(state, message.stepRead, walkthrough)
-        : noChange(state);
-    case "start":
-      return stepOf(message.stepGeneration) ? start(state) : noChange(state);
-    case "click": {
-      // Dismissing applies to the walkthrough, so it does not require a matching generation.
-      if (message.hit === "away") return act(state, walkthrough.dismiss ?? "collapse", walkthrough);
-      const step = stepOf(message.stepGeneration);
-      return message.hit === "waymark" && step && isClick(step)
-        ? satisfy(state, message.now, walkthrough)
-        : noChange(state);
-    }
-    case "event": {
-      const step = stepOf(message.stepGeneration);
-      return step && eventsOf(step).length > 0
-        ? satisfy(state, message.now, walkthrough)
-        : noChange(state);
-    }
-    case "attached":
-      return attach(state, true);
-    case "detached":
-      return attach(state, false);
-  }
+/** The driver says `interrupt` itself, as only it sees another walkthrough start. */
+export type MachineEvent = Exclude<RunEventType, "interrupt">;
+
+/**
+ * What one message did. `at` is `on.entry` itself and `visit` is `on.visit`
+ * itself when they did not move. `visit` is a new one when the step moved,
+ * and `undefined` once the walkthrough ended.
+ */
+export type Outcome = Readonly<{
+  at: Place;
+  visit: Visit | undefined;
+  events: readonly MachineEvent[];
+  /** Reported once, as the Waymark goes, not on every frame it stays gone. */
+  waymarkGone?: "lost" | "missing" | undefined;
+  scrollTo?: Element | undefined;
+}>;
+
+/** What a visit carries from the step before it: the walkthrough's, not the step's. */
+export type Carried = Pick<Visit, "started" | "resumed" | "looked">;
+
+const NO_EVENTS: readonly MachineEvent[] = [];
+
+const ABSENT: Location = { status: "absent" };
+const SEARCHING: Location = { status: "searching" };
+const WAITING: Location = { status: "waiting" };
+const LOST: Location = { status: "lost" };
+const MISSING: Location = { status: "missing" };
+
+/** The step has a Waymark, but the user is shown the step without it. */
+const isGone = (waymark: Location): waymark is Extract<Location, { status: "lost" | "missing" }> =>
+  waymark.status === "lost" || waymark.status === "missing";
+
+export function stepAt<TStep extends Step>(walkthrough: Walkthrough<TStep>, index: number): TStep {
+  const step = walkthrough.steps[index];
+  if (step === undefined) throw new RangeError(`No step at index ${index}.`);
+  return step;
 }
 
-function advanceStep<TStep extends Step>(
-  state: State<TStep>,
-  running: Running<TStep>,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  const from = running.stepIndex;
-  return from + 1 < walkthrough.steps.length
-    ? { state: enter(walkthrough, from + 1, state), events: ["advance"] }
-    : { state: end(state, running, "completed"), events: ["advance", "finish"] };
+const stepOf = (on: OnStep): Step => stepAt(on.walkthrough, on.entry.step);
+
+const still = (on: OnStep, visit = on.visit): Outcome => ({ at: on.entry, visit, events: NO_EVENTS });
+
+/** A Waymark not looked for yet: `searching`, or `absent` for a step without one. */
+export const unsighted = (step: Step, index: number): Sighting => ({
+  step: index,
+  waymark: hasWaymark(step) ? SEARCHING : ABSENT,
+  unseenSince: undefined,
+  element: null,
+});
+
+/** A visit to `step`, just shown: a new key, nothing done, its Waymark not yet looked for. */
+export function enter(walkthrough: Walkthrough, step: number, carried: Carried): Visit {
+  const shown = stepAt(walkthrough, step);
+  return {
+    walkthrough: walkthrough.id,
+    key: Symbol(),
+    started: carried.started,
+    resumed: carried.resumed,
+    looked: carried.looked,
+    satisfied: false,
+    unlocked: shown.advance === undefined,
+    heldSince: undefined,
+    scrolled: false,
+    sighting: unsighted(shown, step),
+  };
 }
 
-function act<TStep extends Step>(
-  state: State<TStep>,
-  action: Action,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  const snapshot = state.snapshot;
-  if (snapshot.phase !== "running") return noChange(state);
+/** The gate is open: the condition was met, or the Waymark is lost or missing, so the user is never stuck. */
+const canAdvance = (visit: Visit): boolean => visit.unlocked || isGone(visit.sighting.waymark);
 
+/** The step's Snapshot, worked out from the entry and the visit. */
+export const running = ({ walkthrough, entry, visit }: OnStep): Running => ({
+  phase: "running",
+  step: stepAt(walkthrough, entry.step),
+  stepIndex: entry.step,
+  stepCount: walkthrough.steps.length,
+  canAdvance: canAdvance(visit),
+  collapsed: entry.collapsed,
+  waymark: visit.sighting.waymark,
+});
+
+/** A walkthrough that has finished or exited, for the event that ended it. */
+export const ended = (at: Place): Ended => ({
+  phase: at.status === "finished" ? "completed" : "exited",
+  stepIndex: at.step,
+  stepCount: at.stepCount,
+});
+
+const runningAt = (on: OnStep, step: number): Place => ({
+  status: "running",
+  step,
+  stepCount: on.walkthrough.steps.length,
+  collapsed: false,
+});
+
+const moveTo = (on: OnStep, step: number, carried: Carried, event: MachineEvent): Outcome => ({
+  at: runningAt(on, step),
+  visit: enter(on.walkthrough, step, carried),
+  events: [event],
+});
+
+function advanceStep(on: OnStep, visit: Visit): Outcome {
+  const from = on.entry.step;
+  if (from + 1 < on.walkthrough.steps.length) return moveTo(on, from + 1, visit, "advance");
+  return {
+    at: { status: "finished", step: from, stepCount: on.walkthrough.steps.length, collapsed: false },
+    visit: undefined,
+    events: ["advance", "finish"],
+  };
+}
+
+function act(on: OnStep, action: Action): Outcome {
+  const { entry, visit } = on;
   switch (action) {
     case "reset":
-      return { state: enter(walkthrough, 0, state), events: ["reset"] };
+      return moveTo(on, 0, visit, "reset");
     case "advance":
-      return snapshot.canAdvance
-        ? advanceStep(state, snapshot, walkthrough)
-        : noChange(state);
+      return canAdvance(visit) ? advanceStep(on, visit) : still(on);
     case "previous":
-      return snapshot.stepIndex === 0
-        ? noChange(state)
-        : {
-            state: enter(walkthrough, snapshot.stepIndex - 1, state),
-            events: ["previous"],
-          };
+      return entry.step === 0 ? still(on) : moveTo(on, entry.step - 1, visit, "previous");
     case "collapse":
-      return snapshot.collapsed
-        ? noChange(state)
-        : {
-            state: show(state, snapshot, { collapsed: true }),
-            events: ["collapse"],
-          };
+      return entry.collapsed ? still(on) : { at: { ...entry, collapsed: true }, visit, events: ["collapse"] };
     case "resume":
-      return snapshot.collapsed
-        ? {
-            state: show(state, snapshot, { collapsed: false }),
-            events: ["resume"],
-          }
-        : noChange(state);
+      return entry.collapsed ? { at: { ...entry, collapsed: false }, visit, events: ["resume"] } : still(on);
     case "exit":
-      return { state: end(state, snapshot, "exited"), events: ["exit"] };
+      return { at: { ...entry, status: "exited", collapsed: false }, visit: undefined, events: ["exit"] };
   }
 }
-
-export type WaymarkRead = Readonly<{
-  element: Element | null;
-  rect: Rect | null;
-  inView: boolean;
-}>;
 
 /** How long, in ms, a Waymark is searched for before its Step shows without it. */
 const WAITING_AFTER = 500;
@@ -154,16 +151,6 @@ const MISSING_AFTER = 3000;
 
 /** How long, in ms, a found Waymark may be gone before it counts as lost: long enough for a re-render that swaps its element. */
 const LOST_AFTER = 200;
-
-export type AdvanceRead = Readonly<{
-  holds: boolean;
-}>;
-
-export type StepRead = Readonly<{
-  now: number;
-  waymark?: WaymarkRead | undefined;
-  advance?: AdvanceRead | undefined;
-}>;
 
 // A DOMRect's fields are getters on its prototype, which spread and
 // `Object.keys` do not see; a Snapshot holds a plain object.
@@ -178,8 +165,8 @@ const copyRect = (rect: Rect): Rect => ({
   height: rect.height,
 });
 
-// Hands back the same Location object whenever nothing moved. A new one each
-// frame would make a new Snapshot, and notify subscribers, every frame.
+// The same Location whenever nothing moved: a new one each frame would make a
+// new Snapshot, and notify subscribers, every frame.
 function foundAt(previous: Location, rect: Rect): Location {
   const unmoved =
     previous.status === "found" &&
@@ -190,217 +177,141 @@ function foundAt(previous: Location, rect: Rect): Location {
   return unmoved ? previous : { status: "found", rect: copyRect(rect) };
 }
 
-type Located = Readonly<{
-  waymark: Location;
-  unseenSince: number | undefined;
-}>;
+const sighted = (previous: Sighting, waymark: Location, unseenSince: number | undefined, element: Element | null): Sighting =>
+  waymark === previous.waymark && unseenSince === previous.unseenSince && element === previous.element
+    ? previous
+    : { step: previous.step, waymark, unseenSince, element };
 
 /**
  * A Waymark never found is waiting after `WAITING_AFTER`, and missing after its
  * Step's `missingAfterMs`. One found is lost after `LOST_AFTER`, and keeps its
- * last place until then.
+ * last place until then. The same Sighting when nothing moved.
  */
-function locate(
-  previous: Location,
-  unseenSince: number | undefined,
-  read: WaymarkRead,
-  now: number,
-  step: Step,
-): Located {
-  if (!hasWaymark(step)) return { waymark: ABSENT, unseenSince: undefined };
-  if (read.rect !== null) {
-    return { waymark: foundAt(previous, read.rect), unseenSince: undefined };
+export function sight(previous: Sighting, read: WaymarkRead, now: number, step: Step): Sighting {
+  const { element } = read;
+  if (!hasWaymark(step)) return sighted(previous, ABSENT, undefined, element);
+  if (read.rect !== null) return sighted(previous, foundAt(previous.waymark, read.rect), undefined, element);
+  const { waymark } = previous;
+  if (waymark.status === "absent" || isGone(waymark)) return sighted(previous, waymark, undefined, element);
+  const since = previous.unseenSince ?? now;
+  const unseenFor = now - since;
+  if (waymark.status === "found") {
+    return unseenFor < LOST_AFTER ? sighted(previous, waymark, since, element) : sighted(previous, LOST, undefined, element);
   }
-  if (previous.status === "absent" || isGone(previous)) {
-    return { waymark: previous, unseenSince: undefined };
-  }
-  const since = unseenSince ?? now;
-  const unseen = now - since;
-  if (previous.status === "found") {
-    return unseen < LOST_AFTER
-      ? { waymark: previous, unseenSince: since }
-      : { waymark: LOST, unseenSince: undefined };
-  }
-  if (unseen >= (step.missingAfterMs ?? MISSING_AFTER)) {
-    return { waymark: MISSING, unseenSince: undefined };
-  }
-  return { waymark: unseen < WAITING_AFTER ? previous : WAITING, unseenSince: since };
+  if (unseenFor >= (step.missingAfterMs ?? MISSING_AFTER)) return sighted(previous, MISSING, undefined, element);
+  return sighted(previous, unseenFor < WAITING_AFTER ? waymark : WAITING, since, element);
 }
 
-function scrollTarget(
-  state: State,
-  read: WaymarkRead,
-  step: Step,
-): Element | undefined {
-  if (!read.element || !read.rect || read.inView) return undefined;
-  if (state.snapshot.phase !== "running" || state.snapshot.collapsed)
-    return undefined;
-  if (step.scroll === "never") return undefined;
-  return step.scroll === "always" || !state.scrolled ? read.element : undefined;
+/** Nobody looked while detached, so that time does not count towards missing or lost. */
+export const unseen = (sighting: Sighting): Sighting =>
+  sighting.unseenSince === undefined ? sighting : { ...sighting, unseenSince: undefined };
+
+function scrollTarget(on: OnStep, visit: Visit, read: WaymarkRead, step: Step): Element | undefined {
+  if (!read.element || !read.rect || read.inView || on.entry.collapsed || step.scroll === "never") return undefined;
+  return step.scroll === "always" || !visit.scrolled ? read.element : undefined;
 }
 
-function whenDue<TStep extends Step>(
-  state: State<TStep>,
-  now: number,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  const snapshot = state.snapshot;
-  if (
-    snapshot.phase !== "running" ||
-    state.unlocked ||
-    state.heldSince === undefined ||
-    now - state.heldSince < delayOf(snapshot.step)
-  ) {
-    return noChange(state);
-  }
-  return isAuto(snapshot.step)
-    ? advanceStep(state, snapshot, walkthrough)
-    : { state: gate(state, snapshot, { unlocked: true }), events: NO_EVENTS };
+function whenDue(on: OnStep, visit: Visit, now: number): Outcome {
+  const step = stepOf(on);
+  if (visit.unlocked || visit.heldSince === undefined || now - visit.heldSince < delayOf(step)) return still(on, visit);
+  return isAuto(step) ? advanceStep(on, visit) : still(on, { ...visit, unlocked: true });
 }
 
-/** Once, as the Waymark goes, not on every frame it stays gone. */
-const newlyGone = (before: Location, after: Location) =>
-  after !== before && isGone(after) ? after.status : undefined;
-
-function observeWaymark<TStep extends Step>(
-  state: State<TStep>,
-  read: WaymarkRead,
-  now: number,
-): Outcome<TStep> {
-  const snapshot = state.snapshot;
-  if (snapshot.phase !== "running") return noChange(state);
-
-  const { waymark, unseenSince } = locate(
-    snapshot.waymark,
-    state.unseenSince,
-    read,
-    now,
-    snapshot.step,
-  );
-  const scrollTo = scrollTarget(state, read, snapshot.step);
-  const scrolled = state.scrolled || scrollTo !== undefined;
-
-  // The same State when nothing changed, so the driver sees no change to notify.
-  if (
-    waymark === snapshot.waymark &&
-    read.element === state.element &&
-    scrolled === state.scrolled &&
-    unseenSince === state.unseenSince
-  ) {
-    return { state, events: NO_EVENTS, scrollTo };
-  }
-
-  const located =
-    waymark === snapshot.waymark
-      ? state
-      : gate(state, snapshot, { waymark });
-  return {
-    state: { ...located, element: read.element, scrolled, unseenSince },
-    events: NO_EVENTS,
-    waymarkGone: newlyGone(snapshot.waymark, waymark),
-    scrollTo,
-  };
+function observeAdvance(on: OnStep, visit: Visit, read: AdvanceRead, now: number): Outcome {
+  if (!visit.started || visit.unlocked) return still(on, visit);
+  const holds = visit.satisfied || read.holds;
+  const heldSince = holds ? (visit.heldSince ?? now) : undefined;
+  return whenDue(on, heldSince === visit.heldSince ? visit : { ...visit, heldSince }, now);
 }
 
-function observeAdvance<TStep extends Step>(
-  state: State<TStep>,
-  read: AdvanceRead,
-  now: number,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  if (state.snapshot.phase !== "running" || !state.started || state.unlocked) {
-    return noChange(state);
-  }
-  const holds = state.satisfied || read.holds;
-  const heldSince = holds ? (state.heldSince ?? now) : undefined;
-  const held = heldSince === state.heldSince ? state : { ...state, heldSince };
-  return whenDue(held, now, walkthrough);
-}
-
-// The scroll request is dropped if the check moved the Run to another step:
+// The scroll is dropped if the check moved the walkthrough to another step:
 // there is no point scrolling to a Waymark just left.
-function observe<TStep extends Step>(
-  state: State<TStep>,
-  read: StepRead,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  const seen = read.waymark
-    ? observeWaymark(state, read.waymark, read.now)
-    : noChange(state);
-  if (read.advance === undefined) return seen;
-  const due = observeAdvance(seen.state, read.advance, read.now, walkthrough);
-  if (due.state === seen.state) return seen;
-  const events = [...seen.events, ...due.events];
-  const { waymarkGone } = seen;
-  return due.state.stepGeneration === seen.state.stepGeneration
-    ? { ...due, events, waymarkGone, scrollTo: seen.scrollTo }
-    : { ...due, events, waymarkGone };
+function observe(on: OnStep, visit: Visit, read: StepRead): Outcome {
+  let seen = visit;
+  let waymarkGone: Outcome["waymarkGone"];
+  let scrollTo: Element | undefined;
+  if (read.waymark !== undefined) {
+    const step = stepOf(on);
+    const sighting = sight(visit.sighting, read.waymark, read.now, step);
+    scrollTo = scrollTarget(on, visit, read.waymark, step);
+    const scrolled = visit.scrolled || scrollTo !== undefined;
+    if (sighting !== visit.sighting || scrolled !== visit.scrolled) seen = { ...visit, sighting, scrolled };
+    if (sighting.waymark !== visit.sighting.waymark && isGone(sighting.waymark)) waymarkGone = sighting.waymark.status;
+  }
+  const due = read.advance === undefined ? still(on, seen) : observeAdvance(on, seen, read.advance, read.now);
+  if (waymarkGone === undefined && scrollTo === undefined) return due;
+  return { ...due, waymarkGone, scrollTo: due.visit?.key === seen.key ? scrollTo : undefined };
 }
 
-function start<TStep extends Step>(state: State<TStep>): Outcome<TStep> {
-  return state.started || state.snapshot.phase !== "running"
-    ? noChange(state)
-    : { state: { ...state, started: true }, events: state.resumed ? NO_EVENTS : ["start"] };
+function look(on: OnStep, read: StepRead | undefined): Outcome {
+  const looked = on.visit.looked ? on.visit : { ...on.visit, looked: true };
+  const seen = read === undefined ? still(on, looked) : observe(on, looked, read);
+  const { visit } = seen;
+  if (visit === undefined || visit.started) return seen;
+  return { ...seen, visit: { ...visit, started: true }, events: visit.resumed ? seen.events : [...seen.events, "start"] };
 }
 
-function satisfy<TStep extends Step>(
-  state: State<TStep>,
-  now: number,
-  walkthrough: Walkthrough<TStep>,
-): Outcome<TStep> {
-  if (state.snapshot.phase !== "running" || !state.started)
-    return noChange(state);
-  const held = state.satisfied
-    ? state
-    : { ...state, satisfied: true, heldSince: state.heldSince ?? now };
-  return whenDue(held, now, walkthrough);
+function satisfy(on: OnStep, now: number): Outcome {
+  const { visit } = on;
+  if (!visit.started) return still(on);
+  return whenDue(on, visit.satisfied ? visit : { ...visit, satisfied: true, heldSince: visit.heldSince ?? now }, now);
 }
 
-function attach<TStep extends Step>(
-  state: State<TStep>,
-  attached: boolean,
-): Outcome<TStep> {
-  if (state.attached === attached) return noChange(state);
-  const snapshot = state.snapshot;
-  // No frames run while detached, so a `state` check cannot be shown to
-  // have held throughout and its delay starts again. A click already counts.
-  const dropClock =
-    !attached &&
-    snapshot.phase === "running" &&
-    !state.satisfied &&
-    checkOf(snapshot.step) !== undefined;
-  return {
-    state: {
-      ...state,
-      attached,
-      heldSince: dropClock ? undefined : state.heldSince,
-      // Nobody looked while detached, so that time does not count towards missing or lost.
-      unseenSince: attached ? state.unseenSince : undefined,
-    },
-    events: NO_EVENTS,
-  };
+// No frames run while detached, so a `state` check cannot be shown to have
+// held throughout and its delay starts again. A click already counts.
+function detach(on: OnStep): Outcome {
+  const { visit } = on;
+  const dropClock = !visit.satisfied && checkOf(stepOf(on)) !== undefined;
+  const heldSince = dropClock ? undefined : visit.heldSince;
+  const sighting = unseen(visit.sighting);
+  if (!visit.looked && heldSince === visit.heldSince && sighting === visit.sighting) return still(on);
+  return still(on, { ...visit, looked: false, heldSince, sighting });
 }
 
-export type WaymarkAria = Readonly<{
-  element: Element;
-  expanded: boolean;
-}>;
+/**
+ * One message on the open step. A click away dismisses, and an action acts,
+ * whatever the visit; every other message does nothing on a visit it was not
+ * raised on.
+ */
+export function apply(on: OnStep, message: Message): Outcome {
+  if (message.type === "act") return act(on, message.action);
+  if (message.type === "detached") return detach(on);
+  if (message.type === "click" && message.hit === "away") return act(on, on.walkthrough.dismiss ?? "collapse");
+  if (message.visit !== on.visit.key) return still(on);
+  switch (message.type) {
+    case "stepRead":
+      return observe(on, on.visit, message.read);
+    case "look":
+      return look(on, message.read);
+    case "click":
+      return message.hit === "waymark" && isClick(stepOf(on)) ? satisfy(on, message.now) : still(on);
+    case "event":
+      return eventsOf(stepOf(on)).length > 0 ? satisfy(on, message.now) : still(on);
+  }
+}
 
-export type WaymarkEvents = Readonly<{
-  element: Element;
-  events: readonly string[];
-  stepGeneration: number;
-}>;
+/** The condition is checked on this read. `asLooked` for the first look, which asks before `looked` is set. */
+export function needsAdvanceRead(on: OnStep, asLooked = false): boolean {
+  const { visit } = on;
+  return (
+    (visit.looked || asLooked) &&
+    visit.started &&
+    !visit.unlocked &&
+    (checkOf(stepOf(on)) !== undefined || visit.heldSince !== undefined)
+  );
+}
+
+export type WaymarkAria = Readonly<{ element: Element; expanded: boolean }>;
+
+/** A Waymark's own events to listen to, for the visit they would satisfy. */
+export type WaymarkEvents = Readonly<{ element: Element; events: readonly string[]; visit: VisitKey }>;
 
 export const sameWaymarkAria = (a: WaymarkAria, b: WaymarkAria): boolean =>
   a.element === b.element && a.expanded === b.expanded;
 
-export const sameWaymarkEvents = (
-  a: WaymarkEvents,
-  b: WaymarkEvents,
-): boolean =>
+export const sameWaymarkEvents = (a: WaymarkEvents, b: WaymarkEvents): boolean =>
   a.element === b.element &&
-  a.stepGeneration === b.stepGeneration &&
+  a.visit === b.visit &&
   a.events.length === b.events.length &&
   a.events.every((event, index) => event === b.events[index]);
 
@@ -418,57 +329,18 @@ export const NOTHING_LIVE: LiveWatchers = {
   waymarkEvents: undefined,
 };
 
-export function needsAdvanceRead(state: State): boolean {
-  const snapshot = state.snapshot;
-  return (
-    state.attached &&
-    state.started &&
-    snapshot.phase === "running" &&
-    !state.unlocked &&
-    (checkOf(snapshot.step) !== undefined || state.heldSince !== undefined)
-  );
-}
-
-export function liveWatchers(state: State): LiveWatchers {
-  const snapshot = state.snapshot;
-  if (!state.attached || snapshot.phase !== "running" || snapshot.collapsed) return NOTHING_LIVE;
-  const step = snapshot.step;
-  const conditionUnmet = !state.unlocked;
+/** What core listens to for this step. Nothing until it is looked at, so a Run that is not attached touches no page. */
+export function liveWatchers(on: OnStep): LiveWatchers {
+  const { visit } = on;
+  if (!visit.looked || on.entry.collapsed) return NOTHING_LIVE;
+  const step = stepOf(on);
+  const { element } = visit.sighting;
   const events = eventsOf(step);
   return {
     input: true,
-    frame: hasWaymark(step) || needsAdvanceRead(state),
-    waymarkAria: state.element === null ? undefined : { element: state.element, expanded: true },
+    frame: hasWaymark(step) || needsAdvanceRead(on),
+    waymarkAria: element === null ? undefined : { element, expanded: true },
     waymarkEvents:
-      state.element !== null && conditionUnmet && events.length > 0
-        ? {
-            element: state.element,
-            events,
-            stepGeneration: state.stepGeneration,
-          }
-        : undefined,
+      element !== null && !visit.unlocked && events.length > 0 ? { element, events, visit: visit.key } : undefined,
   };
-}
-
-/** Where a collapsed walkthrough's beacon can sit: its step's Waymark, measured each frame as an open step's is. */
-export type Sighting = Readonly<{
-  stepIndex: number;
-  waymark: Location;
-  unseenSince: number | undefined;
-  element: Element | null;
-}>;
-
-export const unsighted = (step: Step, stepIndex: number): Sighting => ({
-  stepIndex,
-  waymark: hasWaymark(step) ? SEARCHING : ABSENT,
-  unseenSince: undefined,
-  element: null,
-});
-
-/** The same Sighting when nothing moved, so the driver sees no change to notify. */
-export function sight(previous: Sighting, read: WaymarkRead, now: number, step: Step): Sighting {
-  const { waymark, unseenSince } = locate(previous.waymark, previous.unseenSince, read, now, step);
-  return waymark === previous.waymark && unseenSince === previous.unseenSince && read.element === previous.element
-    ? previous
-    : { stepIndex: previous.stepIndex, waymark, unseenSince, element: read.element };
 }

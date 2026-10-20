@@ -41,8 +41,8 @@ import {
   sameWaymarkEvents,
   sight,
   unsighted,
-} from "./rules";
-import type { AdvanceRead, Message, Sighting, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./rules";
+} from "./machine";
+import type { AdvanceRead, Message, Sighting, StepRead, WaymarkAria, WaymarkEvents, WaymarkRead } from "./machine";
 import { opening, stepAt } from "./state";
 import type { State } from "./state";
 import type {
