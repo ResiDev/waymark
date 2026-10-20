@@ -32,7 +32,7 @@ export function runChange(before: Facts, phases: Phases, now: number, verdicts: 
   for (const work of phases.commands ?? []) after = run(after, work);
   after = settle(after, told);
 
-  const silent = phases.commands === undefined && (phases.storage !== undefined || phases.arrival !== undefined);
+  const silent = (phases.commands ?? []).length === 0 && (phases.storage !== undefined || phases.arrival !== undefined);
   return {
     after,
     savedFrom: phases.whole === true ? "whole" : stored.recorded,

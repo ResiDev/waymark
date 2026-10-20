@@ -86,8 +86,14 @@
     },
     {
       "files": [
+        "packages/core/src/state.ts",
+        "packages/core/src/run/change.ts",
+        "packages/core/src/run/memo.ts",
+        "packages/core/src/run/record.ts",
         "packages/core/src/run/rules.ts",
-        "packages/core/src/run/state.ts",
+        "packages/core/src/run/tasks.ts",
+        "packages/core/src/run/views.ts",
+        "packages/core/src/run/walkthroughs.ts",
         "packages/core/src/walkthrough/*.ts",
         "packages/core/src/checklists/*.ts"
       ],
@@ -96,23 +102,23 @@
           "error",
           {
             "name": "window",
-            "message": "Rules, State, Walkthroughs and Checklists never touch the page; the Run's driver does."
+            "message": "Only the Run's page module touches the page; definitions, facts and the works on them are pure."
           },
           {
             "name": "document",
-            "message": "Rules, State, Walkthroughs and Checklists never touch the page; the Run's driver does."
+            "message": "Only the Run's page module touches the page; definitions, facts and the works on them are pure."
           },
           {
             "name": "globalThis",
-            "message": "Rules, State, Walkthroughs and Checklists never touch the page; the Run's driver does."
+            "message": "Only the Run's page module touches the page; definitions, facts and the works on them are pure."
           },
           {
             "name": "requestAnimationFrame",
-            "message": "Only the Run's driver schedules frames."
+            "message": "Only the Run's page schedules frames."
           },
           {
             "name": "performance",
-            "message": "Time arrives in Messages; only the Run's driver reads the clock."
+            "message": "Time arrives in Messages; only the Run's page reads the clock."
           },
           {
             "name": "localStorage",
