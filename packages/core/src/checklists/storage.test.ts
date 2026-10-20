@@ -156,6 +156,7 @@ describe("checklists storage", () => {
     const { home } = create({ storage: adapter });
     const listener = vi.fn();
     home.subscribe(listener);
+    listener.mockClear();
 
     home.skip("hello");
     home.markTodo("invite");

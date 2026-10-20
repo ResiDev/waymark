@@ -191,9 +191,9 @@ Seven of the nine tests that fail at `181a36d` pass:
 - `run/storage.test.ts`, "puts a request made while loading straight on the waiting list": `requestStart` calls `wait` at the call. In the load's change, the held `start(tour)` finds nothing open and opens `tour`. `settle` finds `tour` open, so `whatsNew` waits until `tour` exits.
 - `storage/adapter.test.ts`, "hands text that is not JSON on": the status is now `unreadable`, not `error`.
 
-### Known contradiction
+### Two tests edited
 
-The two "held meanwhile as one change" tests, `run/storage.test.ts:352` and `checklists/storage.test.ts:154`, fail as expected and are not edited. Each subscribes while the record loads and asserts `toHaveBeenCalledExactlyOnceWith`, but `subscribe` calls a new listener at once. The listener is called exactly twice: the loading snapshot, then the final one. A scratch copy of both tests that asserts two calls, the second with the same object `getSnapshot()` hands back, passed, and was deleted before committing.
+The two "held meanwhile as one change" tests, `run/storage.test.ts:352` and `checklists/storage.test.ts:154`, asserted `toHaveBeenCalledExactlyOnceWith` on a listener subscribed while the record loads, but `subscribe` calls a new listener at once. Each now clears that first call with `listener.mockClear()`, so the assertion counts only the load's one change. These are the only test edits since `181a36d`.
 
 ## Modules
 
@@ -273,10 +273,10 @@ The new modules replace `run.ts`, `rules.ts`, `run/state.ts`, `checklists/tasks.
 ### Tests and types
 
 - `pnpm typecheck` passes.
-- `pnpm --filter waymark-core test`: 275 passed, 2 failed, the two in "Known contradiction".
+- `pnpm --filter waymark-core test`: 277 passed.
 - `pnpm --filter react-waymark test`: 89 passed.
-- `git diff 181a36d --stat -- '*.test.ts' '*.test.tsx' '*.perf.ts' 'packages/*/src/test/'` prints nothing.
-- `pnpm exec oxlint packages/core/src packages/react/src` finds nothing. `pnpm lint` still fails, on E's sketches in `docs/design/run-architecture/option-e-owners-as-values/` only, as it did before this work.
+- `git diff 181a36d --stat -- '*.test.ts' '*.test.tsx' '*.perf.ts' 'packages/*/src/test/'` lists only the two tests in "Two tests edited".
+- `pnpm lint` finds nothing. E's sketches it used to fail on are deleted.
 
 ### Public declarations
 

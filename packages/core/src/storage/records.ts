@@ -192,5 +192,5 @@ export const storedRecord = (
   tasks: Stored,
 ): StoredRecord => ({ version: VERSION, walkthroughs: { ...walkthroughs }, tasks: { ...tasks } });
 
-export const isEmptyRecord = (record: StoredRecord): boolean =>
+const isEmptyRecord = (record: StoredRecord): boolean =>
   Object.keys(record.walkthroughs).length === 0 && Object.keys(record.tasks).length === 0;

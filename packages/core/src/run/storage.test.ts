@@ -354,6 +354,7 @@ describe("run storage", () => {
     const run = connected({ storage: adapter });
     const listener = vi.fn();
     run.subscribe(listener);
+    listener.mockClear();
 
     run.act("advance", tour);
     run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
