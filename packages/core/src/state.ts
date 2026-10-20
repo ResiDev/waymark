@@ -50,15 +50,22 @@ export type Live = Readonly<{
 export type StepState = Readonly<{
   walkthrough: WalkthroughId;
   showingId: ShowingId;
-  started: boolean;
-  resumed: boolean;
+  /** `resuming` opened from a running record, so its first look sends no `start`. */
+  start: "pending" | "resuming" | "started";
   looked: boolean;
-  satisfied: boolean;
-  unlocked: boolean;
-  heldSince: number | undefined;
+  gate: Gate;
   scrolled: boolean;
   waymark: WaymarkState;
 }>;
+
+/** Whether the user may go past the step. `since` is when its condition was first met; its delay counts from then. */
+export type Gate =
+  | Readonly<{ _tag: "locked" }>
+  // A `state` check has held since then. It locks again if the check stops holding, or the Run detaches.
+  | Readonly<{ _tag: "holding"; since: number }>
+  // The click or event came then. It stays met.
+  | Readonly<{ _tag: "met"; since: number }>
+  | Readonly<{ _tag: "unlocked" }>;
 
 export type ShowingId = symbol;
 

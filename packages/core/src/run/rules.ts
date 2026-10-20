@@ -1,6 +1,6 @@
 import { checkOf, delayOf, eventsOf, hasWaymark, isAuto, isClick } from "../walkthrough/walkthrough";
 import type { Step, Walkthrough, WalkthroughProgress } from "../walkthrough/types";
-import type { AdvanceRead, Message, WaymarkState, StepRead, StepState, ShowingId, WaymarkRead } from "../state";
+import type { AdvanceRead, Gate, Message, WaymarkState, StepRead, StepState, ShowingId, WaymarkRead } from "../state";
 import type { Place } from "./record";
 import type { Action, Ended, Location, Rect, RunEventType, Running } from "./types";
 
@@ -17,7 +17,7 @@ export type Outcome = Readonly<{
   scrollTo?: Element | undefined;
 }>;
 
-type Carried = Pick<StepState, "started" | "resumed" | "looked">;
+type Carried = Pick<StepState, "start" | "looked">;
 
 const NO_EVENTS: readonly MachineEvent[] = [];
 
@@ -26,6 +26,9 @@ const SEARCHING: Location = { status: "searching" };
 const WAITING: Location = { status: "waiting" };
 const LOST: Location = { status: "lost" };
 const MISSING: Location = { status: "missing" };
+
+const LOCKED: Gate = { _tag: "locked" };
+const UNLOCKED: Gate = { _tag: "unlocked" };
 
 const isGone = (location: Location): location is Extract<Location, { status: "lost" | "missing" }> =>
   location.status === "lost" || location.status === "missing";
@@ -52,19 +55,16 @@ export function enter(walkthrough: Walkthrough, step: number, carried: Carried):
   return {
     walkthrough: walkthrough.id,
     showingId: Symbol(),
-    started: carried.started,
-    resumed: carried.resumed,
+    start: carried.start,
     looked: carried.looked,
-    satisfied: false,
-    unlocked: shown.advance === undefined,
-    heldSince: undefined,
+    gate: shown.advance === undefined ? UNLOCKED : LOCKED,
     scrolled: false,
     waymark: unseenWaymark(shown, step),
   };
 }
 
 /** The gate is open: the condition was met, or the Waymark is lost or missing, so the user is never stuck. */
-const canAdvance = (stepState: StepState): boolean => stepState.unlocked || isGone(stepState.waymark.location);
+const canAdvance = (stepState: StepState): boolean => stepState.gate._tag === "unlocked" || isGone(stepState.waymark.location);
 
 export const running = ({ walkthrough, walkthroughProgress, stepState }: OnStep): Running => ({
   phase: "running",
@@ -196,15 +196,20 @@ function scrollTarget(on: OnStep, stepState: StepState, read: WaymarkRead, step:
 
 function whenDue(on: OnStep, stepState: StepState, now: number): Outcome {
   const step = stepOf(on);
-  if (stepState.unlocked || stepState.heldSince === undefined || now - stepState.heldSince < delayOf(step)) return still(on, stepState);
-  return isAuto(step) ? advanceStep(on, stepState) : still(on, { ...stepState, unlocked: true });
+  const { gate } = stepState;
+  if (gate._tag === "locked" || gate._tag === "unlocked" || now - gate.since < delayOf(step)) return still(on, stepState);
+  return isAuto(step) ? advanceStep(on, stepState) : still(on, { ...stepState, gate: UNLOCKED });
+}
+
+function checked(gate: Gate, holds: boolean, now: number): Gate {
+  if (gate._tag === "holding") return holds ? gate : LOCKED;
+  return gate._tag === "locked" && holds ? { _tag: "holding", since: now } : gate;
 }
 
 function observeAdvance(on: OnStep, stepState: StepState, read: AdvanceRead, now: number): Outcome {
-  if (!stepState.started || stepState.unlocked) return still(on, stepState);
-  const holds = stepState.satisfied || read.holds;
-  const heldSince = holds ? (stepState.heldSince ?? now) : undefined;
-  return whenDue(on, heldSince === stepState.heldSince ? stepState : { ...stepState, heldSince }, now);
+  if (stepState.start !== "started" || stepState.gate._tag === "unlocked") return still(on, stepState);
+  const gate = checked(stepState.gate, read.holds, now);
+  return whenDue(on, gate === stepState.gate ? stepState : { ...stepState, gate }, now);
 }
 
 // The scroll is dropped if the check moved the walkthrough to another step:
@@ -230,25 +235,24 @@ function look(on: OnStep, read: StepRead | undefined): Outcome {
   const looked: StepState = on.stepState.looked ? on.stepState : { ...on.stepState, looked: true };
   const seen = read === undefined ? still(on, looked) : observe(on, looked, read);
   const { stepState } = seen;
-  if (stepState === undefined || stepState.started) return seen;
-  return { ...seen, stepState: { ...stepState, started: true }, events: stepState.resumed ? seen.events : [...seen.events, "start"] };
+  if (stepState === undefined || stepState.start === "started") return seen;
+  return { ...seen, stepState: { ...stepState, start: "started" }, events: stepState.start === "resuming" ? seen.events : [...seen.events, "start"] };
 }
 
 function satisfy(on: OnStep, now: number): Outcome {
   const { stepState } = on;
-  if (!stepState.started) return still(on);
-  return whenDue(on, stepState.satisfied ? stepState : { ...stepState, satisfied: true, heldSince: stepState.heldSince ?? now }, now);
+  if (stepState.start !== "started") return still(on);
+  return whenDue(on, stepState.gate._tag === "locked" ? { ...stepState, gate: { _tag: "met", since: now } } : stepState, now);
 }
 
 // No frames run while detached, so a `state` check cannot be shown to have
 // held throughout and its delay starts again. A click already counts.
 function detach(on: OnStep): Outcome {
   const { stepState } = on;
-  const dropClock = !stepState.satisfied && checkOf(stepOf(on)) !== undefined;
-  const heldSince = dropClock ? undefined : stepState.heldSince;
+  const gate = stepState.gate._tag === "holding" ? LOCKED : stepState.gate;
   const waymarkState = restartUnseen(stepState.waymark);
-  if (!stepState.looked && heldSince === stepState.heldSince && waymarkState === stepState.waymark) return still(on);
-  return still(on, { ...stepState, looked: false, heldSince, waymark: waymarkState });
+  if (!stepState.looked && gate === stepState.gate && waymarkState === stepState.waymark) return still(on);
+  return still(on, { ...stepState, looked: false, gate, waymark: waymarkState });
 }
 
 export function apply(on: OnStep, message: Message): Outcome {
@@ -272,9 +276,8 @@ export function needsAdvanceRead(on: OnStep, asLooked = false): boolean {
   const { stepState } = on;
   return (
     (stepState.looked || asLooked) &&
-    stepState.started &&
-    !stepState.unlocked &&
-    (checkOf(stepOf(on)) !== undefined || stepState.heldSince !== undefined)
+    stepState.start === "started" &&
+    (stepState.gate._tag === "met" || (stepState.gate._tag !== "unlocked" && checkOf(stepOf(on)) !== undefined))
   );
 }
 
@@ -316,6 +319,6 @@ export function liveWatchers(on: OnStep): LiveWatchers {
     frame: hasWaymark(step) || needsAdvanceRead(on),
     waymarkAria: element === null ? undefined : { element, expanded: true },
     waymarkEvents:
-      element !== null && !stepState.unlocked && events.length > 0 ? { element, events, visit: stepState.showingId } : undefined,
+      element !== null && stepState.gate._tag !== "unlocked" && events.length > 0 ? { element, events, visit: stepState.showingId } : undefined,
   };
 }

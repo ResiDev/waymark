@@ -105,7 +105,7 @@ function open(runState: RunState, walkthrough: Walkthrough, change: Change): Run
   const resumed = saved?.status === "running";
   const step = resumed ? saved.step : 0;
   const walkthroughProgress = place(saved, { status: "running", step, stepCount: walkthrough.steps.length, collapsed: false }, change.now);
-  const stepState = enter(walkthrough, step, { started: false, resumed, looked: false });
+  const stepState = enter(walkthrough, step, { start: resumed ? "resuming" : "pending", looked: false });
   if (resumed && saved.collapsed) change.events.push({ type: "resume", ...about(walkthrough, step, running({ walkthrough, walkthroughProgress, stepState })) });
   return { ...runState, userRecord: put(runState.userRecord, id, walkthroughProgress), live: { ...runState.live, openStep: stepState } };
 }
