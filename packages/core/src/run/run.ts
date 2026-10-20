@@ -2,7 +2,7 @@ import type { AnyTask, Checklist, ChecklistDefinition, ChecklistGroup, Checklist
 import { inDevelopment } from "../dev";
 import { problemReporter, recordUnreadable } from "../problems";
 import { createQueue } from "../queue";
-import type { Asked, Change, Facts, Given, Live, Phases, Recorded, Work } from "../state";
+import type { StartRequests, Change, RunState, WalkthroughsAndChecklistsInUse, Live, Phases, UserRecord, Work } from "../state";
 import { adapterOf } from "../storage/adapter";
 import { createLink } from "../storage/link";
 import { changesBetween, parseRecord, storedRecord } from "../storage/records";
@@ -12,7 +12,7 @@ import type { Walkthrough } from "../walkthrough/types";
 import { runChange } from "./change";
 import type { Ran } from "./change";
 import { createPage } from "./page";
-import { heard, loaded, LOADING, READY, recordedAt, refused, replaced } from "./record";
+import { heard, loaded, LOADING, READY, userRecordAt, refused, replaced } from "./record";
 import { conditions, eventsBetween, isComplete, markDone, markTodo, skip, startFrom, taskOf, tasksOf, toggle } from "./tasks";
 import type { Run, RunOptions, RunSnapshot } from "./types";
 import { checklistView, candidatesOf, runView } from "./views";
@@ -27,10 +27,10 @@ type Handle = Readonly<{
 }>;
 
 const toRecord =
-  (write: (recorded: Recorded, change: Change, facts: Facts) => Recorded): Work =>
-  (facts, change) => {
-    const recorded = write(facts.recorded, change, facts);
-    return recorded === facts.recorded ? facts : { ...facts, recorded };
+  (write: (userRecord: UserRecord, change: Change, runState: RunState) => UserRecord): Work =>
+  (runState, change) => {
+    const userRecord = write(runState.userRecord, change, runState);
+    return userRecord === runState.userRecord ? runState : { ...runState, userRecord };
   };
 
 export function createRun<TWalkthrough extends Walkthrough = Walkthrough>(
@@ -46,16 +46,17 @@ export function createRun(options: RunOptions = {}): Run {
   const queue = createQueue("Waymark callbacks failed.", report);
   const adapter = options.storage === undefined ? undefined : adapterOf(options.storage);
 
-  let given: Given = { walkthroughs: new Map(), groups: [], context: options.context };
-  let recorded = recordedAt(adapter === undefined && options.initial === undefined ? READY : LOADING);
-  let asked: Asked = { waiting: [], startedFrom: new Map() };
-  let live: Live = { visit: undefined, beacons: new Map() };
+  let walkthroughsAndChecklistsInUse: WalkthroughsAndChecklistsInUse = { walkthroughsById: new Map(), checklistDefinitions: [] };
+  let checklistContext: unknown = options.context;
+  let userRecord = userRecordAt(adapter === undefined && options.initial === undefined ? READY : LOADING);
+  let startRequests: StartRequests = { waitingToStart: [], startedFromChecklist: new Map() };
+  let live: Live = { openStep: undefined, beaconWaymarks: new Map() };
   const held: Work[] = [];
   const listeners = new Set<(snapshot: RunSnapshot) => void>();
   const handles = new Map<ChecklistDefinition<AnyTask>, Handle>();
 
-  const facts = (): Facts => ({ given, recorded, asked, live });
-  const loading = () => recorded.storage.type === "loading";
+  const runState = (): RunState => ({ walkthroughsAndChecklistsInUse, checklistContext, userRecord, startRequests, live });
+  const loading = () => userRecord.storageStatus.type === "loading";
 
   const verdicts: Change["verdicts"] = (tasks, context) => {
     try {
@@ -67,23 +68,26 @@ export function createRun(options: RunOptions = {}): Run {
   };
 
   const candidatesNow = candidatesOf();
-  const view = runView(candidatesNow, facts());
+  const view = runView(candidatesNow, runState());
   const change = (phases: Phases) => queue.run(() => commit(phases));
-  const page = createPage({ root, queue, facts, change, commitNow: (phases) => commit(phases), candidatesNow });
+  const page = createPage({ root, queue, runState, change, commitNow: (phases) => commit(phases), candidatesNow });
 
   const save = ({ savedFrom, after }: Ran) => {
-    const now = after.recorded;
+    const now = after.userRecord;
     const changes =
       savedFrom === "whole"
-        ? { ...storedRecord(now.progress, now.statuses), replace: true as const }
-        : savedFrom.progress === now.progress && savedFrom.statuses === now.statuses
+        ? { ...storedRecord(now.walkthroughProgressById, now.taskStatusById), replace: true as const }
+        : savedFrom.walkthroughProgressById === now.walkthroughProgressById && savedFrom.taskStatusById === now.taskStatusById
           ? undefined
-          : changesBetween(savedFrom, now);
+          : changesBetween(
+              { progress: savedFrom.walkthroughProgressById, statuses: savedFrom.taskStatusById },
+              { progress: now.walkthroughProgressById, statuses: now.taskStatusById },
+            );
     if (changes === undefined) return;
     link.save(changes);
     const { onChange } = options;
     if (onChange !== undefined) {
-      const stored = storedRecord(now.progress, now.statuses);
+      const stored = storedRecord(now.walkthroughProgressById, now.taskStatusById);
       queue.callApp("onChange", () => onChange(stored));
     }
   };
@@ -94,21 +98,21 @@ export function createRun(options: RunOptions = {}): Run {
     for (const event of told.events) queue.callApp("onEvent", () => onEvent(event));
     if (announcedFrom === undefined) return;
     const credit = (id: string) => told.credits.get(id);
-    for (const event of eventsBetween(tasksOf(after.given.groups), announcedFrom, after.recorded, credit)) {
+    for (const event of eventsBetween(tasksOf(after.walkthroughsAndChecklistsInUse.checklistDefinitions), announcedFrom, after.userRecord, credit)) {
       queue.callApp("onEvent", () => onEvent(event));
     }
     for (const { definition, view: shown } of handles.values()) {
-      if (isComplete(definition, announcedFrom.statuses) || !isComplete(definition, after.recorded.statuses)) continue;
+      if (isComplete(definition, announcedFrom.taskStatusById) || !isComplete(definition, after.userRecord.taskStatusById)) continue;
       const snapshot = shown.current();
       queue.callApp("onEvent", () => onEvent({ type: "checklistComplete", checklist: definition.name, snapshot }));
     }
   };
 
   function commit(phases: Phases) {
-    const ran = runChange(facts(), phases, Date.now(), verdicts);
+    const ran = runChange(runState(), phases, Date.now(), verdicts);
     const { after } = ran;
-    recorded = after.recorded;
-    asked = after.asked;
+    userRecord = after.userRecord;
+    startRequests = after.startRequests;
     live = after.live;
     for (const element of ran.told.scrolls) element.scrollIntoView({ behavior: "smooth", block: "center" });
 
@@ -139,9 +143,10 @@ export function createRun(options: RunOptions = {}): Run {
 
   /** The Run's definition for this id; another under an id already taken is a mistake. */
   const take = (walkthrough: Walkthrough): Walkthrough => {
-    const known = given.walkthroughs.get(walkthrough.id);
+    const known = walkthroughsAndChecklistsInUse.walkthroughsById.get(walkthrough.id);
     if (known === undefined) {
-      given = { ...given, walkthroughs: new Map(given.walkthroughs).set(walkthrough.id, walkthrough) };
+      const walkthroughsById = new Map(walkthroughsAndChecklistsInUse.walkthroughsById).set(walkthrough.id, walkthrough);
+      walkthroughsAndChecklistsInUse = { ...walkthroughsAndChecklistsInUse, walkthroughsById };
       return walkthrough;
     }
     if (known !== walkthrough && inDevelopment()) {
@@ -174,7 +179,7 @@ export function createRun(options: RunOptions = {}): Run {
     loaded: takeRecord,
     heard: (value) => {
       const parsed = parseRecord(value);
-      change({ storage: toRecord((was, told, at) => heard(was, parsed, openId(at), at.given.walkthroughs, told)) });
+      change({ storage: toRecord((was, told, at) => heard(was, parsed, openId(at), at.walkthroughsAndChecklistsInUse.walkthroughsById, told)) });
       if (parsed.ok) change({ arrival: true });
     },
     refused: (error) => change({ storage: toRecord((was) => refused(was, error)) }),
@@ -182,14 +187,14 @@ export function createRun(options: RunOptions = {}): Run {
 
   if (options.initial !== undefined) takeRecord(parseRecord(options.initial));
   /** What a server render shows: it cannot see the browser's storage. */
-  const server = facts();
+  const server = runState();
   const serverSnapshot = view.current();
 
   /** A checklist's Tasks, their walkthroughs and the checklists beside it reach the Run the first time one is used. */
   const join = (group: ChecklistGroup) => {
-    if (given.groups.includes(group)) return;
+    if (walkthroughsAndChecklistsInUse.checklistDefinitions.includes(group)) return;
     for (const task of group.tasks) if (task.walkthrough !== undefined) take(task.walkthrough);
-    given = { ...given, groups: [...given.groups, group] };
+    walkthroughsAndChecklistsInUse = { ...walkthroughsAndChecklistsInUse, checklistDefinitions: [...walkthroughsAndChecklistsInUse.checklistDefinitions, group] };
     for (const definition of group.checklists) handleOf(definition);
     if (!loading()) change({ arrival: true });
   };
@@ -198,7 +203,7 @@ export function createRun(options: RunOptions = {}): Run {
     const known = handles.get(definition);
     if (known !== undefined) return known;
     const { name, group } = definition;
-    const shown = checklistView(definition, facts());
+    const shown = checklistView(definition, runState());
     const serverShown = checklistView(definition, server).current();
     const listening = new Set<(snapshot: ChecklistSnapshot<AnyTask>) => void>();
     const on = (work: (id: string) => Work) => (id: string) => {
@@ -218,7 +223,7 @@ export function createRun(options: RunOptions = {}): Run {
         },
         start: (id) => {
           join(group);
-          const walkthrough = taskOf(given.groups, id)?.walkthrough;
+          const walkthrough = taskOf(walkthroughsAndChecklistsInUse.checklistDefinitions, id)?.walkthrough;
           if (walkthrough !== undefined) command(startFrom(take(walkthrough), name));
         },
         markDone: on(markDone),
@@ -235,10 +240,10 @@ export function createRun(options: RunOptions = {}): Run {
     start: (walkthrough) => command(start(take(walkthrough))),
     requestStart: (walkthrough) => {
       const taken = take(walkthrough);
-      asked = wait(asked, taken.id);
+      startRequests = wait(startRequests, taken.id);
       command(request(taken));
       return () => {
-        asked = unwait(asked, taken.id);
+        startRequests = unwait(startRequests, taken.id);
       };
     },
     act: (action, walkthrough) => {
@@ -247,7 +252,7 @@ export function createRun(options: RunOptions = {}): Run {
       } else if (loading()) {
         command(act(action, undefined));
       } else {
-        const on = openOf(facts());
+        const on = openOf(runState());
         if (on !== undefined) command(act(action, on.walkthrough));
       }
     },
@@ -258,8 +263,8 @@ export function createRun(options: RunOptions = {}): Run {
     attach: page.attach,
     connect: link.connect,
     setContext: (next) => {
-      if (Object.is(next, given.context)) return;
-      given = { ...given, context: next };
+      if (Object.is(next, checklistContext)) return;
+      checklistContext = next;
       // Not held: only the latest context matters, and the load asks the conditions once the record is in.
       if (!loading()) change({ commands: [conditions] });
     },

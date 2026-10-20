@@ -1,32 +1,32 @@
 import { statusIn } from "../checklists/record";
 import type { AnyTask, ChecklistDefinition, ChecklistGroup, ChecklistSnapshot } from "../checklists/types";
-import type { Given, Live, Recorded, Shown, Visit } from "../state";
+import type { WalkthroughsAndChecklistsInUse, Live, UserRecord, ShownRunState, StepState } from "../state";
 import type { Walkthrough, WalkthroughProgress } from "../walkthrough/types";
 import { memo } from "./memo";
 import { running, stepAt } from "./rules";
 import { taskIdFor } from "./tasks";
 import type { Beacon, OpenWalkthrough, Running, RunSnapshot } from "./types";
-import { beaconCandidates, openId, openOf, sightingOf } from "./walkthroughs";
+import { beaconCandidates, openId, openOf, waymarkStateOf } from "./walkthroughs";
 import type { Candidates } from "./walkthroughs";
 
 export type View<T> = Readonly<{
-  update: (facts: Shown) => T;
+  update: (runState: ShownRunState) => T;
   current: () => T;
 }>;
 
-function viewOf<T>(of: (facts: Shown) => T, facts: Shown): View<T> {
-  let shown = of(facts);
+function viewOf<T>(of: (runState: ShownRunState) => T, runState: ShownRunState): View<T> {
+  let shown = of(runState);
   return {
     update: (next) => (shown = of(next)),
     current: () => shown,
   };
 }
 
-export function candidatesOf(): (facts: Shown) => Candidates {
-  const of = memo(([recorded, walkthroughs, opened]: readonly [Recorded, Given["walkthroughs"], string | undefined]) =>
-    beaconCandidates(recorded, walkthroughs, opened),
+export function candidatesOf(): (runState: ShownRunState) => Candidates {
+  const of = memo(([userRecord, walkthroughs, opened]: readonly [UserRecord, WalkthroughsAndChecklistsInUse["walkthroughsById"], string | undefined]) =>
+    beaconCandidates(userRecord, walkthroughs, opened),
   );
-  return (facts) => of(facts.recorded, facts.given.walkthroughs, openId(facts));
+  return (runState) => of(runState.userRecord, runState.walkthroughsAndChecklistsInUse.walkthroughsById, openId(runState));
 }
 
 const NO_BEACONS: readonly Beacon[] = Object.freeze([]);
@@ -42,63 +42,68 @@ const sameRunning = (a: Running, b: Running): boolean =>
 const sameList = <T>(a: readonly T[], b: readonly T[]): boolean =>
   a.length === b.length && a.every((item, index) => item === b[index]);
 
-type OpenArgs = readonly [Walkthrough | undefined, WalkthroughProgress | undefined, Visit | undefined, readonly ChecklistGroup[]];
+type OpenArgs = readonly [Walkthrough | undefined, WalkthroughProgress | undefined, StepState | undefined, readonly ChecklistGroup[]];
 
-function openShown([walkthrough, entry, visit, groups]: OpenArgs, last: OpenWalkthrough | null | undefined): OpenWalkthrough | null {
-  if (walkthrough === undefined || entry === undefined || visit === undefined) return null;
-  const made = running({ walkthrough, entry, visit });
+function openShown([walkthrough, walkthroughProgress, stepState, groups]: OpenArgs, last: OpenWalkthrough | null | undefined): OpenWalkthrough | null {
+  if (walkthrough === undefined || walkthroughProgress === undefined || stepState === undefined) return null;
+  const made = running({ walkthrough, walkthroughProgress, stepState });
   const snapshot = last?.walkthrough === walkthrough && sameRunning(last.snapshot, made) ? last.snapshot : made;
   const task = taskIdFor(groups, walkthrough.id);
   return last?.snapshot === snapshot && last.task === task ? last : { walkthrough, snapshot, task };
 }
 
-function beaconsShown([candidates, sightings]: readonly [Candidates, Live["beacons"]], last: readonly Beacon[] | undefined): readonly Beacon[] {
+function beaconsShown([candidates, beaconWaymarks]: readonly [Candidates, Live["beaconWaymarks"]], last: readonly Beacon[] | undefined): readonly Beacon[] {
   let latest: Walkthrough | undefined;
   let latestAt = -Infinity;
-  for (const [walkthrough, entry] of candidates) {
-    if (entry.changedAt >= latestAt) {
+  for (const [walkthrough, walkthroughProgress] of candidates) {
+    if (walkthroughProgress.changedAt >= latestAt) {
       latest = walkthrough;
-      latestAt = entry.changedAt;
+      latestAt = walkthroughProgress.changedAt;
     }
   }
   const shown: Beacon[] = [];
-  for (const [walkthrough, entry] of candidates) {
-    const { waymark } = sightingOf(sightings, walkthrough, entry);
-    const anywhere = waymark.status === "absent" || waymark.status === "lost" || waymark.status === "missing";
-    if (waymark.status !== "found" && !(anywhere && walkthrough === latest)) continue;
+  for (const [walkthrough, walkthroughProgress] of candidates) {
+    const { location } = waymarkStateOf(beaconWaymarks, walkthrough, walkthroughProgress);
+    const anywhere = location.status === "absent" || location.status === "lost" || location.status === "missing";
+    if (location.status !== "found" && !(anywhere && walkthrough === latest)) continue;
     const was = last?.find((beacon) => beacon.walkthrough === walkthrough);
     shown.push(
-      was?.stepIndex === entry.step && was.waymark === waymark
+      was?.stepIndex === walkthroughProgress.step && was.waymark === location
         ? was
-        : { walkthrough, step: stepAt(walkthrough, entry.step), stepIndex: entry.step, waymark },
+        : { walkthrough, step: stepAt(walkthrough, walkthroughProgress.step), stepIndex: walkthroughProgress.step, waymark: location },
     );
   }
   if (shown.length === 0) return NO_BEACONS;
   return last !== undefined && sameList(shown, last) ? last : shown;
 }
 
-export function runView(candidatesNow: (facts: Shown) => Candidates, facts: Shown): View<RunSnapshot> {
+export function runView(candidatesNow: (runState: ShownRunState) => Candidates, runState: ShownRunState): View<RunSnapshot> {
   const open = memo(openShown);
   const beacons = memo(beaconsShown);
   const snapshot = memo(
-    ([status, progress, opened, shown]: readonly [RunSnapshot["storageStatus"], Recorded["progress"], OpenWalkthrough | null, readonly Beacon[]]): RunSnapshot => ({
+    ([status, walkthroughProgressById, opened, shown]: readonly [
+      RunSnapshot["storageStatus"],
+      UserRecord["walkthroughProgressById"],
+      OpenWalkthrough | null,
+      readonly Beacon[],
+    ]): RunSnapshot => ({
       storageStatus: status,
-      progress,
+      progress: walkthroughProgressById,
       open: opened,
       beacons: shown,
     }),
   );
-  const of = memo(([given, recorded, live]: readonly [Given, Recorded, Live]) => {
-    const shown = { given, recorded, live };
+  const of = memo(([walkthroughsAndChecklistsInUse, userRecord, live]: readonly [WalkthroughsAndChecklistsInUse, UserRecord, Live]) => {
+    const shown = { walkthroughsAndChecklistsInUse, userRecord, live };
     const on = openOf(shown);
     return snapshot(
-      recorded.storage.type,
-      recorded.progress,
-      open(on?.walkthrough, on?.entry, on?.visit, given.groups),
-      beacons(candidatesNow(shown), live.beacons),
+      userRecord.storageStatus.type,
+      userRecord.walkthroughProgressById,
+      open(on?.walkthrough, on?.walkthroughProgress, on?.stepState, walkthroughsAndChecklistsInUse.checklistDefinitions),
+      beacons(candidatesNow(shown), live.beaconWaymarks),
     );
   });
-  return viewOf((shown) => of(shown.given, shown.recorded, shown.live), facts);
+  return viewOf((shown) => of(shown.walkthroughsAndChecklistsInUse, shown.userRecord, shown.live), runState);
 }
 
 type Snapshot = ChecklistSnapshot<AnyTask>;
@@ -108,14 +113,14 @@ const sameSnapshot = (a: Snapshot, b: Snapshot): boolean =>
   a.storageStatus === b.storageStatus &&
   a.tasks.every((row, index) => row.status === b.tasks[index]?.status && row.inProgress === b.tasks[index].inProgress);
 
-export function checklistView(definition: ChecklistDefinition<AnyTask>, facts: Shown): View<Snapshot> {
+export function checklistView(definition: ChecklistDefinition<AnyTask>, runState: ShownRunState): View<Snapshot> {
   const walkthroughOf = new Map(definition.group.tasks.map((task) => [task.id, task.walkthrough?.id]));
-  type Args = readonly [Recorded["statuses"], Recorded["progress"], Recorded["storage"], string | undefined];
-  const of = memo(([statuses, progress, storage, opened]: Args, last: Snapshot | undefined): Snapshot => {
+  type Args = readonly [UserRecord["taskStatusById"], UserRecord["walkthroughProgressById"], UserRecord["storageStatus"], string | undefined];
+  const of = memo(([taskStatusById, walkthroughProgressById, storage, opened]: Args, last: Snapshot | undefined): Snapshot => {
     const tasks = definition.tasks.map((task) => {
       const walkthrough = walkthroughOf.get(task.id);
-      const entry = walkthrough === undefined ? undefined : progress[walkthrough];
-      return { task, status: statusIn(statuses, task.id), inProgress: entry?.status === "running" && entry.collapsed };
+      const walkthroughProgress = walkthrough === undefined ? undefined : walkthroughProgressById[walkthrough];
+      return { task, status: statusIn(taskStatusById, task.id), inProgress: walkthroughProgress?.status === "running" && walkthroughProgress.collapsed };
     });
     const finishedCount = tasks.filter((row) => row.status !== "todo").length;
     const next: Snapshot = {
@@ -128,5 +133,5 @@ export function checklistView(definition: ChecklistDefinition<AnyTask>, facts: S
     };
     return last !== undefined && sameSnapshot(last, next) ? last : next;
   });
-  return viewOf((shown) => of(shown.recorded.statuses, shown.recorded.progress, shown.recorded.storage, openId(shown)), facts);
+  return viewOf((shown) => of(shown.userRecord.taskStatusById, shown.userRecord.walkthroughProgressById, shown.userRecord.storageStatus, openId(shown)), runState);
 }

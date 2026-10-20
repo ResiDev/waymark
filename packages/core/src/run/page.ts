@@ -1,13 +1,13 @@
 import { inDevelopment } from "../dev";
 import type { Queue } from "../queue";
-import type { Facts, Message, Phases, Shown, StepRead, VisitKey, WaymarkRead, Work } from "../state";
+import type { RunState, Message, Phases, ShownRunState, StepRead, ShowingId, WaymarkRead, Work } from "../state";
 import { checkOf, hasWaymark, selectorOf } from "../walkthrough/walkthrough";
 import { keyAction, whereClicked } from "./input";
 import type { InputContext } from "./input";
 import { liveWatchers, needsAdvanceRead, NOTHING_LIVE, sameWaymarkAria, sameWaymarkEvents, stepAt } from "./rules";
 import type { OnStep, WaymarkAria, WaymarkEvents } from "./rules";
 import type { AttachOptions, Rect, UiElements } from "./types";
-import { detached, obey, openOf, sightBeacons, sightingOf } from "./walkthroughs";
+import { detached, obey, openOf, seeBeaconWaymarks, waymarkStateOf } from "./walkthroughs";
 import type { Candidates } from "./walkthroughs";
 
 const NO_UI: UiElements = { dialog: null };
@@ -62,27 +62,27 @@ type Attachment = Readonly<{ ui: () => UiElements; padding: number }>;
 export type Page = Readonly<{
   attach: (ui: () => UiElements, options?: AttachOptions) => () => void;
   /** After every change, even one that moved nothing: a frame that has fired has closed itself, and must be asked for again. */
-  afterChange: (facts: Facts) => void;
+  afterChange: (runState: RunState) => void;
 }>;
 
 export function createPage({
   root,
   queue,
-  facts,
+  runState,
   change,
   commitNow,
   candidatesNow,
 }: Readonly<{
   root: () => Document | Element;
   queue: Queue;
-  facts: () => Facts;
+  runState: () => RunState;
   change: (phases: Phases) => void;
   commitNow: (phases: Phases) => void;
-  candidatesNow: (facts: Shown) => Candidates;
+  candidatesNow: (runState: ShownRunState) => Candidates;
 }>): Page {
   const attachments: Attachment[] = [];
-  // A check that throws would throw every frame; each distinct error once per visit is enough to see the bug.
-  let thrown: Readonly<{ visit: VisitKey; errors: Set<string> }> | undefined;
+  // A check that throws would throw every frame; each distinct error once per showing of a step is enough to see the bug.
+  let thrown: Readonly<{ showingId: ShowingId; errors: Set<string> }> | undefined;
   let input: Watcher<true>;
   let frame: Watcher<true>;
   let waymarkAria: Watcher<WaymarkAria>;
@@ -100,8 +100,8 @@ export function createPage({
     return { element, rect, inView: rect !== null && inViewport(rect) };
   };
 
-  const firstThrow = (error: unknown, visit: VisitKey): boolean => {
-    if (thrown?.visit !== visit) thrown = { visit, errors: new Set() };
+  const firstThrow = (error: unknown, visit: ShowingId): boolean => {
+    if (thrown?.showingId !== visit) thrown = { showingId: visit, errors: new Set() };
     const key = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     if (thrown.errors.has(key)) return false;
     thrown.errors.add(key);
@@ -109,84 +109,84 @@ export function createPage({
   };
 
   const readStep = (on: OnStep, asLooked: boolean): StepRead | undefined => {
-    const step = stepAt(on.walkthrough, on.entry.step);
-    const { visit } = on;
+    const step = stepAt(on.walkthrough, on.walkthroughProgress.step);
+    const { stepState } = on;
     const selector = selectorOf(step);
-    const waymark = selector === undefined ? undefined : measure(selector, visit.sighting.element);
+    const waymark = selector === undefined ? undefined : measure(selector, stepState.waymark.element);
     if (!needsAdvanceRead(on, asLooked)) return waymark === undefined ? undefined : { now: performance.now(), waymark };
     let holds = false;
     try {
       holds = checkOf(step)?.(waymark?.element ?? null) === true;
     } catch (error) {
-      if (firstThrow(error, visit.key)) queue.fail("stateCheck", error);
+      if (firstThrow(error, stepState.showingId)) queue.fail("stateCheck", error);
     }
     return { now: performance.now(), waymark, advance: { holds } };
   };
 
-  const lookAtBeacons = (shown: Shown): Work => {
+  const lookAtBeacons = (shown: ShownRunState): Work => {
     const reads = new Map<string, WaymarkRead>();
-    for (const [walkthrough, entry] of candidatesNow(shown)) {
-      const selector = selectorOf(stepAt(walkthrough, entry.step));
-      if (selector !== undefined) reads.set(walkthrough.id, measure(selector, sightingOf(shown.live.beacons, walkthrough, entry).element));
+    for (const [walkthrough, walkthroughProgress] of candidatesNow(shown)) {
+      const selector = selectorOf(stepAt(walkthrough, walkthroughProgress.step));
+      if (selector !== undefined) reads.set(walkthrough.id, measure(selector, waymarkStateOf(shown.live.beaconWaymarks, walkthrough, walkthroughProgress).element));
     }
-    return sightBeacons(reads, performance.now());
+    return seeBeaconWaymarks(reads, performance.now());
   };
 
   const look = () => {
     if (attachments.length === 0) return;
-    const on = openOf(facts());
-    if (on === undefined || on.visit.looked) return;
-    commitNow({ commands: [obey({ type: "look", visit: on.visit.key, read: readStep(on, true) })] });
+    const on = openOf(runState());
+    if (on === undefined || on.stepState.looked) return;
+    commitNow({ commands: [obey({ type: "look", showingId: on.stepState.showingId, read: readStep(on, true) })] });
   };
 
   const openFrame = () => {
     const id = requestAnimationFrame(() => {
       frame = undefined;
-      const shown = facts();
+      const shown = runState();
       const on = openOf(shown);
       if (on === undefined) {
         change({ commands: [lookAtBeacons(shown)] });
         return;
       }
       const read = readStep(on, false);
-      if (read !== undefined) tell({ type: "stepRead", visit: on.visit.key, read });
+      if (read !== undefined) tell({ type: "stepRead", showingId: on.stepState.showingId, read });
     });
     return () => cancelAnimationFrame(id);
   };
 
   const inputContext = (on: OnStep | undefined): InputContext => {
     const attachment = attachments.at(-1);
-    const waymark = on?.visit.sighting.waymark;
+    const location = on?.stepState.waymark.location;
     return {
       dismiss: on?.walkthrough.dismiss ?? "collapse",
-      element: on?.visit.sighting.element ?? null,
-      rect: waymark?.status === "found" ? waymark.rect : null,
+      element: on?.stepState.waymark.element ?? null,
+      rect: location?.status === "found" ? location.rect : null,
       padding: attachment?.padding ?? 0,
       ui: attachment?.ui() ?? NO_UI,
     };
   };
 
   const onClick = (event: MouseEvent) => {
-    const on = openOf(facts());
+    const on = openOf(runState());
     if (on === undefined) return;
-    tell({ type: "click", visit: on.visit.key, hit: whereClicked(event, inputContext(on)), now: performance.now() });
+    tell({ type: "click", showingId: on.stepState.showingId, hit: whereClicked(event, inputContext(on)), now: performance.now() });
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
-    const action = keyAction(event, inputContext(openOf(facts())));
+    const action = keyAction(event, inputContext(openOf(runState())));
     if (action !== undefined) tell({ type: "act", action });
   };
 
   const openWaymarkEvents = (to: WaymarkEvents) =>
-    listenToWaymarkEvents(to, () => tell({ type: "event", visit: to.visit, now: performance.now() }));
+    listenToWaymarkEvents(to, () => tell({ type: "event", showingId: to.visit, now: performance.now() }));
 
-  const afterChange = (shown: Facts) => {
+  const afterChange = (shown: RunState) => {
     const attached = attachments.length > 0;
     const on = openOf(shown);
-    if (attached && on !== undefined && !on.visit.looked) queue.run(look);
+    if (attached && on !== undefined && !on.stepState.looked) queue.run(look);
     const live = on === undefined ? NOTHING_LIVE : liveWatchers(on);
     const beacons =
-      attached && candidatesNow(shown).some(([walkthrough, entry]) => hasWaymark(stepAt(walkthrough, entry.step)));
+      attached && candidatesNow(shown).some(([walkthrough, walkthroughProgress]) => hasWaymark(stepAt(walkthrough, walkthroughProgress.step)));
     input = syncWatcher(input, live.input || undefined, () => openInput(onClick, onKeyDown));
     frame = syncWatcher(frame, live.frame || beacons || undefined, openFrame);
     waymarkAria = syncWatcher(waymarkAria, live.waymarkAria, openWaymarkAria, sameWaymarkAria);

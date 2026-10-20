@@ -10,46 +10,46 @@ type WalkthroughId = string;
 type TaskId = string;
 type ChecklistName = string;
 
-export type Given = Readonly<{
-  walkthroughs: ReadonlyMap<WalkthroughId, Walkthrough>;
-  groups: readonly ChecklistGroup[];
-  context: unknown;
+export type WalkthroughsAndChecklistsInUse = Readonly<{
+  walkthroughsById: ReadonlyMap<WalkthroughId, Walkthrough>;
+  checklistDefinitions: readonly ChecklistGroup[];
 }>;
 
-export type Recorded = Readonly<{
-  progress: Readonly<Record<WalkthroughId, WalkthroughProgress>>;
-  statuses: Stored;
+export type UserRecord = Readonly<{
+  walkthroughProgressById: Readonly<Record<WalkthroughId, WalkthroughProgress>>;
+  taskStatusById: Stored;
   /**
-   * Entries storage gave that no definition has checked yet, as the objects
-   * it gave. Not worked out from "has no definition", because a definition
-   * is taken at the call, before the change that checks its entry against it.
+   * Walkthrough progress storage gave that no definition has verified yet, as
+   * the objects it gave. Not worked out from "has no definition", because a
+   * definition is taken at the call, before the change that verifies its
+   * progress against it.
    */
-  unchecked: ReadonlyMap<WalkthroughId, WalkthroughProgress>;
-  storage: StorageState;
+  unverifiedWalkthroughProgressById: ReadonlyMap<WalkthroughId, WalkthroughProgress>;
+  storageStatus: StorageState;
 }>;
 
 export type StorageState =
   | Readonly<{ type: Exclude<StorageStatus, "unreadable"> }>
   | Readonly<{ type: "unreadable"; error: RecordUnreadableError }>;
 
-export type Asked = Readonly<{
+export type StartRequests = Readonly<{
   /**
    * Not worked out from progress: a request is used up when it opens or is
    * found started, and `reset` must not bring it back.
    */
-  waiting: readonly WalkthroughId[];
+  waitingToStart: readonly WalkthroughId[];
   /** Which checklist's Start opened each walkthrough still running: the record does not say which button was pressed. */
-  startedFrom: ReadonlyMap<WalkthroughId, ChecklistName>;
+  startedFromChecklist: ReadonlyMap<WalkthroughId, ChecklistName>;
 }>;
 
 export type Live = Readonly<{
-  visit: Visit | undefined;
-  beacons: ReadonlyMap<WalkthroughId, Sighting>;
+  openStep: StepState | undefined;
+  beaconWaymarks: ReadonlyMap<WalkthroughId, WaymarkState>;
 }>;
 
-export type Visit = Readonly<{
+export type StepState = Readonly<{
   walkthrough: WalkthroughId;
-  key: VisitKey;
+  showingId: ShowingId;
   started: boolean;
   resumed: boolean;
   looked: boolean;
@@ -57,24 +57,30 @@ export type Visit = Readonly<{
   unlocked: boolean;
   heldSince: number | undefined;
   scrolled: boolean;
-  sighting: Sighting;
+  waymark: WaymarkState;
 }>;
 
-export type VisitKey = symbol;
+export type ShowingId = symbol;
 
-export type Sighting = Readonly<{
+export type WaymarkState = Readonly<{
   step: number;
-  waymark: Location;
+  location: Location;
   unseenSince: number | undefined;
   /** Reused next frame while it still matches, to skip a `querySelector`. */
   element: Element | null;
 }>;
 
-export type Facts = Readonly<{ given: Given; recorded: Recorded; asked: Asked; live: Live }>;
+export type RunState = Readonly<{
+  walkthroughsAndChecklistsInUse: WalkthroughsAndChecklistsInUse;
+  checklistContext: unknown;
+  userRecord: UserRecord;
+  startRequests: StartRequests;
+  live: Live;
+}>;
 
-export type Shown = Omit<Facts, "asked">;
+export type ShownRunState = Omit<RunState, "startRequests" | "checklistContext">;
 
-export type Work = (facts: Facts, change: Change) => Facts;
+export type Work = (runState: RunState, change: Change) => RunState;
 
 export type Change = Readonly<{
   now: number;
@@ -104,8 +110,8 @@ export type StepRead = Readonly<{
 
 export type Message =
   | Readonly<{ type: "act"; action: Action }>
-  | Readonly<{ type: "stepRead"; visit: VisitKey; read: StepRead }>
-  | Readonly<{ type: "look"; visit: VisitKey; read: StepRead | undefined }>
-  | Readonly<{ type: "click"; visit: VisitKey; hit: ClickHit; now: number }>
-  | Readonly<{ type: "event"; visit: VisitKey; now: number }>
+  | Readonly<{ type: "stepRead"; showingId: ShowingId; read: StepRead }>
+  | Readonly<{ type: "look"; showingId: ShowingId; read: StepRead | undefined }>
+  | Readonly<{ type: "click"; showingId: ShowingId; hit: ClickHit; now: number }>
+  | Readonly<{ type: "event"; showingId: ShowingId; now: number }>
   | Readonly<{ type: "detached" }>;
