@@ -1,4 +1,4 @@
-// Sketch for packages/core/src/run/rules.ts, about 380 lines. Replaces today's
+// Sketch for packages/core/src/run/rules.ts, about 400 lines. Replaces today's
 // rules.ts and run/state.ts (633 lines together).
 //
 // The rules of one step, over the open walkthrough's definition, its progress
