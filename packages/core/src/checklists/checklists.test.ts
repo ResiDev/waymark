@@ -142,6 +142,15 @@ describe("defineChecklists", () => {
     expect(() => defineChecklists({ tasks: { "": {} }, checklists: { home: [""] } })).toThrow(/cannot be empty/);
   });
 
+  it("hands back each checklist as its name and tasks, and refuses a copy of one", () => {
+    const { home } = onboarding.checklists;
+    expect(Object.keys(home)).toEqual(["name", "tasks"]);
+    expect(() => JSON.stringify(home)).not.toThrow();
+
+    const short = { ...home, tasks: home.tasks.filter((task) => task.id !== "say-hello") };
+    expect(() => createRun().checklist(short)).toThrow('Checklist "home" is not one defineChecklists made.');
+  });
+
   it("checks inline steps as it defines them, naming the task", () => {
     expect(() => defineChecklists({ tasks: { tour: { walkthrough: [] } } })).toThrow(
       'Task "tour": A walkthrough needs at least one step.',

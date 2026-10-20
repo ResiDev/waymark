@@ -2,6 +2,7 @@ import { dictionary } from "../dictionary";
 import { checkedWalkthrough } from "../walkthrough/walkthrough";
 import type { Step } from "../walkthrough/types";
 import type {
+  AnyTask,
   ChecklistDefinition,
   ChecklistGroup,
   ChecklistSelections,
@@ -15,6 +16,18 @@ import type {
 } from "./types";
 import { DEFAULT_CHECKLIST } from "./types";
 import { select } from "./validate";
+
+// Not a field on each definition, so a definition is the object the app wrote, and a copy of one is refused.
+const groups = new WeakMap<ChecklistDefinition<AnyTask>, ChecklistGroup>();
+
+/** The group a definition was made in. */
+export function groupOf(definition: ChecklistDefinition<AnyTask>): ChecklistGroup {
+  const group = groups.get(definition);
+  if (group === undefined) {
+    throw new Error(`Checklist "${definition.name}" is not one defineChecklists made. Pass the checklist it returned, not a copy of one.`);
+  }
+  return group;
+}
 
 /**
  * Describes Tasks and the checklists that list them. It holds no state: a
@@ -65,7 +78,8 @@ export function defineChecklists(
   const group: ChecklistGroup = { tasks, checklists };
   const byName = dictionary<ChecklistDefinition<NamedTask<TaskMap>>>();
   for (const [name, selection] of selected) {
-    const checklist = { name, tasks: selection, group };
+    const checklist = { name, tasks: selection };
+    groups.set(checklist, group);
     checklists.push(checklist);
     byName[name] = checklist;
   }

@@ -144,7 +144,7 @@ export type DefinedTask = Readonly<{
   isComplete: ((context: unknown) => boolean) | undefined;
 }>;
 
-/** Every Task and checklist defined together. A Run takes them in whole the first time one of the checklists is used. */
+/** Every Task and checklist defined together. A Run takes them in whole the first time one of the checklists is used. Kept apart from each definition by `groupOf`. */
 export type ChecklistGroup = Readonly<{
   tasks: readonly DefinedTask[];
   checklists: readonly ChecklistDefinition<AnyTask>[];
@@ -154,7 +154,6 @@ export type ChecklistGroup = Readonly<{
 export type ChecklistDefinition<TTask extends { readonly id: string }> = Readonly<{
   name: string;
   tasks: readonly TTask[];
-  group: ChecklistGroup;
 }>;
 
 export type ChecklistsDefinition<

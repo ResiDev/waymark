@@ -1,3 +1,4 @@
+import { groupOf } from "../checklists/checklists";
 import type { AnyTask, Checklist, ChecklistDefinition, ChecklistGroup, ChecklistSnapshot } from "../checklists/types";
 import { inDevelopment } from "../dev";
 import { problemReporter, recordUnreadable } from "../problems";
@@ -202,9 +203,10 @@ export function createRun(options: RunOptions = {}): Run {
   function handleOf(definition: ChecklistDefinition<AnyTask>): Handle {
     const known = handles.get(definition);
     if (known !== undefined) return known;
-    const { name, group } = definition;
-    const shown = checklistView(definition, runState());
-    const serverShown = checklistView(definition, server).current();
+    const { name } = definition;
+    const group = groupOf(definition);
+    const shown = checklistView(definition, group, runState());
+    const serverShown = checklistView(definition, group, server).current();
     const listening = new Set<(snapshot: ChecklistSnapshot<AnyTask>) => void>();
     const on = (work: (id: string) => Work) => (id: string) => {
       join(group);

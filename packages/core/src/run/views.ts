@@ -113,8 +113,8 @@ const sameSnapshot = (a: Snapshot, b: Snapshot): boolean =>
   a.storageStatus === b.storageStatus &&
   a.tasks.every((row, index) => row.status === b.tasks[index]?.status && row.inProgress === b.tasks[index].inProgress);
 
-export function checklistView(definition: ChecklistDefinition<AnyTask>, runState: ShownRunState): View<Snapshot> {
-  const walkthroughOf = new Map(definition.group.tasks.map((task) => [task.id, task.walkthrough?.id]));
+export function checklistView(definition: ChecklistDefinition<AnyTask>, group: ChecklistGroup, runState: ShownRunState): View<Snapshot> {
+  const walkthroughOf = new Map(group.tasks.map((task) => [task.id, task.walkthrough?.id]));
   type Args = readonly [UserRecord["taskStatusById"], UserRecord["walkthroughProgressById"], UserRecord["storageStatus"], string | undefined];
   const of = memo(([taskStatusById, walkthroughProgressById, storage, opened]: Args, last: Snapshot | undefined): Snapshot => {
     const tasks = definition.tasks.map((task) => {
