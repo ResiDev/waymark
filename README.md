@@ -313,11 +313,11 @@ export function GettingStarted() {
   if (snapshot.complete) return <p>You're all set.</p>;
   return (
     <ul>
-      {snapshot.tasks.map(({ task, status, inProgress }) => (
+      {snapshot.tasks.map(({ task, status, walkthrough }) => (
         <li key={task.id}>
           {status === "done" ? "✓" : "○"} {task.title}
           {status === "todo" && "walkthrough" in task && (
-            <button onClick={() => start(task.id)}>{inProgress ? "Carry on" : "Show me"}</button>
+            <button onClick={() => start(task.id)}>{walkthrough === "collapsed" ? "Carry on" : "Show me"}</button>
           )}
           {status === "todo" && <button onClick={() => skip(task.id)}>Skip</button>}
         </li>
@@ -329,7 +329,7 @@ export function GettingStarted() {
 
 | Snapshot field | What it holds |
 | --- | --- |
-| `tasks` | Each task with its `status`, and `inProgress` while its walkthrough is collapsed part way, in the checklist's order. |
+| `tasks` | Each task with its `status`, and its `walkthrough`: `"open"`, `"collapsed"` part way, or `"none"`. In the checklist's order. |
 | `finishedCount` | Tasks done or skipped. |
 | `taskCount` | Tasks in the checklist. |
 | `complete` | `true` once every task is done or skipped. |
@@ -427,7 +427,7 @@ A click anywhere else in your app counts as clicking away, and collapses the wal
 
 ### `<Checklist>`
 
-`<Checklist>` takes `style` for the list and `rowStyle` for each row. `renderRow` replaces a row's content, and gets the `task`, its `status`, whether its walkthrough is `open` or `inProgress`, and the checklist's commands.
+`<Checklist>` takes `style` for the list and `rowStyle` for each row. `renderRow` replaces a row's content, and gets the `task`, its `status`, its `walkthrough` (`"open"`, `"collapsed"` or `"none"`), and the checklist's commands.
 
 ## Saving progress
 

@@ -116,12 +116,12 @@ function renderView(name: string, view: AnyView) {
   count.textContent = `${snapshot.finishedCount} of ${snapshot.taskCount}${snapshot.complete ? " · complete" : ""}`;
   heading.append(count);
   const list = document.createElement("ol");
-  for (const { task, status, inProgress } of snapshot.tasks) {
+  for (const { task, status, walkthrough } of snapshot.tasks) {
     const item = document.createElement("li");
-    const open = snapshot.open?.id === task.id;
+    const open = walkthrough === "open";
     item.dataset.status = status;
     item.dataset.open = String(open);
-    item.dataset.inProgress = String(inProgress);
+    item.dataset.inProgress = String(walkthrough === "collapsed");
     const title = document.createElement("span");
     title.className = "title";
     const meta = task.meta as { title: string; description?: string };
@@ -129,7 +129,7 @@ function renderView(name: string, view: AnyView) {
     title.title = meta.description ?? "";
     item.append(title);
     if (task.walkthrough) {
-      const label = status === "done" ? "replay" : inProgress ? "resume" : "start";
+      const label = status === "done" ? "replay" : walkthrough === "collapsed" ? "resume" : "start";
       item.append(button(label, () => view.start(task.id), open));
     }
     item.append(button(status === "todo" ? "tick" : "untick", () => view.toggle(task.id)));

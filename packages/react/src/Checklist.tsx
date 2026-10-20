@@ -117,12 +117,13 @@ export const visuallyHidden: CSSProperties = {
 function DefaultRow<TTask extends AnyReactTask>({
   task,
   status,
-  open,
+  walkthrough,
   start,
   skip,
   toggle,
   labels,
 }: ChecklistRowProps<TTask> & { labels: ChecklistLabels }) {
+  const open = walkthrough === "open";
   const titleId = useId();
   const statusId = useId();
   const glyph = status === "done" ? "✓" : status === "skipped" ? "–" : "○";
@@ -213,13 +214,12 @@ export function Checklist<TTask extends AnyReactTask>({
         {snapshot.finishedCount} of {snapshot.taskCount} done
       </div>
       <ol style={listStyle}>
-        {snapshot.tasks.map(({ task, status, inProgress }) => {
-          const open = snapshot.open?.id === task.id;
+        {snapshot.tasks.map(({ task, status, walkthrough }) => {
+          const open = walkthrough === "open";
           const props: ChecklistRowProps<TTask> = {
             task,
             status,
-            open,
-            inProgress,
+            walkthrough,
             start,
             markDone,
             markTodo,

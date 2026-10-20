@@ -13,7 +13,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
-import type { Rect, TaskStatus } from "waymark-core";
+import type { ChecklistRow, Rect, TaskStatus } from "waymark-core";
 import { STATUS_TEXT, useChecklist, visuallyHidden } from "./Checklist";
 import { placePopover } from "./placement";
 import { useMeasuredSize } from "./useMeasuredSize";
@@ -35,8 +35,6 @@ const MARGIN = 8;
 type RootContextValue = Readonly<{
   open: boolean;
   running: boolean;
-  /** The Task whose walkthrough is open. */
-  openId: string | null;
   panelId: string;
   triggerRef: RefObject<HTMLButtonElement>;
   panelRef: RefObject<HTMLDivElement>;
@@ -51,9 +49,7 @@ type RootContextValue = Readonly<{
 type TaskContextValue = Readonly<{
   task: AnyReactTask;
   status: TaskStatus;
-  /** Its walkthrough is open. */
-  open: boolean;
-  inProgress: boolean;
+  walkthrough: ChecklistRow<AnyReactTask>["walkthrough"];
   titleId: string;
   statusId: string;
 }>;
@@ -74,10 +70,10 @@ function useTaskContext(part: string): TaskContextValue {
 }
 
 // On every part of a Task, so each can be styled by its Task's state without reaching up to the row.
-const taskData = ({ status, open, inProgress }: TaskContextValue) => ({
+const taskData = ({ status, walkthrough }: TaskContextValue) => ({
   "data-status": status,
-  "data-open": open ? "" : undefined,
-  "data-in-progress": inProgress ? "" : undefined,
+  "data-open": walkthrough === "open" ? "" : undefined,
+  "data-in-progress": walkthrough === "collapsed" ? "" : undefined,
 });
 
 /**
@@ -173,7 +169,6 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
     () => ({
       open,
       running,
-      openId,
       panelId,
       triggerRef,
       panelRef,
@@ -189,7 +184,7 @@ export function ChecklistRoot<TTask extends AnyReactTask>({
         if (row) state.toggle(row.task.id);
       },
     }),
-    [open, running, openId, panelId, focusIfKeyboardOpened, hover, close, pinned, state],
+    [open, running, panelId, focusIfKeyboardOpened, hover, close, pinned, state],
   );
 
   return (
@@ -319,17 +314,16 @@ export function ChecklistPanel({
 }
 
 export function ChecklistTask({ row, ...props }: ChecklistTaskProps) {
-  const { openId } = useRootContext("ChecklistTask");
+  useRootContext("ChecklistTask");
   const titleId = useId();
   const statusId = useId();
-  const open = openId === row.task.id;
   const context = useMemo<TaskContextValue>(
-    () => ({ task: row.task, status: row.status, open, inProgress: row.inProgress, titleId, statusId }),
-    [row.task, row.status, open, row.inProgress, titleId, statusId],
+    () => ({ task: row.task, status: row.status, walkthrough: row.walkthrough, titleId, statusId }),
+    [row.task, row.status, row.walkthrough, titleId, statusId],
   );
   return (
     <TaskContext.Provider value={context}>
-      <li aria-current={open ? "step" : undefined} {...props} {...taskData(context)} />
+      <li aria-current={row.walkthrough === "open" ? "step" : undefined} {...props} {...taskData(context)} />
     </TaskContext.Provider>
   );
 }

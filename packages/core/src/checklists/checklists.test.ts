@@ -167,7 +167,7 @@ describe("defineChecklists", () => {
     const deck = rows[1]!.task;
     if (deck.id !== "create-deck") throw new Error("expected create-deck");
     expect(deck.walkthrough).toBe(guide);
-    expect(rows[1]).toMatchObject({ status: "todo", inProgress: false });
+    expect(rows[1]).toMatchObject({ status: "todo", walkthrough: "none" });
     expect(decks.getSnapshot()).toMatchObject({ finishedCount: 0, taskCount: 1, complete: false, open: null });
   });
 
@@ -457,7 +457,7 @@ describe("guidance", () => {
     expect(home.getSnapshot().open?.id).toBe("add-photo");
     expect(home.getSnapshot().tasks.find((row) => row.task.id === "create-deck")).toMatchObject({
       status: "todo",
-      inProgress: true,
+      walkthrough: "collapsed",
     });
     expect(allEvents(onEvent)).toEqual(["guide:interrupt", "taskStarted:add-photo"]);
 

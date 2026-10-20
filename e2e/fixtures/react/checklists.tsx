@@ -31,8 +31,7 @@ export function HomeChecklist() {
 function CompactRow<TTask extends AnyReactTask>({
   task,
   status,
-  open,
-  inProgress,
+  walkthrough,
   start,
   markDone,
   skip,
@@ -41,12 +40,12 @@ function CompactRow<TTask extends AnyReactTask>({
   return (
     <div className="compact-row">
       <span className="pill" data-status={status}>
-        {open ? "open" : inProgress ? "in progress" : status}
+        {walkthrough === "open" ? "open" : walkthrough === "collapsed" ? "in progress" : status}
       </span>
       <span className="compact-title">{task.title}</span>
       {task.walkthrough !== undefined && (
-        <button type="button" onClick={() => start(task.id)} disabled={open}>
-          {status === "done" ? "replay" : inProgress ? "resume" : "start"}
+        <button type="button" onClick={() => start(task.id)} disabled={walkthrough === "open"}>
+          {status === "done" ? "replay" : walkthrough === "collapsed" ? "resume" : "start"}
         </button>
       )}
       {task.action !== undefined && (
@@ -83,19 +82,19 @@ function HeadlessChecklist<TTask extends AnyReactTask>({ checklist }: { checklis
         <span>{snapshot.complete ? "all done" : `${snapshot.finishedCount} of ${snapshot.taskCount}`}</span>
       </header>
       <div className="cards">
-        {snapshot.tasks.map(({ task, status, inProgress }) => (
+        {snapshot.tasks.map(({ task, status, walkthrough }) => (
           <article
             key={task.id}
             data-status={status}
-            data-open={snapshot.open?.id === task.id}
-            data-in-progress={inProgress}
+            data-open={walkthrough === "open"}
+            data-in-progress={walkthrough === "collapsed"}
           >
             <h4>{task.title}</h4>
             {task.description !== undefined && <p>{task.description}</p>}
             <footer>
               {status === "todo" && task.walkthrough !== undefined && (
                 <button type="button" onClick={() => start(task.id)}>
-                  {inProgress ? "Carry on" : "Show me"}
+                  {walkthrough === "collapsed" ? "Carry on" : "Show me"}
                 </button>
               )}
               {status === "todo" && task.action !== undefined && (

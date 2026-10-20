@@ -196,7 +196,7 @@ describe("Checklist", () => {
     const run = await render(
       <Checklist
         checklist={home}
-        renderRow={({ task, open, inProgress }) => `${task.id}${open ? " open" : ""}${inProgress ? " in progress" : ""}`}
+        renderRow={({ task, walkthrough }) => `${task.id}${walkthrough === "none" ? "" : ` ${walkthrough}`}`}
       />,
       { context },
     );
@@ -206,7 +206,7 @@ describe("Checklist", () => {
     expect(row("create-deck").textContent).toBe("create-deck open");
 
     await act(async () => list.start("read-tips"));
-    expect(row("create-deck").textContent).toBe("create-deck in progress");
+    expect(row("create-deck").textContent).toBe("create-deck collapsed");
     expect(row("read-tips").textContent).toBe("read-tips open");
   });
 

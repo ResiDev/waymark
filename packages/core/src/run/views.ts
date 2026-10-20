@@ -111,16 +111,17 @@ type Snapshot = ChecklistSnapshot<AnyTask>;
 const sameSnapshot = (a: Snapshot, b: Snapshot): boolean =>
   a.open === b.open &&
   a.storageStatus === b.storageStatus &&
-  a.tasks.every((row, index) => row.status === b.tasks[index]?.status && row.inProgress === b.tasks[index].inProgress);
+  a.tasks.every((row, index) => row.status === b.tasks[index]?.status && row.walkthrough === b.tasks[index].walkthrough);
 
 export function checklistView(definition: ChecklistDefinition<AnyTask>, group: ChecklistGroup, runState: ShownRunState): View<Snapshot> {
   const walkthroughOf = new Map(group.tasks.map((task) => [task.id, task.walkthrough?.id]));
   type Args = readonly [UserRecord["taskStatusById"], UserRecord["walkthroughProgressById"], UserRecord["storageStatus"], string | undefined];
   const of = memo(([taskStatusById, walkthroughProgressById, storage, opened]: Args, last: Snapshot | undefined): Snapshot => {
     const tasks = definition.tasks.map((task) => {
-      const walkthrough = walkthroughOf.get(task.id);
-      const walkthroughProgress = walkthrough === undefined ? undefined : walkthroughProgressById[walkthrough];
-      return { task, status: statusIn(taskStatusById, task.id), inProgress: walkthroughProgress?.status === "running" && walkthroughProgress.collapsed };
+      const id = walkthroughOf.get(task.id);
+      const walkthroughProgress = id === undefined ? undefined : walkthroughProgressById[id];
+      const collapsed = walkthroughProgress?.status === "running" && walkthroughProgress.collapsed;
+      return { task, status: statusIn(taskStatusById, task.id), walkthrough: id !== undefined && id === opened ? "open" : collapsed ? "collapsed" : "none" } as const;
     });
     const finishedCount = tasks.filter((row) => row.status !== "todo").length;
     const next: Snapshot = {

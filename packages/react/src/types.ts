@@ -149,10 +149,7 @@ export type ChecklistRowProps<TTask extends AnyReactTask> = TaskCommands<TTask["
   Readonly<{
     task: TTask;
     status: TaskStatus;
-    /** Its walkthrough is open. */
-    open: boolean;
-    /** Its walkthrough is collapsed part way, with a beacon to go back to it. */
-    inProgress: boolean;
+    walkthrough: ChecklistRow<TTask>["walkthrough"];
   }>;
 
 export type ChecklistProps<TTask extends AnyReactTask> = Readonly<{

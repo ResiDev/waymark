@@ -55,8 +55,8 @@ export type StorageStatus = "loading" | "ready" | "error" | "unreadable";
 export type ChecklistRow<TTask extends { readonly id: string }> = Readonly<{
   task: TTask;
   status: TaskStatus;
-  /** Its walkthrough is collapsed part way: set aside, with a beacon to go back to it. */
-  inProgress: boolean;
+  /** Its walkthrough: `open`, or `collapsed` part way and set aside with a beacon to go back to it. */
+  walkthrough: "open" | "collapsed" | "none";
 }>;
 
 /** A new object only when something in it changed. */
