@@ -26,7 +26,8 @@
     "unicorn/no-thenable": "off",
     "unicorn/consistent-function-scoping": "off",
     "import/no-unassigned-import": "off",
-    "react/memo-dependencies": "off"
+    "react/memo-dependencies": "off",
+    "no-underscore-dangle": ["error", { "allow": ["_tag"] }]
   },
   "overrides": [
     {
