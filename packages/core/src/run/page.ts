@@ -8,7 +8,7 @@ import { liveWatchers, needsAdvanceRead, NOTHING_LIVE, sameWaymarkAria, sameWaym
 import type { OnStep, WaymarkAria, WaymarkEvents } from "./rules";
 import type { AttachOptions, Rect, UiElements } from "./types";
 import { detached, obey, openOf, sightBeacons, sightingOf } from "./walkthroughs";
-import type { Collapsed } from "./walkthroughs";
+import type { Candidates } from "./walkthroughs";
 
 const NO_UI: UiElements = { dialog: null };
 
@@ -60,33 +60,25 @@ const listenToWaymarkEvents = ({ element, events }: WaymarkEvents, onEvent: () =
 type Attachment = Readonly<{ ui: () => UiElements; padding: number }>;
 
 export type Page = Readonly<{
-  /** `run.attach`. The first attachment is a change with no work, so the first look comes due; the last one gone is `detached`. */
   attach: (ui: () => UiElements, options?: AttachOptions) => () => void;
-  /**
-   * After every change, whether or not it moved anything, as a frame that has
-   * just fired must be asked for again: each hookup opened or closed to match
-   * the facts, and the first look queued when one is due.
-   */
+  /** After every change, even one that moved nothing: a frame that has fired has closed itself, and must be asked for again. */
   afterChange: (facts: Facts) => void;
 }>;
 
-/** Everything that touches the page. It reads the facts and never writes them: what it sees goes back to the Run as a change. */
 export function createPage({
   root,
   queue,
   facts,
   change,
   commitNow,
-  collapsedNow,
+  candidatesNow,
 }: Readonly<{
   root: () => Document | Element;
   queue: Queue;
   facts: () => Facts;
-  /** A change, queued behind the one running. */
   change: (phases: Phases) => void;
-  /** A change run at once, inside the queue's drain. */
   commitNow: (phases: Phases) => void;
-  collapsedNow: (facts: Shown) => Collapsed;
+  candidatesNow: (facts: Shown) => Candidates;
 }>): Page {
   const attachments: Attachment[] = [];
   // A check that throws would throw every frame; each distinct error once per visit is enough to see the bug.
@@ -133,16 +125,13 @@ export function createPage({
 
   const lookAtBeacons = (shown: Shown): Work => {
     const reads = new Map<string, WaymarkRead>();
-    for (const [walkthrough, entry] of collapsedNow(shown)) {
+    for (const [walkthrough, entry] of candidatesNow(shown)) {
       const selector = selectorOf(stepAt(walkthrough, entry.step));
       if (selector !== undefined) reads.set(walkthrough.id, measure(selector, sightingOf(shown.live.beacons, walkthrough, entry).element));
     }
     return sightBeacons(reads, performance.now());
   };
 
-  // Queued, so it measures the page as the change's listeners left it, and
-  // looks at whichever visit is open when it runs. Run at once from the
-  // queue, so its `start` comes before anything those listeners queued.
   const look = () => {
     if (attachments.length === 0) return;
     const on = openOf(facts());
@@ -197,7 +186,7 @@ export function createPage({
     if (attached && on !== undefined && !on.visit.looked) queue.run(look);
     const live = on === undefined ? NOTHING_LIVE : liveWatchers(on);
     const beacons =
-      attached && collapsedNow(shown).some(([walkthrough, entry]) => hasWaymark(stepAt(walkthrough, entry.step)));
+      attached && candidatesNow(shown).some(([walkthrough, entry]) => hasWaymark(stepAt(walkthrough, entry.step)));
     input = syncWatcher(input, live.input || undefined, () => openInput(onClick, onKeyDown));
     frame = syncWatcher(frame, live.frame || beacons || undefined, openFrame);
     waymarkAria = syncWatcher(waymarkAria, live.waymarkAria, openWaymarkAria, sameWaymarkAria);

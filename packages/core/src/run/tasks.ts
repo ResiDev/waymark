@@ -13,7 +13,6 @@ import type { Walkthrough } from "../walkthrough/types";
 import { setStatus } from "./record";
 import { act, start } from "./walkthroughs";
 
-/** Every Task the Run knows, the first definition of each id, in the order the groups came. */
 export function tasksOf(groups: readonly ChecklistGroup[]): readonly DefinedTask[] {
   const seen = new Set<string>();
   const tasks: DefinedTask[] = [];
@@ -27,17 +26,14 @@ export function tasksOf(groups: readonly ChecklistGroup[]): readonly DefinedTask
   return tasks;
 }
 
-/** One Task by id: its first definition. */
 export function taskOf(groups: readonly ChecklistGroup[], id: string): DefinedTask | undefined {
   for (const group of groups) for (const task of group.tasks) if (task.id === id) return task;
   return undefined;
 }
 
-/** The first Task whose walkthrough this is: the open walkthrough's `task`. */
-export const taskFor = (groups: readonly ChecklistGroup[], walkthrough: string): string | null =>
+export const taskIdFor = (groups: readonly ChecklistGroup[], walkthrough: string): string | null =>
   tasksOf(groups).find((task) => task.walkthrough?.id === walkthrough)?.id ?? null;
 
-/** Every Task of the checklist is done or skipped. */
 export const isComplete = (definition: ChecklistDefinition<AnyTask>, statuses: Recorded["statuses"]): boolean =>
   definition.tasks.every((task) => statusIn(statuses, task.id) !== "todo");
 
@@ -76,7 +72,6 @@ export const toggle =
     return statusIn(facts.recorded.statuses, id) === "todo" ? withStatus(facts, id, "done") : reopen(facts, task);
   };
 
-/** Skipped from todo, credited to `from` or, from a walkthrough's popover, to the checklist that started it; then its walkthrough exits. */
 export const skip =
   (id: string, from: string | undefined): Work =>
   (facts, change) => {
@@ -89,7 +84,6 @@ export const skip =
     return walkthrough === undefined ? next : act("exit", walkthrough)(next, change);
   };
 
-/** A checklist's Start: its walkthrough started, and remembered as started from that checklist, for a Skip from its popover. */
 export const startFrom =
   (walkthrough: Walkthrough, checklist: string): Work =>
   (facts, change) => {
@@ -123,11 +117,7 @@ export const conditions: Work = (facts, change) => {
 const walkthroughStatus = (recorded: Recorded, task: DefinedTask) =>
   task.walkthrough === undefined ? undefined : recorded.progress[task.walkthrough.id]?.status;
 
-/**
- * After every part of a change: a Task with no condition done once its
- * walkthrough went from running to finished, and `startedFrom` forgetting
- * each walkthrough that stopped running.
- */
+/** A Task with no condition is done once its walkthrough finishes; one with a condition waits for it. */
 export function finish(before: Facts, after: Facts): Facts {
   const { progress } = after.recorded;
   if (progress === before.recorded.progress && after.asked.startedFrom === before.asked.startedFrom) return after;
@@ -156,7 +146,7 @@ const statusEvent = (task: AnyTask, was: TaskStatus, now: TaskStatus, checklist:
   return { type: "taskUnskipped", task, ...fromChecklist(checklist) };
 };
 
-/** What changed between two records, as checklist events. `credit` names the checklist a Task's status was changed from. */
+/** `credit` names the checklist a Task's status was changed from. */
 export function eventsBetween(
   tasks: readonly DefinedTask[],
   before: Recorded,

@@ -7,9 +7,8 @@ import { isRecordUnreadable, parseRecord } from "./records";
 import type { Parsed, RecordUnreadableError, StoredChanges } from "./records";
 
 export type Link = Readonly<{
-  /** `run.connect()`: storage is asked for the record on the first, and heard while one is open. */
   connect: () => () => void;
-  /** Only what changed, so a save never writes over what this Run does not know. */
+  /** Only what changed, so a save never writes over what this Run doesn't know. */
   save: (changes: StoredChanges) => void;
 }>;
 
@@ -17,7 +16,7 @@ export function createLink({
   adapter,
   queue,
   report,
-  given,
+  hasInitial,
   loading,
   loaded,
   heard,
@@ -26,18 +25,17 @@ export function createLink({
   adapter: StorageAdapter | undefined;
   queue: Queue;
   report: ReportProblem<never>;
-  /** The record was given as `initial`, so storage is never asked for it. */
-  given: boolean;
+  hasInitial: boolean;
   loading: () => boolean;
   loaded: (read: Parsed | "failed") => void;
   heard: (value: unknown) => void;
   refused: (error: RecordUnreadableError) => void;
 }>): Link {
   let connections = 0;
-  let asked = given;
+  let asked = hasInitial;
   let unsubscribe: (() => void) | undefined;
 
-  // Not while loading: a record heard then would land on no record.
+  // Once the record is in, so a change heard lands on the record rather than on none.
   const hear = () => {
     if (adapter?.subscribe === undefined || unsubscribe !== undefined) return;
     if (connections === 0 || loading()) return;

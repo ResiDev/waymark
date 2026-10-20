@@ -12,10 +12,10 @@ import type { Walkthrough } from "../walkthrough/types";
 import { runChange } from "./change";
 import type { Ran } from "./change";
 import { createPage } from "./page";
-import { heard, loaded, LOADING, READ, recordedAt, refused, replaced } from "./record";
+import { heard, loaded, LOADING, READY, recordedAt, refused, replaced } from "./record";
 import { conditions, eventsBetween, isComplete, markDone, markTodo, skip, startFrom, taskOf, tasksOf, toggle } from "./tasks";
 import type { Run, RunOptions, RunSnapshot } from "./types";
-import { checklistView, collapsedOf, runView } from "./views";
+import { checklistView, candidatesOf, runView } from "./views";
 import type { View } from "./views";
 import { act, openId, openOf, request, reset, start, unwait, wait } from "./walkthroughs";
 
@@ -47,7 +47,7 @@ export function createRun(options: RunOptions = {}): Run {
   const adapter = options.storage === undefined ? undefined : adapterOf(options.storage);
 
   let given: Given = { walkthroughs: new Map(), groups: [], context: options.context };
-  let recorded = recordedAt(adapter === undefined && options.initial === undefined ? READ : LOADING);
+  let recorded = recordedAt(adapter === undefined && options.initial === undefined ? READY : LOADING);
   let asked: Asked = { waiting: [], startedFrom: new Map() };
   let live: Live = { visit: undefined, beacons: new Map() };
   const held: Work[] = [];
@@ -66,10 +66,10 @@ export function createRun(options: RunOptions = {}): Run {
     }
   };
 
-  const collapsedNow = collapsedOf();
-  const view = runView(collapsedNow, facts());
+  const candidatesNow = candidatesOf();
+  const view = runView(candidatesNow, facts());
   const change = (phases: Phases) => queue.run(() => commit(phases));
-  const page = createPage({ root, queue, facts, change, commitNow: (phases) => commit(phases), collapsedNow });
+  const page = createPage({ root, queue, facts, change, commitNow: (phases) => commit(phases), candidatesNow });
 
   const save = ({ savedFrom, after }: Ran) => {
     const now = after.recorded;
@@ -157,7 +157,7 @@ export function createRun(options: RunOptions = {}): Run {
     const parsed = parseRecord(replacement);
     if (!parsed.ok) throw new Error(`Waymark cannot take the record given to replace. ${parsed.error.message}`);
     const { value } = parsed;
-    change({ storage: toRecord((was, told) => replaced(was, value, told)), arrival: true, whole: true });
+    change({ storage: toRecord((was, told) => replaced(was, value, told)), arrival: true, replace: true });
   };
 
   const takeRecord = (read: Parsed | "failed") =>
@@ -169,7 +169,7 @@ export function createRun(options: RunOptions = {}): Run {
     adapter,
     queue,
     report,
-    given: options.initial !== undefined,
+    hasInitial: options.initial !== undefined,
     loading,
     loaded: takeRecord,
     heard: (value) => {
@@ -247,7 +247,6 @@ export function createRun(options: RunOptions = {}): Run {
       } else if (loading()) {
         command(act(action, undefined));
       } else {
-        // The one open at the call, as the app saw it.
         const on = openOf(facts());
         if (on !== undefined) command(act(action, on.walkthrough));
       }

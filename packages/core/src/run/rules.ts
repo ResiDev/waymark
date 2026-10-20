@@ -4,21 +4,10 @@ import type { AdvanceRead, Message, Sighting, StepRead, Visit, VisitKey, Waymark
 import type { Place } from "./record";
 import type { Action, Ended, Location, Rect, RunEventType, Running } from "./types";
 
-/**
- * A walkthrough on a step, as the rules see it: its entry is running, at the
- * visit's step. The open one is also not collapsed; one just collapsed is
- * still on its step, for the Snapshot its events carry.
- */
 export type OnStep = Readonly<{ walkthrough: Walkthrough; entry: WalkthroughProgress; visit: Visit }>;
 
-/** The driver says `interrupt` itself, as only it sees another walkthrough start. */
 export type MachineEvent = Exclude<RunEventType, "interrupt">;
 
-/**
- * What one message did. `at` is `on.entry` itself and `visit` is `on.visit`
- * itself when they did not move. `visit` is a new one when the step moved,
- * and `undefined` once the walkthrough ended.
- */
 export type Outcome = Readonly<{
   at: Place;
   visit: Visit | undefined;
@@ -28,7 +17,6 @@ export type Outcome = Readonly<{
   scrollTo?: Element | undefined;
 }>;
 
-/** What a visit carries from the step before it: the walkthrough's, not the step's. */
 export type Carried = Pick<Visit, "started" | "resumed" | "looked">;
 
 const NO_EVENTS: readonly MachineEvent[] = [];
@@ -39,7 +27,6 @@ const WAITING: Location = { status: "waiting" };
 const LOST: Location = { status: "lost" };
 const MISSING: Location = { status: "missing" };
 
-/** The step has a Waymark, but the user is shown the step without it. */
 const isGone = (waymark: Location): waymark is Extract<Location, { status: "lost" | "missing" }> =>
   waymark.status === "lost" || waymark.status === "missing";
 
@@ -53,7 +40,6 @@ const stepOf = (on: OnStep): Step => stepAt(on.walkthrough, on.entry.step);
 
 const still = (on: OnStep, visit = on.visit): Outcome => ({ at: on.entry, visit, events: NO_EVENTS });
 
-/** A Waymark not looked for yet: `searching`, or `absent` for a step without one. */
 export const unsighted = (step: Step, index: number): Sighting => ({
   step: index,
   waymark: hasWaymark(step) ? SEARCHING : ABSENT,
@@ -61,7 +47,6 @@ export const unsighted = (step: Step, index: number): Sighting => ({
   element: null,
 });
 
-/** A visit to `step`, just shown: a new key, nothing done, its Waymark not yet looked for. */
 export function enter(walkthrough: Walkthrough, step: number, carried: Carried): Visit {
   const shown = stepAt(walkthrough, step);
   return {
@@ -81,7 +66,6 @@ export function enter(walkthrough: Walkthrough, step: number, carried: Carried):
 /** The gate is open: the condition was met, or the Waymark is lost or missing, so the user is never stuck. */
 const canAdvance = (visit: Visit): boolean => visit.unlocked || isGone(visit.sighting.waymark);
 
-/** The step's Snapshot, worked out from the entry and the visit. */
 export const running = ({ walkthrough, entry, visit }: OnStep): Running => ({
   phase: "running",
   step: stepAt(walkthrough, entry.step),
@@ -92,7 +76,6 @@ export const running = ({ walkthrough, entry, visit }: OnStep): Running => ({
   waymark: visit.sighting.waymark,
 });
 
-/** A walkthrough that has finished or exited, for the event that ended it. */
 export const ended = (at: Place): Ended => ({
   phase: at.status === "finished" ? "completed" : "exited",
   stepIndex: at.step,
@@ -203,7 +186,7 @@ export function sight(previous: Sighting, read: WaymarkRead, now: number, step: 
 }
 
 /** Nobody looked while detached, so that time does not count towards missing or lost. */
-export const unseen = (sighting: Sighting): Sighting =>
+export const restartUnseen = (sighting: Sighting): Sighting =>
   sighting.unseenSince === undefined ? sighting : { ...sighting, unseenSince: undefined };
 
 function scrollTarget(on: OnStep, visit: Visit, read: WaymarkRead, step: Step): Element | undefined {
@@ -263,16 +246,11 @@ function detach(on: OnStep): Outcome {
   const { visit } = on;
   const dropClock = !visit.satisfied && checkOf(stepOf(on)) !== undefined;
   const heldSince = dropClock ? undefined : visit.heldSince;
-  const sighting = unseen(visit.sighting);
+  const sighting = restartUnseen(visit.sighting);
   if (!visit.looked && heldSince === visit.heldSince && sighting === visit.sighting) return still(on);
   return still(on, { ...visit, looked: false, heldSince, sighting });
 }
 
-/**
- * One message on the open step. A click away dismisses, and an action acts,
- * whatever the visit; every other message does nothing on a visit it was not
- * raised on.
- */
 export function apply(on: OnStep, message: Message): Outcome {
   if (message.type === "act") return act(on, message.action);
   if (message.type === "detached") return detach(on);
@@ -290,7 +268,6 @@ export function apply(on: OnStep, message: Message): Outcome {
   }
 }
 
-/** The condition is checked on this read. `asLooked` for the first look, which asks before `looked` is set. */
 export function needsAdvanceRead(on: OnStep, asLooked = false): boolean {
   const { visit } = on;
   return (
@@ -303,7 +280,6 @@ export function needsAdvanceRead(on: OnStep, asLooked = false): boolean {
 
 export type WaymarkAria = Readonly<{ element: Element; expanded: boolean }>;
 
-/** A Waymark's own events to listen to, for the visit they would satisfy. */
 export type WaymarkEvents = Readonly<{ element: Element; events: readonly string[]; visit: VisitKey }>;
 
 export const sameWaymarkAria = (a: WaymarkAria, b: WaymarkAria): boolean =>
@@ -329,7 +305,6 @@ export const NOTHING_LIVE: LiveWatchers = {
   waymarkEvents: undefined,
 };
 
-/** What core listens to for this step. Nothing until it is looked at, so a Run that is not attached touches no page. */
 export function liveWatchers(on: OnStep): LiveWatchers {
   const { visit } = on;
   if (!visit.looked || on.entry.collapsed) return NOTHING_LIVE;
