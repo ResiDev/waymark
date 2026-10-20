@@ -6,7 +6,7 @@ import type { Action, Ended, Location, Rect, RunEventType, Running } from "./typ
 
 export type OnStep = Readonly<{ walkthrough: Walkthrough; entry: WalkthroughProgress; visit: Visit }>;
 
-export type MachineEvent = Exclude<RunEventType, "interrupt">;
+type MachineEvent = Exclude<RunEventType, "interrupt">;
 
 export type Outcome = Readonly<{
   at: Place;
@@ -17,7 +17,7 @@ export type Outcome = Readonly<{
   scrollTo?: Element | undefined;
 }>;
 
-export type Carried = Pick<Visit, "started" | "resumed" | "looked">;
+type Carried = Pick<Visit, "started" | "resumed" | "looked">;
 
 const NO_EVENTS: readonly MachineEvent[] = [];
 
@@ -291,7 +291,7 @@ export const sameWaymarkEvents = (a: WaymarkEvents, b: WaymarkEvents): boolean =
   a.events.length === b.events.length &&
   a.events.every((event, index) => event === b.events[index]);
 
-export type LiveWatchers = Readonly<{
+type LiveWatchers = Readonly<{
   input: boolean;
   frame: boolean;
   waymarkAria: WaymarkAria | undefined;
