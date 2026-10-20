@@ -14,9 +14,10 @@
 //   Asked     what the app asked for        changes per action; this tab only
 //   Live      what the page shows now       changes per frame; gone with the step
 //
-// run.ts holds one variable for each. `commit` alone assigns Recorded, Asked
-// and Live, once per change. Given is assigned only by the call that hands
-// something over. Everything the Run hands out (snapshots, checklist
+// run.ts holds one variable for each. `commit` assigns Recorded, Asked and
+// Live, once per change. A call assigns Given when it hands something over,
+// and Asked when a request joins or leaves the waiting list. Everything the
+// Run hands out (snapshots, checklist
 // snapshots, server snapshots, saves, checklist events, which walkthrough is
 // open, which beacons show) is a pure function of these, cached by the
 // identity of its inputs. A cache is not state: it never holds a fact the
@@ -117,7 +118,9 @@ export type Asked = Readonly<{
    * `withdraw`. It cannot be worked out from progress: a request is used up
    * when it opens or is found started, and forgetting a walkthrough's progress
    * with `reset` must not bring its request back. Joined and withdrawn at the
-   * call; opened or dropped only by `settle`, at the end of a change.
+   * call, even while loading, so a start held meanwhile finds it waiting
+   * rather than open. Dropped by its own change when its walkthrough has
+   * progress then; opened or dropped by `settle` once nothing is open.
    */
   waiting: readonly WalkthroughId[];
   /**
@@ -232,23 +235,23 @@ export type Change = Readonly<{
 }>;
 
 /**
- * A change, as up to three works run in this order, then `settle`. Where one
- * ends says what is saved and what is announced, so no change passes flags:
+ * A change: up to three parts run in this order, Tasks finished after each,
+ * then `settle` once. Where each part ends says what is saved and what is
+ * announced, so no change passes flags:
  *
  * - `storage`: what storage said. Not saved, as storage holds it; not announced.
- * - `arrival`: the record checked against the definitions, then the
- *   completion conditions asked. Saved; no checklist events, as it must not
- *   announce what the user did before.
- * - `command`: what the user or the app did. Saved and announced.
- *
- * The check of unchecked entries runs at the start of `arrival`, or, without
- * one, of `command`, so a command's own walkthrough is checked inside its
- * change, as today.
+ * - `arrival`: every unchecked entry whose definition has come checked, then
+ *   the completion conditions asked. Saved; no checklist events, as it must
+ *   not announce what the user did before.
+ * - `commands`: what the user or the app did, in order: one, or every one
+ *   held while the record loaded. Saved and announced. Each checks its own
+ *   walkthrough's entry first, as today: `reset` forgets an unchecked entry
+ *   rather than opening it to take it back to step 1.
  */
 export type Phases = Readonly<{
   storage?: Work;
   arrival?: true;
-  command?: Work;
+  commands?: readonly Work[];
   /** Save the whole record in place of the stored one: the app replaced one Waymark could not read. */
   whole?: true;
 }>;
@@ -261,6 +264,8 @@ export type Handle = Readonly<{
   checklist: Checklist<AnyTask>;
   /** The app's subscribers: given by the app, so stored. */
   listeners: Set<(snapshot: ChecklistSnapshot<AnyTask>) => void>;
+  /** Its snapshot, worked out from the facts and cached (views.ts). A cache, not state. */
+  view: Readonly<{ of: (facts: Facts) => ChecklistSnapshot<AnyTask>; last: () => ChecklistSnapshot<AnyTask> }>;
 }>;
 
 export type RunShell = {
