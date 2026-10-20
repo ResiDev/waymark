@@ -19,6 +19,17 @@ const withAsked = (facts: Facts, asked: Asked): Facts => (asked === facts.asked 
 
 const withLive = (facts: Facts, live: Live): Facts => (live === facts.live ? facts : { ...facts, live });
 
+const putIn = (facts: Facts, id: string, entry: WalkthroughProgress | undefined): Facts =>
+  withRecorded(facts, put(facts.recorded, id, entry));
+
+/** What every event on a walkthrough's step says besides its type. */
+const about = (walkthrough: Walkthrough, index: number, snapshot: Snapshot) => ({
+  walkthrough: walkthrough.id,
+  step: stepAt(walkthrough, index),
+  stepIndex: index,
+  snapshot,
+});
+
 /** A visit counts while its walkthrough's entry is running, not collapsed and at the visit's step. */
 const counts = (facts: Shown, visit: Visit): WalkthroughProgress | undefined => {
   const entry = facts.recorded.progress[visit.walkthrough];
@@ -85,20 +96,15 @@ function follow(facts: Facts, on: OnStep, outcome: Outcome, change: Change, inte
   ) {
     return facts;
   }
-  const { id } = walkthrough;
   const at = place(entry, outcome.at, change.now);
-  const step = stepAt(walkthrough, entry.step);
+  const said = about(walkthrough, entry.step, snapshotOf(walkthrough, at, outcome.visit));
   if (outcome.waymarkGone !== undefined) {
     const type = outcome.waymarkGone === "lost" ? "waymarkLost" : "waymarkMissing";
-    change.problems.push({ type, walkthrough: id, step, stepIndex: entry.step });
+    change.problems.push({ type, walkthrough: said.walkthrough, step: said.step, stepIndex: said.stepIndex });
   }
-  const snapshot = snapshotOf(walkthrough, at, outcome.visit);
-  if (interruptedBy !== undefined) {
-    change.events.push({ type: "interrupt", walkthrough: id, step, stepIndex: entry.step, snapshot, interruptedBy });
-  } else {
-    for (const type of outcome.events) change.events.push({ type, walkthrough: id, step, stepIndex: entry.step, snapshot });
-  }
-  const recorded = put(facts.recorded, id, at);
+  if (interruptedBy !== undefined) change.events.push({ type: "interrupt", ...said, interruptedBy });
+  else for (const type of outcome.events) change.events.push({ type, ...said });
+  const recorded = put(facts.recorded, walkthrough.id, at);
   const live = outcome.visit === facts.live.visit ? facts.live : { ...facts.live, visit: outcome.visit };
   return recorded === facts.recorded && live === facts.live ? facts : { ...facts, recorded, live };
 }
@@ -116,10 +122,7 @@ function open(facts: Facts, walkthrough: Walkthrough, change: Change): Facts {
   const step = resumed ? saved.step : 0;
   const entry = place(saved, { status: "running", step, stepCount: walkthrough.steps.length, collapsed: false }, change.now);
   const visit = enter(walkthrough, step, { started: false, resumed, looked: false });
-  if (resumed && saved.collapsed) {
-    const snapshot = running({ walkthrough, entry, visit });
-    change.events.push({ type: "resume", walkthrough: id, step: stepAt(walkthrough, step), stepIndex: step, snapshot });
-  }
+  if (resumed && saved.collapsed) change.events.push({ type: "resume", ...about(walkthrough, step, running({ walkthrough, entry, visit })) });
   return { ...facts, recorded: put(facts.recorded, id, entry), live: { ...facts.live, visit } };
 }
 
@@ -139,12 +142,12 @@ const checkOne = (facts: Facts, walkthrough: Walkthrough, change: Change): Facts
   if (reason !== undefined) {
     // Dropped before the handler hears, so a walkthrough it starts keeps its progress.
     change.problems.push(recordDropped(id, reason));
-    return withRecorded(at, put(at.recorded, id, undefined));
+    return putIn(at, id, undefined);
   }
   if (entry.status !== "running" || entry.collapsed) return at;
   if (openId(at) === undefined) return open(at, walkthrough, change);
   const aside = walkthrough.dismiss === "exit" ? { status: "exited" as const } : { collapsed: true };
-  return withRecorded(at, put(at.recorded, id, { ...entry, ...aside, changedAt: change.now }));
+  return putIn(at, id, { ...entry, ...aside, changedAt: change.now });
 };
 
 /**
@@ -199,7 +202,7 @@ export const reset =
   (facts, change) =>
     openId(facts) === walkthrough.id
       ? obey({ type: "act", action: "reset" })(facts, change)
-      : withRecorded(facts, put(facts.recorded, walkthrough.id, undefined));
+      : putIn(facts, walkthrough.id, undefined);
 
 /**
  * `run.act` on `walkthrough`, or on whatever is open when the work runs. On
@@ -218,8 +221,8 @@ export const act =
     const entry = next.recorded.progress[id];
     if (action !== "exit" || entry?.status !== "running") return next;
     const at = place(entry, { ...entry, status: "exited", collapsed: false }, change.now);
-    change.events.push({ type: "exit", walkthrough: id, step: stepAt(walkthrough, entry.step), stepIndex: entry.step, snapshot: ended(at) });
-    return withRecorded(next, put(next.recorded, id, at));
+    change.events.push({ type: "exit", ...about(walkthrough, entry.step, ended(at)) });
+    return putIn(next, id, at);
   };
 
 /** The Run detached: the open step stops being looked at, and each beacon's time unseen starts again, as nobody watched. */
