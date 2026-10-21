@@ -6,7 +6,7 @@ import { createQueue } from "../queue";
 import type { StartRequests, Change, RunState, WalkthroughsAndChecklistsInUse, Live, Phases, UserRecord, Work } from "../state";
 import { adapterOf } from "../storage/adapter";
 import { createLink } from "../storage/link";
-import { changesBetween, parseRecord, storedRecord } from "../storage/records";
+import { changesBetween, parseRecord, replacing, storedRecord } from "../storage/records";
 import type { Parsed, StoredRecord } from "../storage/records";
 import { listen } from "../subscribe";
 import type { Walkthrough } from "../walkthrough/types";
@@ -77,7 +77,7 @@ export function createRun(options: RunOptions = {}): Run {
     const now = after.userRecord;
     const changes =
       savedFrom === "whole"
-        ? { ...storedRecord(now.walkthroughProgressById, now.taskStatusById), replace: true as const }
+        ? replacing(storedRecord(now.walkthroughProgressById, now.taskStatusById))
         : savedFrom.walkthroughProgressById === now.walkthroughProgressById && savedFrom.taskStatusById === now.taskStatusById
           ? undefined
           : changesBetween(

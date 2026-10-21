@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { defineChecklists } from "./checklists";
 import { createRun } from "../run/run";
 import type { RunOptions, WaymarkEvent } from "../run/types";
-import type { StoredRecord } from "../storage/records";
+import type { RecordChanges, StoredRecord } from "../storage/records";
 import { everyProblem } from "../problems";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import { localKey } from "../test/dom";
@@ -25,6 +25,16 @@ const saved = (tasks: StoredRecord["tasks"], walkthroughs: StoredRecord["walkthr
   version: 1,
   walkthroughs,
   tasks,
+});
+
+/** What a save sets and removes. */
+const changes = (
+  set: Partial<RecordChanges["set"]>,
+  remove: Partial<RecordChanges["remove"]> = {},
+): RecordChanges => ({
+  version: 1,
+  set: { walkthroughs: {}, tasks: {}, ...set },
+  remove: { walkthroughs: [], tasks: [], ...remove },
 });
 
 /** A Run with the home checklist in use. */
@@ -58,12 +68,12 @@ describe("checklists storage", () => {
     const onChange = vi.fn();
     const { home } = create({ storage, onChange });
     home.markDone("hello");
-    expect(storage.save).toHaveBeenLastCalledWith({ version: 1, walkthroughs: {}, tasks: { hello: "done" } });
+    expect(storage.savePartial).toHaveBeenLastCalledWith(changes({ tasks: { hello: "done" } }));
     expect(storage.stored()).toEqual(saved({ invite: "skipped", hello: "done" }));
     expect(onChange).toHaveBeenLastCalledWith(saved({ invite: "skipped", hello: "done" }));
 
     home.markTodo("hello");
-    expect(storage.save).toHaveBeenLastCalledWith({ version: 1, walkthroughs: {}, tasks: { hello: null } });
+    expect(storage.savePartial).toHaveBeenLastCalledWith(changes({}, { tasks: ["hello"] }));
     expect(storage.stored()).toEqual(saved({ invite: "skipped" }));
   });
 
@@ -84,7 +94,7 @@ describe("checklists storage", () => {
       expect.objectContaining({ storageStatus: "ready", finishedCount: 2 }),
     );
     expect(onEvent).not.toHaveBeenCalled();
-    expect(adapter.save).not.toHaveBeenCalled();
+    expect(adapter.savePartial).not.toHaveBeenCalled();
   });
 
   it("holds commands while loading and runs them on the stored statuses, in order", async () => {
@@ -98,7 +108,7 @@ describe("checklists storage", () => {
     home.markTodo("invite");
     home.toggle("met");
     expect(statuses(created)).toMatchObject({ hello: "todo", invite: "todo", met: "todo" });
-    expect(adapter.save).not.toHaveBeenCalled();
+    expect(adapter.savePartial).not.toHaveBeenCalled();
 
     await answer();
 
@@ -128,7 +138,7 @@ describe("checklists storage", () => {
     await answer();
     expect(statuses(created)).toMatchObject({ met: "done" });
     expect(onEvent).not.toHaveBeenCalled();
-    expect(adapter.save).toHaveBeenCalledOnce();
+    expect(adapter.savePartial).toHaveBeenCalledOnce();
     expect(stored()).toEqual(saved({ met: "done" }));
   });
 
@@ -143,7 +153,7 @@ describe("checklists storage", () => {
     expect(onProblem).toHaveBeenCalledExactlyOnceWith({ type: "storageFailed", error: offline });
     expect(created.home.getSnapshot().storageStatus).toBe("error");
     expect(statuses(created)).toMatchObject({ met: "done" });
-    expect(adapter.save).toHaveBeenCalledExactlyOnceWith({ version: 1, walkthroughs: {}, tasks: { met: "done" } });
+    expect(adapter.savePartial).toHaveBeenCalledExactlyOnceWith(changes({ tasks: { met: "done" } }));
   });
 
   it("shows a record it cannot read as unreadable in each checklist", () => {

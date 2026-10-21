@@ -580,21 +580,22 @@ describe("WaymarkRoot with storage", () => {
     return mount();
   };
 
-  it("reads storage once as it mounts, and picks up its place on the next mount", async () => {
+  it("reads storage once as it mounts, and before each save, and picks up its place on the next mount", async () => {
     const { root, render } = mountTour();
     const storage = localStorageAdapter("tour");
     const load = vi.spyOn(storage, "load");
+    const save = vi.spyOn(storage, "save");
     await render(view(), { storage });
     await act(async () => buttonNamed("Next")!.click());
     expect(dialog()).toHaveTextContent("Second step");
 
     await render(view(), { storage });
-    expect(load).toHaveBeenCalledOnce();
+    expect(load).toHaveBeenCalledTimes(1 + save.mock.calls.length);
 
     await act(async () => root.unmount());
     const { render: remount } = addWaymarkRoot();
     await remount(view(), { storage });
-    expect(load).toHaveBeenCalledTimes(2);
+    expect(load).toHaveBeenCalledTimes(2 + save.mock.calls.length);
     expect(dialog()).toHaveTextContent("Second step");
   });
 
@@ -671,7 +672,8 @@ describe("WaymarkRoot with storage", () => {
         </StrictMode>,
       ),
     );
-    expect(storage.load).toHaveBeenCalledOnce();
+    // Once as it mounts, and once before each save.
+    expect(storage.load).toHaveBeenCalledTimes(1 + storage.save.mock.calls.length);
     expect(storage.subscribe).toHaveBeenCalled();
     await act(async () => root.unmount());
     expect(storage.unsubscribe).toHaveBeenCalledTimes(storage.subscribe.mock.calls.length);

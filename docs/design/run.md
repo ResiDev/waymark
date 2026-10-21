@@ -321,26 +321,31 @@ statuses. The waiting list is not saved; the app asks again on the next load.
   first time and subscribes to the adapter while a connection is open; the
   last one closed unsubscribes. A server render never connects, so it never
   calls the adapter, and a Run thrown away, by StrictMode or a new `key`,
-  stops listening. Saves don't need a connection.
+  stops listening. A `savePartial` adapter's saves don't need a connection; a
+  `save` adapter's wait for the first, as each one loads first.
 - While the record loads, and before the first `connect`, the Run holds every
   command and runs them in order once it is in, as the controller's
   `whenLoaded` and a loading Run do today.
 - The Run's copy is the optimistic one. A click on Next moves the tour at once
   and the save follows.
-- A save carries only what the change changed: each walkthrough entry and
-  task status it lists replaces the stored one, `null` removes one, and the
-  rest stay as they are. Storage makes the changes in one write, with
-  `applyChanges`, so a Run never writes over an entry it didn't change: not
-  another tab's, and not one a failed or unreadable load kept from it.
+- A save writes only what the change changed, so a Run never writes over an
+  entry it didn't change: not another tab's, and not one a failed or
+  unreadable load kept from it. An adapter gives `save` or `savePartial`.
+  `save` gets the whole record: the Run loads what is stored, makes its
+  changes to it, and hands that over, one save at a time, keeping the changes
+  of a save that fails for the next. `savePartial` gets the changes, as
+  `RecordChanges`, entries to `set` and ids to `remove`, and storage makes
+  them in one write with `applyChanges`.
 - The record has a version, 1 today. `storage/migrations.ts` holds a step from
   each older version to the next, and `parseRecord` runs them before reading.
   It reads entry by entry: an entry it can't read is dropped and reported as
   `recordDropped`, and the rest is kept, so one bad entry never loses the
   record.
 - A record it can't read at all, a newer version or not Waymark's, is
-  `recordUnreadable`, reported once. `applyChanges` throws a
-  `RecordUnreadableError` rather than change it, so saves leave it alone, and
-  the Run reports a refused save as that problem, not `storageFailed`. The
+  `recordUnreadable`, reported once. A `save` adapter's save stops at its
+  load, and `applyChanges` throws a `RecordUnreadableError` rather than change
+  it, so saves leave it alone, and the Run reports a refused save as that
+  problem, not `storageFailed`. The
   problem's `replace` lets the app write a record in its place: the Run takes
   it with its own entries on top and saves the whole, marked `replace`.
 - A save that fails keeps the new step and reports `storageFailed`.
@@ -350,7 +355,7 @@ statuses. The waiting list is not saved; the app asks again on the next load.
   `changedAt`. One open elsewhere is collapsed here, so only one is open.
 
 A server is one more adapter. For Convex, `load` and `subscribe` are a query
-subscription and `save` is a mutation that calls `applyChanges`.
+subscription and `savePartial` is a mutation that calls `applyChanges`.
 
 A new user means a new Run. It reads that user's record and leaves the last
 user's record alone. With no storage, switching users loses the last user's

@@ -4,11 +4,13 @@ import { everyProblem } from "../problems";
 import type { RunOptions, WaymarkEvent } from "./types";
 import { RecordUnreadableError } from "../storage/records";
 import type { StoredRecord } from "../storage/records";
+import { defineChecklists } from "../checklists/checklists";
 import { defineWalkthrough } from "../walkthrough/walkthrough";
 import type { Dismiss, WalkthroughProgress } from "../walkthrough/types";
 import { localKey } from "../test/dom";
 import { connected, progressOf, watch } from "../test/run";
-import { elsewhere, held, later } from "../test/storage";
+import type { StorageAdapter } from "../storage/adapter";
+import { elsewhere, held, kept, later } from "../test/storage";
 import { fakeFrames, fakeTimers } from "../test/time";
 
 const tour = defineWalkthrough({ id: "tour", steps: [{}, {}, {}] });
@@ -37,20 +39,20 @@ describe("run storage", () => {
     fakeTimers(1_000);
     const storage = held(null);
     const run = connected({ storage });
-    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.savePartial).not.toHaveBeenCalled();
 
     run.start(tour);
-    expect(storage.save).toHaveBeenLastCalledWith({
+    expect(storage.savePartial).toHaveBeenLastCalledWith({
       version: 1,
-      walkthroughs: { tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) },
-      tasks: {},
+      set: { walkthroughs: { tour: progress({ step: 0, collapsed: false, changedAt: 1_000 }) }, tasks: {} },
+      remove: { walkthroughs: [], tasks: [] },
     });
     run.act("advance");
     run.act("collapse");
     expect(storage.stored()).toEqual(record({ tour: progress({ changedAt: 1_000 }) }));
     // Asking again changes nothing, so nothing is saved.
     run.act("collapse", tour);
-    expect(storage.save).toHaveBeenCalledTimes(3);
+    expect(storage.savePartial).toHaveBeenCalledTimes(3);
 
     run.act("exit", tour);
     expect(storage.stored()).toEqual(record({ tour: progress({ status: "exited", collapsed: false, changedAt: 1_000 }) }));
@@ -62,11 +64,11 @@ describe("run storage", () => {
     const run = connected({ storage });
     run.start(defineWalkthrough({ id: "tour", steps: [{ waymark: "save" }] }));
     watch(run);
-    storage.save.mockClear();
+    storage.savePartial.mockClear();
 
     flush(3000);
     expect(run.getSnapshot().open?.snapshot.waymark.status).toBe("missing");
-    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.savePartial).not.toHaveBeenCalled();
   });
 
   it("picks a walkthrough up where it was once its definition arrives, without saving", () => {
@@ -76,7 +78,7 @@ describe("run storage", () => {
 
     run.requestStart(tour);
     expect(run.getSnapshot().open?.snapshot).toMatchObject({ stepIndex: 1, collapsed: false });
-    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.savePartial).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -133,7 +135,7 @@ describe("run storage", () => {
     // Collapsing it hands the Run its definition, which drops the stored progress.
     run.act("collapse", tour);
     expect(run.getSnapshot().open?.walkthrough.id).toBe("tour");
-    expect(storage.save.mock.lastCall?.[0].walkthroughs["tour"]).toMatchObject({ status: "running", step: 0 });
+    expect(storage.savePartial.mock.lastCall?.[0].set.walkthroughs["tour"]).toMatchObject({ status: "running", step: 0 });
   });
 
   it("honours a custom maxAge", () => {
@@ -179,13 +181,13 @@ describe("run storage", () => {
       expect.objectContaining({ type: "recordUnreadable", error: expect.any(Error), stored: unreadable }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
     );
     expect(run.getSnapshot()).toMatchObject({ storageStatus: "unreadable", progress: {} });
-    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.savePartial).not.toHaveBeenCalled();
 
     run.requestStart(tour);
     run.act("advance");
     expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(1);
     expect(storage.stored()).toBe(unreadable);
-    expect(storage.save).toHaveBeenCalled();
+    expect(storage.savePartial).toHaveBeenCalled();
     expect(onProblem).toHaveBeenCalledOnce();
   });
 
@@ -234,7 +236,7 @@ describe("run storage", () => {
     const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
     push({ version: 3 } as unknown as StoredRecord);
     run.start(tour);
-    expect(storage.save).toHaveBeenCalledOnce();
+    expect(storage.savePartial).toHaveBeenCalledOnce();
     expect(storage.stored()).toBe(newer);
 
     expect(onProblem.mock.calls).toEqual([
@@ -454,18 +456,18 @@ describe("run storage", () => {
     const run = connected({ storage, onEvent });
     run.start(tour);
     onEvent.mockClear();
-    storage.save.mockClear();
+    storage.savePartial.mockClear();
 
     push(record({ tour: progress({ step: 2, collapsed: false }) }, { hello: "done" }));
     expect(run.getSnapshot().open?.snapshot.stepIndex).toBe(0);
-    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.savePartial).not.toHaveBeenCalled();
     expect(onEvent).not.toHaveBeenCalled();
 
     run.act("advance");
-    expect(storage.save).toHaveBeenLastCalledWith({
+    expect(storage.savePartial).toHaveBeenLastCalledWith({
       version: 1,
-      walkthroughs: { tour: expect.objectContaining({ step: 1 }) }, // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
-      tasks: {},
+      set: { walkthroughs: { tour: expect.objectContaining({ step: 1 }) }, tasks: {} }, // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+      remove: { walkthroughs: [], tasks: [] },
     });
   });
 
@@ -625,5 +627,146 @@ describe("run storage", () => {
     expect(next.getSnapshot().progress).toEqual({});
     next.start(defineWalkthrough({ id: "hint", steps: [{}] }));
     expect(Object.keys((JSON.parse(localStorage.getItem(ada)!) as StoredRecord).walkthroughs)).toEqual(["tour"]);
+  });
+});
+
+describe("a save adapter", () => {
+  const hint = progress({ status: "finished" });
+
+  it("loads before each save, and saves the whole record with what another tab saved since", () => {
+    const storage = kept(record({}, { met: "done" }));
+    const run = connected({ storage });
+    run.start(tour);
+    expect(storage.save).toHaveBeenLastCalledWith(record({ tour: expect.objectContaining({ step: 0 }) }, { met: "done" })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+
+    storage.put(record({ hint }, { met: "done", other: "skipped" }));
+    run.act("advance");
+    expect(storage.stored()).toEqual(record({ hint, tour: expect.objectContaining({ step: 1 }) }, { met: "done", other: "skipped" })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    expect(storage.load).toHaveBeenCalledTimes(3);
+  });
+
+  it("saves null once nothing is left", () => {
+    const storage = kept(record({}));
+    const main = connected({ storage }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
+    main.markDone("a");
+    main.markTodo("a");
+    expect(storage.save).toHaveBeenLastCalledWith(null);
+  });
+
+  it("keeps the stored record when the load at connect failed", () => {
+    const storage = kept(record({ hint }));
+    storage.load.mockImplementationOnce(() => {
+      throw new Error("offline");
+    });
+    const run = connected({ storage, problemHandlers: { storageFailed: () => {} } });
+    run.start(tour);
+    expect(storage.stored()).toEqual(record({ hint, tour: expect.objectContaining({ status: "running" }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+  });
+
+  it("saves nothing when the load before a save fails, and saves its changes with the next", () => {
+    const storage = kept(record({}, { met: "done" }));
+    const onProblem = vi.fn();
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
+    const offline = new Error("offline");
+    storage.load.mockImplementationOnce(() => {
+      throw offline;
+    });
+
+    run.start(tour);
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(failed(offline));
+
+    run.act("collapse");
+    expect(storage.stored()).toEqual(record({ tour: expect.objectContaining({ step: 0, collapsed: true }) }, { met: "done" })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+  });
+
+  it("saves a failed save's changes with the next", () => {
+    const storage = kept(record({}));
+    storage.save.mockImplementationOnce(() => {
+      throw new Error("quota");
+    });
+    const run = connected({ storage, problemHandlers: { storageFailed: () => {} } });
+    run.start(defineWalkthrough({ id: "hint", steps: [{}] }));
+    run.start(tour);
+    expect(storage.stored()).toEqual(
+      record({ hint: expect.objectContaining({ status: "running" }), tour: expect.objectContaining({ status: "running" }) }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    );
+  });
+
+  it("never saves over a record it cannot read, and reports it once", () => {
+    const storage = kept(record({}));
+    const onProblem = vi.fn();
+    const run = connected({ storage, problemHandlers: everyProblem(onProblem) });
+    const newer = { version: 2 };
+    storage.put(newer);
+
+    run.start(tour);
+    run.act("advance");
+    expect(storage.save).not.toHaveBeenCalled();
+    expect(storage.stored()).toBe(newer);
+    expect(onProblem).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ type: "recordUnreadable", stored: newer }), // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+    );
+  });
+
+  it("saves the app's record in place of one it cannot read without loading it", () => {
+    const storage = kept({ version: 2 });
+    let replace: ((record: StoredRecord | null) => void) | undefined;
+    const run = connected({
+      storage,
+      problemHandlers: {
+        recordUnreadable: (problem) => {
+          replace = problem.replace;
+        },
+      },
+    });
+    run.start(tour);
+    storage.load.mockClear();
+
+    replace?.(record({ hint }));
+    expect(storage.load).not.toHaveBeenCalled();
+    expect(storage.stored()).toEqual(record({ hint, tour: expect.objectContaining({ status: "running" }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+  });
+
+  it("saves one at a time, and the changes made meanwhile together in the next", async () => {
+    const storage = kept(null);
+    let finish = () => {};
+    storage.save.mockImplementationOnce(
+      (saving) =>
+        new Promise<void>((resolve) => {
+          finish = () => {
+            storage.put(saving);
+            resolve();
+          };
+        }),
+    );
+    const run = connected({ storage });
+    run.start(tour);
+    run.act("advance");
+    run.act("advance");
+    expect(storage.save).toHaveBeenCalledOnce();
+
+    finish();
+    await vi.waitFor(() => expect(storage.save).toHaveBeenCalledTimes(2));
+    expect(storage.stored()).toEqual(record({ tour: expect.objectContaining({ step: 2 }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+  });
+
+  it("reads nothing before it connects, even to save, then saves what changed", () => {
+    const storage = kept(record({ hint }));
+    const run = createRun({ storage, initial: record({}) });
+    run.start(tour);
+    expect(storage.load).not.toHaveBeenCalled();
+    expect(storage.save).not.toHaveBeenCalled();
+
+    onTestFinished(run.connect());
+    expect(storage.stored()).toEqual(record({ hint, tour: expect.objectContaining({ status: "running" }) })); // oxlint-disable-line typescript/no-unsafe-assignment -- Vitest types its asymmetric matchers as any.
+  });
+
+  it.each<[string, unknown]>([
+    ["neither save nor savePartial", { load: () => null }],
+    ["both", { load: () => null, save: () => {}, savePartial: () => {} }],
+  ])("refuses an adapter with %s", (_, adapter) => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- as JavaScript, or a cast, would hand it over.
+    expect(() => createRun({ storage: adapter as StorageAdapter })).toThrow(/`save` or `savePartial`/);
   });
 });

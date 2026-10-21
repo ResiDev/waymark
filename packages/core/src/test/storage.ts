@@ -1,22 +1,44 @@
 import { vi } from "vitest";
-import type { StorageAdapter } from "../storage/adapter";
+import type { SaveAdapter, SavePartialAdapter } from "../storage/adapter";
 import { applyChanges } from "../storage/records";
-import type { StoredChanges, StoredRecord } from "../storage/records";
+import type { RecordChanges, StoredRecord } from "../storage/records";
 
 /**
- * Storage in memory, as an adapter should keep it: `save` makes its changes
- * to what is held, and `stored()` reads it back. Given what Waymark cannot
- * read, every save fails.
+ * Storage in memory, as a `savePartial` adapter should keep it: each save's
+ * changes are made to what is held, and `stored()` reads it back. Given what
+ * Waymark cannot read, every save fails.
  */
 export function held(value: StoredRecord | null) {
   let stored: unknown = value;
   const adapter = {
     load: vi.fn(() => value),
-    save: vi.fn((changes: StoredChanges) => {
+    savePartial: vi.fn((changes: RecordChanges) => {
       stored = applyChanges(stored, changes);
     }),
-  } satisfies StorageAdapter;
+  } satisfies SavePartialAdapter;
   return Object.assign(adapter, { stored: () => stored });
+}
+
+/**
+ * Storage in memory behind a `save` adapter: `load` reads what is held now,
+ * `save` keeps what it is given, and `put` stands for another tab or device
+ * saving. Each can be made to fail or wait with Vitest's mock helpers.
+ */
+export function kept(value: unknown = null) {
+  let stored: unknown = value;
+  const adapter = {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- core checks every value it loads.
+    load: vi.fn<SaveAdapter["load"]>(() => stored as StoredRecord | null),
+    save: vi.fn<SaveAdapter["save"]>((record) => {
+      stored = record;
+    }),
+  } satisfies SaveAdapter;
+  return Object.assign(adapter, {
+    stored: () => stored,
+    put: (next: unknown) => {
+      stored = next;
+    },
+  });
 }
 
 /** Storage in memory whose `load` answers when the test says so. */
@@ -32,10 +54,10 @@ export function later(value: StoredRecord | null = null) {
           refuse = reject;
         }),
     ),
-    save: vi.fn((changes: StoredChanges) => {
+    savePartial: vi.fn((changes: RecordChanges) => {
       stored = applyChanges(stored, changes);
     }),
-  } satisfies StorageAdapter;
+  } satisfies SavePartialAdapter;
   return {
     adapter,
     stored: () => stored,

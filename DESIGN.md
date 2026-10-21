@@ -333,7 +333,7 @@ These differ from the design reviewed before building.
 - **What is announced.** A change is silent when no command ran and it had a `storage` or `arrival` part. An empty command list counts as none, so the load's change with nothing held announces nothing. `savedFrom` is always the record at the end of `storage`, so anything `settle` does is saved.
 - **`Change` is a plain object with lists.** The design had a sink of four functions. Works push to `change.events`, `change.problems`, `change.credits` and `change.scrolls`. That is four fewer closures per change. `commit` scrolls to each Waymark in the order asked, as today's `obey` did.
 - **`StorageState` uses the public names**, `loading`, `ready`, `unreadable` and `error`, so the public status is its `type` and `storageStatus()` is gone.
-- **`Phases.whole` is `Phases.replace`**, the name `StoredChanges` already uses.
+- **`Phases.whole` is `Phases.replace`**, the name `RecordChanges` already uses.
 - **No `due`, no `idle`, no `sameFields`, no `check`.** `verifyAll` checks every definition's walkthrough progress with `isUnverified`. The Tasks are not cached: `tasksOf` runs in `finish` only when progress moved, in `conditions`, and in the open view's cache.
 - **`StepRead`, `WaymarkRead` and `AdvanceRead` moved to `state.ts`**, as `Message` needs them and `rules.ts` imports `state.ts`.
 - **The first look is one message**, `look`, not a read followed by `start`.

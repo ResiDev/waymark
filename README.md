@@ -431,7 +431,22 @@ A click anywhere else in your app counts as clicking away, and collapses the wal
 
 ## Saving progress
 
-Give `<WaymarkRoot>` a `storage`, and Waymark keeps one record for the user: every walkthrough's progress and every task's status. A string is a localStorage key. For anything else, pass an adapter:
+Give `<WaymarkRoot>` a `storage`, and Waymark keeps one record for the user: every walkthrough's progress and every task's status. A string is a localStorage key. For anything else, pass an adapter with `load` and either `save` or `savePartial`.
+
+`save` gets the whole record, to store as it is:
+
+```ts
+import type { StorageAdapter } from "react-waymark";
+
+export const indexedDb: StorageAdapter = {
+  load: () => db.get("waymark", userId),
+  save: (record) => db.put("waymark", record, userId), // null once nothing is left
+};
+```
+
+Before each save, Waymark loads the record again and makes this Run's changes to it, so a save keeps what another tab or device saved since. It saves nothing when that load fails, or answers a record it can't read, and keeps its changes for the next save. `load` returns `null` only when nothing is stored: a load that fails throws or rejects, or the next save holds only what the user did since.
+
+Each save is a load then a save. That costs nothing for localStorage or IndexedDB, but over the network it is two requests every time the user moves a step. `savePartial` gets only what changed, for a server that merges it into what it stores:
 
 ```ts
 import { RecordUnreadableError, type StorageAdapter } from "react-waymark";
@@ -443,7 +458,7 @@ export const server: StorageAdapter = {
     if (!response.ok) throw new Error(`Loading Waymark progress failed: ${response.status}`);
     return response.json();
   },
-  save: async (changes) => {
+  savePartial: async (changes) => {
     const response = await fetch("/api/waymark", { method: "PATCH", body: JSON.stringify(changes) });
     if (response.status === 409) throw new RecordUnreadableError(await response.text());
     if (!response.ok) throw new Error(`Saving Waymark progress failed: ${response.status}`);
@@ -451,24 +466,26 @@ export const server: StorageAdapter = {
 };
 ```
 
-`load` returns `null` only when nothing is stored: a load that fails throws or rejects. `save` gets only what changed. Each walkthrough and task it lists replaces the stored one, `null` removes it, and everything it leaves out stays as it is, so a tab never saves over what another tab or device did. The server makes the changes in one write, with `applyChanges`:
+The changes are not a record: they list the entries to `set` and the ids to `remove`, and everything they leave out stays as it is. Storing them in place of the record loses the rest, so Waymark refuses a stored one by name the next time it loads. The server makes them with `applyChanges`, in one transaction where two devices may save at once:
 
 ```ts
 import { applyChanges, RecordUnreadableError } from "react-waymark";
 
 // PATCH /api/waymark
 try {
-  const record = applyChanges(await db.waymark.get(user.id), await request.json());
-  await db.waymark.set(user.id, record); // null once nothing is left
+  await db.transaction(async (tx) => {
+    const record = applyChanges(await tx.waymark.get(user.id), await request.json());
+    await tx.waymark.set(user.id, record); // null once nothing is left
+  });
 } catch (error) {
   if (error instanceof RecordUnreadableError) return new Response(error.message, { status: 409 });
   throw error;
 }
 ```
 
-`applyChanges` throws a `RecordUnreadableError` rather than save over a record it can't read. Answering it with a 409, which the adapter throws again, tells the Run the record was the problem and not the network.
+`applyChanges` checks the changes, and throws on anything a Run didn't send. It throws a `RecordUnreadableError` rather than save over a record it can't read. Answering that with a 409, which the adapter throws again, tells the Run the record was the problem and not the network.
 
-`load` and `save` can be synchronous or return a promise. The Run reads nothing until it is connected. `<WaymarkRoot>` connects it in the browser, before the first paint, so a server render never calls the adapter. Until the record is in, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for `save`. A click on Next moves the walkthrough at once, and a save that fails keeps the change and reports `storageFailed`.
+`load`, `save` and `savePartial` can be synchronous or return a promise. The Run reads nothing until it is connected. `<WaymarkRoot>` connects it in the browser, before the first paint, so a server render never calls the adapter. Until the record is in, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for a save. A click on Next moves the walkthrough at once, and a save that fails keeps the change and reports `storageFailed`. A `save` adapter saves one at a time, with the changes made meanwhile in the next.
 
 Without `storage`, progress lasts as long as the Run, which is until the page reloads or the root gets a new `key`. The root reads `storage` only when it mounts. Give each user their own key, and `key={user.id}`, so a new user gets a new Run that reads their record and leaves the last user's alone.
 
@@ -544,7 +561,7 @@ Each handler hears only its own type, so `waymarkMissing` reads `problem.stepInd
 
 | `type` | When | Carries | Default |
 | --- | --- | --- | --- |
-| `storageFailed` | An adapter's `load` or `save` threw or rejected | `error` | logged |
+| `storageFailed` | An adapter's `load`, `save` or `savePartial` threw or rejected | `error` | logged |
 | `recordUnreadable` | A stored record Waymark didn't write, or a newer version than it reads, reported once | `error`, `stored`, `replace` | logged |
 | `recordDropped` | Waymark dropped a stored entry: a walkthrough's progress rather than resume it, or a task's status it couldn't read | `walkthrough` or `task`, `reason` | nothing |
 | `waymarkMissing` | A step's waymark wasn't found within `missingAfterMs`, reported once per step | `walkthrough`, `step`, `stepIndex` | nothing |

@@ -214,8 +214,8 @@ function shownLocally(key: string): StorageAdapter {
       queueMicrotask(() => stored.set(value));
       return value;
     },
-    save: (changes) => {
-      void local.save(changes);
+    save: (value) => {
+      void local.save(value);
       stored.set(read());
     },
     subscribe: (listener) =>
@@ -234,10 +234,10 @@ const answer = async (response: Promise<Response>): Promise<StoredRecord | null>
   return value;
 };
 
-/** The dev server's /api/record: slow, and without `subscribe`, so tabs don't hear each other. */
+/** The dev server's /api/record: slow, and without `subscribe`, so tabs don't hear each other. It merges each save's changes. */
 const serverRecord: StorageAdapter = {
   load: () => answer(fetch("/api/record")),
-  save: async (changes) => {
+  savePartial: async (changes) => {
     await answer(fetch("/api/record", { method: "PATCH", body: JSON.stringify(changes) }));
   },
 };

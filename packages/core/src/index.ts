@@ -57,5 +57,5 @@ export type {
   TaskStatus,
 } from "./checklists/types";
 export type { CallbackName, DropReason, ProblemHandlers, WaymarkProblem } from "./problems";
-export type { StorageAdapter } from "./storage/adapter";
-export type { StoredChanges, StoredRecord } from "./storage/records";
+export type { SaveAdapter, SavePartialAdapter, StorageAdapter } from "./storage/adapter";
+export type { RecordChanges, StoredRecord } from "./storage/records";

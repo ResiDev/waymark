@@ -5,15 +5,20 @@ import { defineConfig, type Plugin } from "vite";
 const LATENCY = 800;
 
 type Entries = Record<string, unknown>;
-type Changes = Readonly<{ version: number; walkthroughs: Entries; tasks: Entries; replace?: true }>;
+type Kinds<T> = Readonly<{ walkthroughs: T; tasks: T }>;
+type Stored = Readonly<{ version: number } & Kinds<Entries>>;
+type Changes = Readonly<{ version: number; set: Kinds<Entries>; remove: Kinds<readonly string[]>; replace?: true }>;
 
 /** As Waymark's `applyChanges` does, without loading its source into the config. */
-const applyChanges = (record: Changes | null, changes: Changes): Changes | null => {
-  const merge = (entries: Entries = {}, changed: Entries) =>
-    Object.fromEntries(Object.entries({ ...entries, ...changed }).filter(([, value]) => value !== null));
+const applyChanges = (record: Stored | null, changes: Changes): Stored | null => {
   const base = changes.replace === true ? null : record;
-  const walkthroughs = merge(base?.walkthroughs, changes.walkthroughs);
-  const tasks = merge(base?.tasks, changes.tasks);
+  const merge = (kind: keyof Kinds<unknown>) => {
+    const entries = { ...base?.[kind], ...changes.set[kind] };
+    for (const id of changes.remove[kind]) delete entries[id];
+    return entries;
+  };
+  const walkthroughs = merge("walkthroughs");
+  const tasks = merge("tasks");
   if (Object.keys(walkthroughs).length === 0 && Object.keys(tasks).length === 0) return null;
   return { version: changes.version, walkthroughs, tasks };
 };
@@ -25,7 +30,7 @@ const applyChanges = (record: Changes | null, changes: Changes): Changes | null 
  * a save's changes to it, as an app's server would.
  */
 function recordApi(): Plugin {
-  let record: Changes | null = null;
+  let record: Stored | null = null;
   return {
     name: "record-api",
     configureServer(server) {
