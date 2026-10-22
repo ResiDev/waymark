@@ -431,22 +431,59 @@ A click anywhere else in your app counts as clicking away, and collapses the wal
 
 ## Saving progress
 
-Give `<WaymarkRoot>` a `storage`, and Waymark keeps one record for the user: every walkthrough's progress and every task's status. A string is a localStorage key. For anything else, pass an adapter with `load` and either `save` or `savePartial`.
+Give `<WaymarkRoot>` a `storage`, and Waymark keeps one record for the user: every walkthrough's progress and every task's status. A string is a localStorage key. For anything else, pass an adapter with `load` and either `save` or `savePartial`. Use `save` for storage only this tab writes, and `savePartial` for storage other tabs or devices write too.
+
+### `save`: the whole record
 
 `save` gets the whole record, to store as it is:
 
 ```ts
 import type { StorageAdapter } from "react-waymark";
 
-export const indexedDb: StorageAdapter = {
-  load: () => db.get("waymark", userId),
-  save: (record) => db.put("waymark", record, userId), // null once nothing is left
+// sessionStorage is this tab's own, so nothing else writes to it.
+export const thisTab: StorageAdapter = {
+  load: () => JSON.parse(sessionStorage.getItem("waymark") ?? "null"),
+  save: (record) => {
+    if (record === null) sessionStorage.removeItem("waymark"); // null once nothing is left
+    else sessionStorage.setItem("waymark", JSON.stringify(record));
+  },
 };
 ```
 
-Before each save, Waymark loads the record again and makes this Run's changes to it, so a save keeps what another tab or device saved since. It saves nothing when that load fails, or answers a record it can't read, and keeps its changes for the next save. `load` returns `null` only when nothing is stored: a load that fails throws or rejects, or the next save holds only what the user did since.
+Before each save, Waymark loads the record again and makes this Run's changes to it. It saves nothing when that load fails, or answers a record it can't read, and keeps its changes for the next save. `load` returns `null` only when nothing is stored: a load that fails throws or rejects, or the next save holds only what the user did since.
 
-Each save is a load then a save. That costs nothing for localStorage or IndexedDB, but over the network it is two requests every time the user moves a step. `savePartial` gets only what changed, for a server that merges it into what it stores:
+That load keeps what was saved elsewhere only if nothing writes between it and the save. localStorage is safe: its load and save are synchronous, so no other tab runs in between. So is a store only this tab writes. Anywhere else, use `savePartial`.
+
+### `savePartial`: only what changed
+
+Use `savePartial` when another tab or device can write between a load and a save: IndexedDB open in several tabs, or a server the user reaches from several devices. With `save`, two tabs can each load the same record, each make their change, and each save. The second save is a whole record, so it writes over the first tab's change.
+
+`savePartial` gets only what changed. Make those changes to what is stored with `applyChanges`, reading and writing in one transaction, so no one writes in between:
+
+```ts
+import { applyChanges, type StorageAdapter } from "react-waymark";
+
+export const indexedDb: StorageAdapter = {
+  load: () => db.get("waymark", userId),
+  savePartial: async (changes) => {
+    const tx = db.transaction("waymark", "readwrite");
+    const record = applyChanges(await tx.store.get(userId), changes);
+    await (record === null ? tx.store.delete(userId) : tx.store.put(record, userId)); // null once nothing is left
+    await tx.done;
+  },
+};
+```
+
+The changes are not a record: they list the entries to `set` and the ids to `remove`, and everything they leave out stays as it is. Never store them as they are:
+
+```ts
+// Wrong: stores the changes in place of the record, and loses every entry they leave out.
+savePartial: (changes) => db.put("waymark", changes, userId),
+```
+
+That compiles, because a database takes any value. The next load reports the stored changes as `recordUnreadable`, naming the mistake, but the entries they left out are gone by then.
+
+Over the network, `savePartial` is also the cheaper one. A `save` adapter loads before every save, so it makes two requests each time the user moves a step, where `savePartial` makes one small one. The merge then runs on your server, next to the data:
 
 ```ts
 import { RecordUnreadableError, type StorageAdapter } from "react-waymark";
@@ -466,7 +503,7 @@ export const server: StorageAdapter = {
 };
 ```
 
-The changes are not a record: they list the entries to `set` and the ids to `remove`, and everything they leave out stays as it is. Storing them in place of the record loses the rest, so Waymark refuses a stored one by name the next time it loads. The server makes them with `applyChanges`, in one transaction where two devices may save at once:
+The route makes the changes with `applyChanges`, in one transaction, as the IndexedDB adapter does:
 
 ```ts
 import { applyChanges, RecordUnreadableError } from "react-waymark";
@@ -483,9 +520,11 @@ try {
 }
 ```
 
-`applyChanges` checks the changes, and throws on anything a Run didn't send. It throws a `RecordUnreadableError` rather than save over a record it can't read. Answering that with a 409, which the adapter throws again, tells the Run the record was the problem and not the network.
+`applyChanges` takes the changes as `unknown`, so a server passes the request body straight in. It checks them, and throws on anything a Run didn't send, such as a whole record from a `save` adapter pointed at this route. It throws a `RecordUnreadableError` rather than save over a record it can't read. The IndexedDB adapter lets that error reach the Run as it is. Over the network, answer it with a 409, which the adapter throws again, so the Run knows the record was the problem and not the network.
 
-`load`, `save` and `savePartial` can be synchronous or return a promise. The Run reads nothing until it is connected. `<WaymarkRoot>` connects it in the browser, before the first paint, so a server render never calls the adapter. Until the record is in, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for a save. A click on Next moves the walkthrough at once, and a save that fails keeps the change and reports `storageFailed`. A `save` adapter saves one at a time, with the changes made meanwhile in the next.
+### How the Run loads and saves
+
+`load`, `save` and `savePartial` can be synchronous or return a promise. The Run reads nothing until it is connected. `<WaymarkRoot>` connects it in the browser, before the first paint, so a server render never calls the adapter. Until the record is in, the Run's `storageStatus` is `"loading"`. It holds the user's actions and your commands until the record is in, then runs them in order. It doesn't wait for a save. A click on Next moves the walkthrough at once, and a save that fails reports `storageFailed` while the change stays in this tab. A `save` adapter saves one at a time, with the changes made meanwhile in the next, and tries a failed save's changes again with the next save. A `savePartial` that fails isn't sent again: its changes reach storage the next time those entries change.
 
 Without `storage`, progress lasts as long as the Run, which is until the page reloads or the root gets a new `key`. The root reads `storage` only when it mounts. Give each user their own key, and `key={user.id}`, so a new user gets a new Run that reads their record and leaves the last user's alone.
 
