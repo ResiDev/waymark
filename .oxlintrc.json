@@ -89,7 +89,7 @@
       "files": [
         "packages/core/src/state.ts",
         "packages/core/src/run/change.ts",
-        "packages/core/src/run/memo.ts",
+        "packages/core/src/run/update.ts",
         "packages/core/src/run/record.ts",
         "packages/core/src/run/rules.ts",
         "packages/core/src/run/tasks.ts",

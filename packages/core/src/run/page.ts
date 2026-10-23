@@ -1,14 +1,13 @@
 import { inDevelopment } from "../dev";
 import type { Queue } from "../queue";
-import type { RunState, Message, Phases, ShownRunState, StepRead, ShowingId, WaymarkRead, Work } from "../state";
+import type { Candidates, RunState, Message, Msg, StepRead, ShowingId, WaymarkRead } from "../state";
 import { checkOf, hasWaymark, selectorOf } from "../walkthrough/walkthrough";
 import { keyAction, whereClicked } from "./input";
 import type { InputContext } from "./input";
 import { liveWatchers, needsAdvanceRead, NOTHING_LIVE, sameWaymarkAria, sameWaymarkEvents, stepAt } from "./rules";
 import type { OnStep, WaymarkAria, WaymarkEvents } from "./rules";
 import type { AttachOptions, Rect, UiElements } from "./types";
-import { detached, obey, openOf, seeBeaconWaymarks, waymarkStateOf } from "./walkthroughs";
-import type { Candidates } from "./walkthroughs";
+import { openOf, waymarkStateOf } from "./walkthroughs";
 
 const NO_UI: UiElements = { dialog: null };
 
@@ -62,23 +61,25 @@ type Attachment = Readonly<{ ui: () => UiElements; padding: number }>;
 export type Page = Readonly<{
   attach: (ui: () => UiElements, options?: AttachOptions) => () => void;
   /** After every change, even one that moved nothing: a frame that has fired has closed itself, and must be asked for again. */
-  afterChange: (runState: RunState) => void;
+  sync: () => void;
 }>;
 
 export function createPage({
   root,
   queue,
   runState,
-  change,
-  commitNow,
-  candidatesNow,
+  candidates,
+  send,
+  sendNow,
 }: Readonly<{
   root: () => Document | Element;
   queue: Queue;
   runState: () => RunState;
-  change: (phases: Phases) => void;
-  commitNow: (phases: Phases) => void;
-  candidatesNow: (runState: ShownRunState) => Candidates;
+  /** The collapsed walkthroughs that may show a beacon, now. */
+  candidates: () => Candidates;
+  send: (msg: Msg) => void;
+  /** Inside the drain, at once: only the first look, which itself runs from the queue. */
+  sendNow: (msg: Msg) => void;
 }>): Page {
   const attachments: Attachment[] = [];
   // A check that throws would throw every frame; each distinct error once per showing of a step is enough to see the bug.
@@ -88,7 +89,7 @@ export function createPage({
   let waymarkAria: Watcher<WaymarkAria>;
   let waymarkEvents: Watcher<WaymarkEvents>;
 
-  const tell = (message: Message) => change({ commands: [obey(message)] });
+  const tell = (message: Message) => send({ _tag: "page", message });
 
   const measure = (selector: string, cached: Element | null): WaymarkRead => {
     const where = root();
@@ -123,20 +124,20 @@ export function createPage({
     return { now: performance.now(), waymark, advance: { holds } };
   };
 
-  const lookAtBeacons = (shown: ShownRunState): Work => {
+  const lookAtBeacons = (shown: RunState): Msg => {
     const reads = new Map<string, WaymarkRead>();
-    for (const [walkthrough, walkthroughProgress] of candidatesNow(shown)) {
+    for (const [walkthrough, walkthroughProgress] of candidates()) {
       const selector = selectorOf(stepAt(walkthrough, walkthroughProgress.step));
       if (selector !== undefined) reads.set(walkthrough.id, measure(selector, waymarkStateOf(shown.live.beaconWaymarks, walkthrough, walkthroughProgress).element));
     }
-    return seeBeaconWaymarks(reads, performance.now());
+    return { _tag: "beaconsRead", reads, now: performance.now() };
   };
 
   const look = () => {
     if (attachments.length === 0) return;
     const on = openOf(runState());
     if (on === undefined || on.stepState.looked) return;
-    commitNow({ commands: [obey({ type: "look", showingId: on.stepState.showingId, read: readStep(on, true) })] });
+    sendNow({ _tag: "page", message: { type: "look", showingId: on.stepState.showingId, read: readStep(on, true) } });
   };
 
   const openFrame = () => {
@@ -145,7 +146,7 @@ export function createPage({
       const shown = runState();
       const on = openOf(shown);
       if (on === undefined) {
-        change({ commands: [lookAtBeacons(shown)] });
+        send(lookAtBeacons(shown));
         return;
       }
       const read = readStep(on, false);
@@ -180,13 +181,13 @@ export function createPage({
   const openWaymarkEvents = (to: WaymarkEvents) =>
     listenToWaymarkEvents(to, () => tell({ type: "event", showingId: to.visit, now: performance.now() }));
 
-  const afterChange = (shown: RunState) => {
+  const sync = () => {
     const attached = attachments.length > 0;
-    const on = openOf(shown);
+    const on = openOf(runState());
     if (attached && on !== undefined && !on.stepState.looked) queue.run(look);
     const live = on === undefined ? NOTHING_LIVE : liveWatchers(on);
     const beacons =
-      attached && candidatesNow(shown).some(([walkthrough, walkthroughProgress]) => hasWaymark(stepAt(walkthrough, walkthroughProgress.step)));
+      attached && candidates().some(([walkthrough, walkthroughProgress]) => hasWaymark(stepAt(walkthrough, walkthroughProgress.step)));
     input = syncWatcher(input, live.input || undefined, () => openInput(onClick, onKeyDown));
     frame = syncWatcher(frame, live.frame || beacons || undefined, openFrame);
     waymarkAria = syncWatcher(waymarkAria, live.waymarkAria, openWaymarkAria, sameWaymarkAria);
@@ -213,13 +214,13 @@ export function createPage({
       attachments.splice(at, 1);
       if (attachments.length > 0) return;
       countAttached(-1);
-      change({ commands: [detached] });
+      send({ _tag: "detached" });
     };
     attachments.push(attachment);
     if (attachments.length > 1) return detach;
     countAttached(1);
     try {
-      change({});
+      send({ _tag: "attached" });
     } catch (error) {
       // The caller gets no detach to call, so nothing may stay attached.
       detach();
@@ -228,5 +229,5 @@ export function createPage({
     return detach;
   };
 
-  return { attach, afterChange };
+  return { attach, sync };
 }

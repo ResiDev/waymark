@@ -3,36 +3,26 @@ import type { AnyTask, Checklist, ChecklistDefinition, ChecklistGroup, Checklist
 import { inDevelopment } from "../dev";
 import { problemReporter, recordUnreadable } from "../problems";
 import { createQueue } from "../queue";
-import type { StartRequests, Change, RunState, WalkthroughsAndChecklistsInUse, Live, Phases, UserRecord, Work } from "../state";
+import type { Change, Command, Effect, Given, Model, Msg } from "../state";
 import { adapterOf } from "../storage/adapter";
 import { createLink } from "../storage/link";
-import { changesBetween, parseRecord, replacing, storedRecord } from "../storage/records";
-import type { Parsed, StoredRecord } from "../storage/records";
+import { parseRecord } from "../storage/records";
+import type { StoredRecord } from "../storage/records";
 import { listen } from "../subscribe";
 import type { Walkthrough } from "../walkthrough/types";
-import { runChange } from "./change";
-import type { Ran } from "./change";
 import { createPage } from "./page";
-import { heard, loaded, LOADING, READY, userRecordAt, refused, replaced } from "./record";
-import { conditions, eventsBetween, isComplete, markDone, markTodo, skip, startFrom, taskOf, tasksOf, toggle } from "./tasks";
+import { LOADING, READY, userRecordAt } from "./record";
+import { taskOf } from "./tasks";
 import type { Run, RunOptions, RunSnapshot } from "./types";
-import { checklistView, candidatesOf, runView } from "./views";
-import type { View } from "./views";
-import { act, openId, openOf, request, reset, start, unwait, wait } from "./walkthroughs";
+import { initialModel, runStateOf, update } from "./update";
+import { viewChecklist } from "./views";
+import { openOf } from "./walkthroughs";
 
+/** What the app holds of one checklist: who listens, and the object `run.checklist` hands back. */
 type Handle = Readonly<{
-  definition: ChecklistDefinition<AnyTask>;
-  view: View<ChecklistSnapshot<AnyTask>>;
   listeners: Set<(snapshot: ChecklistSnapshot<AnyTask>) => void>;
   checklist: Checklist<AnyTask>;
 }>;
-
-const toRecord =
-  (write: (userRecord: UserRecord, change: Change, runState: RunState) => UserRecord): Work =>
-  (runState, change) => {
-    const userRecord = write(runState.userRecord, change, runState);
-    return userRecord === runState.userRecord ? runState : { ...runState, userRecord };
-  };
 
 export function createRun<TWalkthrough extends Walkthrough = Walkthrough>(
   options?: RunOptions<TWalkthrough>,
@@ -47,17 +37,20 @@ export function createRun(options: RunOptions = {}): Run {
   const queue = createQueue("Waymark callbacks failed.", report);
   const adapter = options.storage === undefined ? undefined : adapterOf(options.storage);
 
-  let walkthroughsAndChecklistsInUse: WalkthroughsAndChecklistsInUse = { walkthroughsById: new Map(), checklistDefinitions: [] };
-  let checklistContext: unknown = options.context;
-  let userRecord = userRecordAt(adapter === undefined && options.initial === undefined ? READY : LOADING);
-  let startRequests: StartRequests = { waitingToStart: [], startedFromChecklist: new Map() };
-  let live: Live = { openStep: undefined, beaconWaymarks: new Map() };
-  const held: Work[] = [];
+  // Written only by the calls below that hand something over.
+  let given: Given = {
+    walkthroughsAndChecklistsInUse: { walkthroughsById: new Map(), checklistDefinitions: [] },
+    checklistContext: options.context,
+    checklistsAsked: new Map(),
+  };
+  // Written only by `step`.
+  let model: Model = initialModel(given, userRecordAt(adapter === undefined && options.initial === undefined ? READY : LOADING));
   const listeners = new Set<(snapshot: RunSnapshot) => void>();
   const handles = new Map<ChecklistDefinition<AnyTask>, Handle>();
 
-  const runState = (): RunState => ({ walkthroughsAndChecklistsInUse, checklistContext, userRecord, startRequests, live });
-  const loading = () => userRecord.storageStatus.type === "loading";
+  const runState = () => runStateOf(model, given);
+  const loading = () => model.userRecord.storageStatus.type === "loading";
+  const getSnapshot = () => model.views.run.snapshot.value;
 
   const verdicts: Change["verdicts"] = (tasks, context) => {
     try {
@@ -68,86 +61,98 @@ export function createRun(options: RunOptions = {}): Run {
     }
   };
 
-  const candidatesNow = candidatesOf();
-  const view = runView(candidatesNow, runState());
-  const change = (phases: Phases) => queue.run(() => commit(phases));
-  const page = createPage({ root, queue, runState, change, commitNow: (phases) => commit(phases), candidatesNow });
+  /** Through the queue, so a Msg sent from a callback waits until the change that called it has finished. */
+  const send = (msg: Msg) => queue.run(() => step(msg));
 
-  const save = ({ savedFrom, after }: Ran) => {
-    const now = after.userRecord;
-    const changes =
-      savedFrom === "whole"
-        ? replacing(storedRecord(now.walkthroughProgressById, now.taskStatusById))
-        : savedFrom.walkthroughProgressById === now.walkthroughProgressById && savedFrom.taskStatusById === now.taskStatusById
-          ? undefined
-          : changesBetween(
-              { progress: savedFrom.walkthroughProgressById, statuses: savedFrom.taskStatusById },
-              { progress: now.walkthroughProgressById, statuses: now.taskStatusById },
-            );
-    if (changes === undefined) return;
-    link.save(changes);
-    const { onChange } = options;
-    if (onChange !== undefined) {
-      const stored = storedRecord(now.walkthroughProgressById, now.taskStatusById);
-      queue.callApp("onChange", () => onChange(stored));
-    }
+  const page = createPage({ root, queue, runState, candidates: () => model.views.run.candidates.value, send, sendNow: step });
+
+  const link = createLink({
+    adapter,
+    queue,
+    report,
+    hasInitial: options.initial !== undefined,
+    loading,
+    loaded: (read) => send({ _tag: "loaded", read }),
+    heard: (value) => {
+      const read = parseRecord(value);
+      send({ _tag: "heard", read });
+      if (read.ok) send({ _tag: "arrived" });
+    },
+    refused: (error) => send({ _tag: "refused", error }),
+  });
+
+  /** The app's record in place of one Waymark could not read, with what this tab holds on top, saved whole. */
+  const replace = (replacement: StoredRecord | null) => {
+    const parsed = parseRecord(replacement);
+    if (!parsed.ok) throw new Error(`Waymark cannot take the record given to replace. ${parsed.error.message}`);
+    send({ _tag: "replaced", read: parsed.value });
   };
 
-  const announce = ({ after, announcedFrom, told }: Ran) => {
-    const { onEvent } = options;
-    if (onEvent === undefined) return;
-    for (const event of told.events) queue.callApp("onEvent", () => onEvent(event));
-    if (announcedFrom === undefined) return;
-    const credit = (id: string) => told.credits.get(id);
-    for (const event of eventsBetween(tasksOf(after.walkthroughsAndChecklistsInUse.checklistDefinitions), announcedFrom, after.userRecord, credit)) {
-      queue.callApp("onEvent", () => onEvent(event));
-    }
-    for (const { definition, view: shown } of handles.values()) {
-      if (isComplete(definition, announcedFrom.taskStatusById) || !isComplete(definition, after.userRecord.taskStatusById)) continue;
-      const snapshot = shown.current();
-      queue.callApp("onEvent", () => onEvent({ type: "checklistComplete", checklist: definition.name, snapshot }));
-    }
-  };
-
-  function commit(phases: Phases) {
-    const ran = runChange(runState(), phases, Date.now(), verdicts);
-    const { after } = ran;
-    userRecord = after.userRecord;
-    startRequests = after.startRequests;
-    live = after.live;
-    for (const element of ran.told.scrolls) element.scrollIntoView({ behavior: "smooth", block: "center" });
-
-    // Every snapshot is up to date before any callback runs, so a callback that reads another sees this change too.
-    const was = view.current();
-    const snapshot = view.update(after);
-    let changed: Handle[] | undefined;
-    for (const handle of handles.values()) {
-      const last = handle.view.current();
-      if (handle.view.update(after) !== last) (changed ??= []).push(handle);
-    }
-    page.afterChange(after);
-
-    if (snapshot !== was) queue.notify(listeners, snapshot);
-    for (const handle of changed ?? []) queue.notify(handle.listeners, handle.view.current());
-    save(ran);
-    const { unreadable } = ran;
-    if (unreadable !== undefined) queue.invoke(() => report(recordUnreadable(unreadable, unreadable.stored, replace)));
-    for (const problem of ran.told.problems) queue.invoke(() => report(problem));
-    announce(ran);
+  /** One Msg: the next model, then its effects, in the order `update` gives them. */
+  function step(msg: Msg) {
+    const next = update(model, given, msg, { now: Date.now(), verdicts });
+    model = next.model;
+    perform(next.effects);
   }
 
-  /** While the record loads, a command waits, so it acts on the user's progress rather than none. */
-  const command = (work: Work) => {
-    if (loading()) held.push(work);
-    else change({ commands: [work] });
-  };
+  function perform(effects: readonly Effect[]) {
+    for (const effect of effects) {
+      switch (effect._tag) {
+        case "scroll":
+          effect.element.scrollIntoView({ behavior: "smooth", block: "center" });
+          break;
+        case "syncPage":
+          page.sync();
+          break;
+        case "notifyRun":
+          queue.notify(listeners, effect.snapshot);
+          break;
+        case "notifyChecklist": {
+          const handle = handles.get(effect.checklist);
+          if (handle !== undefined) queue.notify(handle.listeners, effect.snapshot);
+          break;
+        }
+        case "save":
+          link.save(effect.changes);
+          break;
+        case "saved": {
+          const { onChange } = options;
+          const { record } = effect;
+          if (onChange !== undefined) queue.callApp("onChange", () => onChange(record));
+          break;
+        }
+        case "recordUnreadable": {
+          const { error } = effect;
+          queue.invoke(() => report(recordUnreadable(error, error.stored, replace)));
+          break;
+        }
+        case "problem": {
+          const { problem } = effect;
+          queue.invoke(() => report(problem));
+          break;
+        }
+        case "event": {
+          const { onEvent } = options;
+          const { event } = effect;
+          if (onEvent !== undefined) queue.callApp("onEvent", () => onEvent(event));
+          break;
+        }
+      }
+    }
+  }
+
+  if (options.initial !== undefined) send({ _tag: "loaded", read: parseRecord(options.initial) });
+  /** What a server render shows: it cannot see the browser's storage. */
+  const server = runState();
+  const serverSnapshot = getSnapshot();
 
   /** The Run's definition for this id; another under an id already taken is a mistake. */
   const take = (walkthrough: Walkthrough): Walkthrough => {
-    const known = walkthroughsAndChecklistsInUse.walkthroughsById.get(walkthrough.id);
+    const inUse = given.walkthroughsAndChecklistsInUse;
+    const known = inUse.walkthroughsById.get(walkthrough.id);
     if (known === undefined) {
-      const walkthroughsById = new Map(walkthroughsAndChecklistsInUse.walkthroughsById).set(walkthrough.id, walkthrough);
-      walkthroughsAndChecklistsInUse = { ...walkthroughsAndChecklistsInUse, walkthroughsById };
+      const walkthroughsById = new Map(inUse.walkthroughsById).set(walkthrough.id, walkthrough);
+      given = { ...given, walkthroughsAndChecklistsInUse: { ...inUse, walkthroughsById } };
       return walkthrough;
     }
     if (known !== walkthrough && inDevelopment()) {
@@ -158,46 +163,14 @@ export function createRun(options: RunOptions = {}): Run {
     return known;
   };
 
-  /** The app's record in place of one Waymark could not read, with what this tab holds on top, saved whole. */
-  const replace = (replacement: StoredRecord | null) => {
-    const parsed = parseRecord(replacement);
-    if (!parsed.ok) throw new Error(`Waymark cannot take the record given to replace. ${parsed.error.message}`);
-    const { value } = parsed;
-    change({ storage: toRecord((was, told) => replaced(was, value, told)), arrival: true, replace: true });
-  };
-
-  const takeRecord = (read: Parsed | "failed") =>
-    queue.run(() =>
-      commit({ storage: toRecord((was, told) => loaded(was, read, told)), arrival: true, commands: held.splice(0) }),
-    );
-
-  const link = createLink({
-    adapter,
-    queue,
-    report,
-    hasInitial: options.initial !== undefined,
-    loading,
-    loaded: takeRecord,
-    heard: (value) => {
-      const parsed = parseRecord(value);
-      change({ storage: toRecord((was, told, at) => heard(was, parsed, openId(at), at.walkthroughsAndChecklistsInUse.walkthroughsById, told)) });
-      if (parsed.ok) change({ arrival: true });
-    },
-    refused: (error) => change({ storage: toRecord((was) => refused(was, error)) }),
-  });
-
-  if (options.initial !== undefined) takeRecord(parseRecord(options.initial));
-  /** What a server render shows: it cannot see the browser's storage. */
-  const server = runState();
-  const serverSnapshot = view.current();
-
   /** A checklist's Tasks, their walkthroughs and the checklists beside it reach the Run the first time one is used. */
   const join = (group: ChecklistGroup) => {
-    if (walkthroughsAndChecklistsInUse.checklistDefinitions.includes(group)) return;
+    if (given.walkthroughsAndChecklistsInUse.checklistDefinitions.includes(group)) return;
     for (const task of group.tasks) if (task.walkthrough !== undefined) take(task.walkthrough);
-    walkthroughsAndChecklistsInUse = { ...walkthroughsAndChecklistsInUse, checklistDefinitions: [...walkthroughsAndChecklistsInUse.checklistDefinitions, group] };
+    const inUse = given.walkthroughsAndChecklistsInUse;
+    given = { ...given, walkthroughsAndChecklistsInUse: { ...inUse, checklistDefinitions: [...inUse.checklistDefinitions, group] } };
     for (const definition of group.checklists) handleOf(definition);
-    if (!loading()) change({ arrival: true });
+    send({ _tag: "arrived" });
   };
 
   function handleOf(definition: ChecklistDefinition<AnyTask>): Handle {
@@ -205,33 +178,33 @@ export function createRun(options: RunOptions = {}): Run {
     if (known !== undefined) return known;
     const { name } = definition;
     const group = groupOf(definition);
-    const shown = checklistView(definition, group, runState());
-    const serverShown = checklistView(definition, group, server).current();
+    const first = viewChecklist(definition, group, undefined, runState());
+    const serverShown = viewChecklist(definition, group, undefined, server).value;
+    given = { ...given, checklistsAsked: new Map(given.checklistsAsked).set(definition, { group, first }) };
+    const current = () => (model.views.checklists.get(definition) ?? first).value;
     const listening = new Set<(snapshot: ChecklistSnapshot<AnyTask>) => void>();
-    const on = (work: (id: string) => Work) => (id: string) => {
+    const on = (command: (task: string) => Command) => (task: string) => {
       join(group);
-      command(work(id));
+      send(command(task));
     };
     const handle: Handle = {
-      definition,
-      view: shown,
       listeners: listening,
       checklist: {
-        getSnapshot: shown.current,
+        getSnapshot: current,
         getServerSnapshot: () => serverShown,
         subscribe: (listener) => {
           join(group);
-          return listen(queue, listening, shown.current)(listener);
+          return listen(queue, listening, current)(listener);
         },
-        start: (id) => {
+        start: (task) => {
           join(group);
-          const walkthrough = taskOf(walkthroughsAndChecklistsInUse.checklistDefinitions, id)?.walkthrough;
-          if (walkthrough !== undefined) command(startFrom(take(walkthrough), name));
+          const walkthrough = taskOf(given.walkthroughsAndChecklistsInUse.checklistDefinitions, task)?.walkthrough;
+          if (walkthrough !== undefined) send({ _tag: "start", walkthrough: take(walkthrough), fromChecklist: name });
         },
-        markDone: on(markDone),
-        markTodo: on((id) => markTodo(id, name)),
-        skip: on((id) => skip(id, name)),
-        toggle: on((id) => toggle(id, name)),
+        markDone: on((task) => ({ _tag: "markDone", task })),
+        markTodo: on((task) => ({ _tag: "markTodo", task, checklist: name })),
+        skip: on((task) => ({ _tag: "skip", task, checklist: name })),
+        toggle: on((task) => ({ _tag: "toggle", task, checklist: name })),
       },
     };
     handles.set(definition, handle);
@@ -239,40 +212,37 @@ export function createRun(options: RunOptions = {}): Run {
   }
 
   return {
-    start: (walkthrough) => command(start(take(walkthrough))),
+    start: (walkthrough) => send({ _tag: "start", walkthrough: take(walkthrough), fromChecklist: undefined }),
     requestStart: (walkthrough) => {
       const taken = take(walkthrough);
-      startRequests = wait(startRequests, taken.id);
-      command(request(taken));
-      return () => {
-        startRequests = unwait(startRequests, taken.id);
-      };
+      send({ _tag: "requestStart", walkthrough: taken });
+      return () => send({ _tag: "withdrawRequest", walkthrough: taken.id });
     },
     act: (action, walkthrough) => {
       if (walkthrough !== undefined) {
-        command(act(action, take(walkthrough)));
+        send({ _tag: "act", action, walkthrough: take(walkthrough) });
       } else if (loading()) {
-        command(act(action, undefined));
+        send({ _tag: "act", action, walkthrough: undefined });
       } else {
+        // The one open at the call, as the caller saw it.
         const on = openOf(runState());
-        if (on !== undefined) command(act(action, on.walkthrough));
+        if (on !== undefined) send({ _tag: "act", action, walkthrough: on.walkthrough });
       }
     },
-    reset: (walkthrough) => command(reset(take(walkthrough))),
-    getSnapshot: view.current,
+    reset: (walkthrough) => send({ _tag: "reset", walkthrough: take(walkthrough) }),
+    getSnapshot,
     getServerSnapshot: () => serverSnapshot,
-    subscribe: listen(queue, listeners, view.current),
+    subscribe: listen(queue, listeners, getSnapshot),
     attach: page.attach,
     connect: link.connect,
     setContext: (next) => {
-      if (Object.is(next, checklistContext)) return;
-      checklistContext = next;
-      // Not held: only the latest context matters, and the load asks the conditions once the record is in.
-      if (!loading()) change({ commands: [conditions] });
+      if (Object.is(next, given.checklistContext)) return;
+      given = { ...given, checklistContext: next };
+      send({ _tag: "contextChanged" });
     },
     checklist: <TTask extends { readonly id: string }>(definition: ChecklistDefinition<TTask>): Checklist<TTask> =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- made for this definition, whose Tasks are TTask.
       handleOf(definition).checklist as Checklist<TTask>,
-    skipTask: (id) => command(skip(id, undefined)),
+    skipTask: (task) => send({ _tag: "skip", task, checklist: undefined }),
   };
 }

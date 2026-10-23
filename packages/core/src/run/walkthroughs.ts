@@ -1,13 +1,11 @@
 import { recordDropped } from "../problems";
-import type { StartRequests, Change, RunState, Live, Message, UserRecord, ShownRunState, WaymarkState, StepState, WaymarkRead, Work } from "../state";
+import type { Candidates, StartRequests, Change, RunState, Live, Message, UserRecord, ShownRunState, WaymarkState, StepState, WaymarkRead, Work } from "../state";
 import { DEFAULT_MAX_AGE, staleness } from "../storage/records";
 import type { Walkthrough, WalkthroughProgress } from "../walkthrough/types";
 import { verified, isUnverified, place, put } from "./record";
 import { apply, ended, enter, restartUnseen, running, seeWaymark, stepAt, unseenWaymark } from "./rules";
 import type { OnStep, Outcome } from "./rules";
 import type { Action, Snapshot } from "./types";
-
-export type Candidates = readonly (readonly [Walkthrough, WalkthroughProgress])[];
 
 const NONE: Candidates = [];
 const NO_BEACONS: Live["beaconWaymarks"] = new Map();
