@@ -102,7 +102,7 @@ describe("React definition functions", () => {
     // @ts-expect-error application data belongs in meta
     defineWalkthrough({ id: "b", steps: [{ content: "Open decks", helpUrl: "/help" }] });
     // @ts-expect-error misspelled delayMs
-    defineWalkthrough({ id: "c", steps: [{ content: "Open decks", advance: { click: true, delay: 500 } }] });
+    defineWalkthrough({ id: "c", steps: [{ content: "Open decks", waymark: "decks", advance: { click: true, delay: 500 } }] });
 
     const misspelled = {
       title: "Add a photo",

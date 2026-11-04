@@ -176,36 +176,42 @@ describe("defineChecklists types", () => {
     const valid = defineWalkthrough({
       id: "valid",
       steps: [
-        { advance: "click" },
-        { advance: { event: "input" } },
-        { advance: { event: ["input", "change"] } },
+        { waymark: "a", advance: "click" },
+        { waymark: "a", advance: { event: "input" } },
+        { selector: "#a", advance: { event: ["input", "change"] } },
         { advance: { state: (waymark) => waymark !== null } },
-        { advance: { click: true } },
-        { advance: { click: true, then: "unlock", delayMs: 500 } },
-        { advance: { event: "input", delayMs: 500 } },
+        { waymark: "a", advance: { click: true } },
+        { waymark: "a", advance: { click: true, then: "unlock", delayMs: 500 } },
+        { waymark: "a", advance: { event: "input", delayMs: 500 } },
       ],
     });
     expectTypeOf(valid).toHaveProperty("steps");
 
     const mistakes = () => {
       // @ts-expect-error misspelled delayMs
-      defineWalkthrough({ id: "a", steps: [{ advance: { click: true, delay: 500 } }] });
+      defineWalkthrough({ id: "a", steps: [{ waymark: "a", advance: { click: true, delay: 500 } }] });
       defineWalkthrough({
         id: "a",
         // @ts-expect-error misspelled delayMs, alongside a valid then
-        steps: [{ advance: { click: true, then: "unlock", delayMS: 500 } }],
+        steps: [{ waymark: "a", advance: { click: true, then: "unlock", delayMS: 500 } }],
       });
       defineWalkthrough({
         id: "a",
         // @ts-expect-error misspelled state, beside an event
-        steps: [{ advance: { event: "input", stat: () => true } }],
+        steps: [{ waymark: "a", advance: { event: "input", stat: () => true } }],
       });
       // @ts-expect-error a condition is an event or a state, not both
-      defineWalkthrough({ id: "a", steps: [{ advance: { event: "input", state: () => true } }] });
+      defineWalkthrough({ id: "a", steps: [{ waymark: "a", advance: { event: "input", state: () => true } }] });
       // @ts-expect-error a condition is a click or an event, not both
-      defineWalkthrough({ id: "a", steps: [{ advance: { click: true, event: "input" } }] });
+      defineWalkthrough({ id: "a", steps: [{ waymark: "a", advance: { click: true, event: "input" } }] });
       // @ts-expect-error options with no condition
-      defineWalkthrough({ id: "a", steps: [{ advance: { then: "unlock" } }] });
+      defineWalkthrough({ id: "a", steps: [{ waymark: "a", advance: { then: "unlock" } }] });
+      // @ts-expect-error a click needs a waymark to happen on
+      defineWalkthrough({ id: "a", steps: [{ advance: "click" }] });
+      // @ts-expect-error an event needs a waymark to fire it
+      defineWalkthrough({ id: "a", steps: [{ advance: { event: "input", then: "unlock" } }] });
+      // @ts-expect-error a step points at its waymark one way
+      defineWalkthrough({ id: "a", steps: [{ waymark: "a", selector: "#a" }] });
     };
     expectTypeOf(mistakes).toBeFunction();
   });

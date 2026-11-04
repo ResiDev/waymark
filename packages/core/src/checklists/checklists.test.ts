@@ -156,7 +156,7 @@ describe("defineChecklists", () => {
       'Task "tour": A walkthrough needs at least one step.',
     );
     expect(() =>
-      defineChecklists({ tasks: { tour: { walkthrough: [{}, { waymark: "a", selector: "#a" }] } } }),
+      defineChecklists({ tasks: { tour: { walkthrough: [{}, { waymark: "a", selector: "#a" } as never] } } }),
     ).toThrow(/^Task "tour": Step 1 sets both/);
   });
 

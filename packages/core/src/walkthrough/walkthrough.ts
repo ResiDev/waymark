@@ -25,6 +25,7 @@ export function checkedWalkthrough<TStep extends Step>(
     throw new Error(`${where}A walkthrough needs at least one step.`);
   }
   steps.forEach((step, index) => {
+    // oxlint-disable-next-line typescript/no-unnecessary-condition -- the types forbid it; this catches an app without them.
     if (step.waymark !== undefined && step.selector !== undefined) {
       throw new Error(
         `${where}Step ${index} sets both 'waymark' and 'selector'; a step has one waymark.`,
@@ -43,6 +44,9 @@ export function checkedWalkthrough<TStep extends Step>(
     }
     if (kinds[0] === "event" && eventsOf(step).length === 0) {
       throw new Error(`${where}Step ${index} advances on an event but names no events; it could never advance.`);
+    }
+    if ((isClick(step) || kinds[0] === "event") && !hasWaymark(step)) {
+      throw new Error(`${where}Step ${index} advances on ${isClick(step) ? "a click" : "an event"} but has no waymark or selector for it to happen on; it could never advance.`);
     }
   });
   return { id, steps, ...options };

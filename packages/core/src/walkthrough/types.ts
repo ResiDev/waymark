@@ -9,6 +9,8 @@ type AdvanceOptions = Readonly<{
   delayMs?: number;
 }>;
 
+type StateCondition = Readonly<{ state: (waymark: Element | null) => boolean }> & AdvanceOptions;
+
 /**
  * The user cannot advance past the Step until it is met. `state` is checked
  * once a frame, with the Waymark element or `null`.
@@ -17,21 +19,37 @@ export type AdvanceCondition =
   | "click"
   | (Readonly<{ click: true }> & AdvanceOptions)
   | (Readonly<{ event: WaymarkEventName | readonly WaymarkEventName[] }> & AdvanceOptions)
-  | (Readonly<{ state: (waymark: Element | null) => boolean }> & AdvanceOptions);
+  | StateCondition;
 
-/** No content: what a Step shows belongs to the adapter, which adds its own fields. */
-export type Step = Readonly<{
-  /** Matches `[data-waymark="<waymark>"]`. */
-  waymark?: string;
-  /** For elements you cannot mark with `data-waymark`. */
-  selector?: string;
-  advance?: AdvanceCondition;
+type StepFields = Readonly<{
   /** `"once"`, the default, scrolls the Waymark into view the first time it is off-screen. */
   scroll?: "once" | "always" | "never";
   /** How long to wait for the Waymark before it counts as missing. Defaults to 3000. */
   missingAfterMs?: number;
   meta?: unknown;
 }>;
+
+/**
+ * No content: what a Step shows belongs to the adapter, which adds its own
+ * fields. A click or an event happens on the Waymark, so only a Step with one
+ * may wait for it; a Step without one could never be passed.
+ */
+export type Step = StepFields &
+  (
+    | Readonly<{
+        /** Matches `[data-waymark="<waymark>"]`. */
+        waymark: string;
+        selector?: never;
+        advance?: AdvanceCondition;
+      }>
+    | Readonly<{
+        waymark?: never;
+        /** For elements you cannot mark with `data-waymark`. */
+        selector: string;
+        advance?: AdvanceCondition;
+      }>
+    | Readonly<{ waymark?: never; selector?: never; advance?: StateCondition }>
+  );
 
 /**
  * Mapped, not intersected like `Exactly`, so a typo is reported on its own key

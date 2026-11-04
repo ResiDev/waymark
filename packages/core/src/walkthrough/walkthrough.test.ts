@@ -15,13 +15,27 @@ describe("defineWalkthrough", () => {
     expect(() => defineWalkthrough({ id: "", steps: [{}] })).toThrow(/needs an id/);
   });
 
+  // A type error; this guards walkthroughs that reach core untyped, as JSON.
   it("rejects a step with both a waymark and a selector", () => {
-    expect(() => define([{}, { waymark: "a", selector: "#a" }])).toThrow(/Step 1 sets both/);
+    const step = { waymark: "a", selector: "#a" } as never;
+    expect(() => define([{}, step])).toThrow(/Step 1 sets both/);
   });
 
   it("rejects an event condition with no events, which could never be met", () => {
-    expect(() => define([{ advance: { event: [] } }])).toThrow(/Step 0 .*no events/);
-    expect(() => define([{ advance: { event: [], then: "unlock" } }])).toThrow(/Step 0 .*no events/);
+    expect(() => define([{ waymark: "a", advance: { event: [] } }])).toThrow(/Step 0 .*no events/);
+    expect(() => define([{ waymark: "a", advance: { event: [], then: "unlock" } }])).toThrow(/Step 0 .*no events/);
+  });
+
+  // Type errors; these guard walkthroughs that reach core untyped, as JSON.
+  it("rejects a click or an event with no waymark for it to happen on, which could never be met", () => {
+    const click = { advance: "click" } as never;
+    const event = { advance: { event: "input", then: "unlock" } } as never;
+    expect(() => define([{}, click])).toThrow(/Step 1 advances on a click but has no waymark or selector/);
+    expect(() => define([event])).toThrow(/Step 0 advances on an event but has no waymark or selector/);
+  });
+
+  it("accepts a state condition with no waymark, which the app's state can meet", () => {
+    expect(() => define([{ advance: { state: () => true } }])).not.toThrow();
   });
 
   // Both are type errors; these guard walkthroughs that reach core untyped, as JSON.
@@ -38,9 +52,9 @@ describe("defineWalkthrough", () => {
   it("accepts event conditions that name an event", () => {
     expect(() =>
       define([
-        { advance: { event: "input" } },
-        { advance: { event: ["input"], then: "unlock" } },
-        { advance: { click: true, delayMs: 50 } },
+        { waymark: "a", advance: { event: "input" } },
+        { selector: "#a", advance: { event: ["input"], then: "unlock" } },
+        { waymark: "a", advance: { click: true, delayMs: 50 } },
       ]),
     ).not.toThrow();
   });

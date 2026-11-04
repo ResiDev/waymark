@@ -198,6 +198,8 @@ advance: { click: true, then: "unlock" }          // unlock Next instead of movi
 
 `state` gets the waymark element, or `null` while it isn't on the page, so it can read the element itself. It can also ignore it and check anything in your app.
 
+A click or an event happens on the waymark, so a step that waits for one needs a `waymark` or `selector`. Without one it could never be met, and `defineWalkthrough` throws. A `state` condition needs no waymark.
+
 By default a met condition moves the walkthrough on by itself. With `then: "unlock"` it enables Next and leaves the move to the user. `then` and `delayMs` go with any of the object forms.
 
 A step without `advance` has a Next button that works straight away.

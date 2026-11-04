@@ -1299,7 +1299,7 @@ describe("createRun", () => {
   it("rejects a walkthrough that cannot be run", () => {
     expect(() => defineWalkthrough({ id: "tour", steps: [] })).toThrow(/at least one step/);
     expect(() =>
-      defineWalkthrough({ id: "tour", steps: [{ waymark: "a", selector: ".a" }] }),
+      defineWalkthrough({ id: "tour", steps: [{ waymark: "a", selector: ".a" } as never] }),
     ).toThrow(/one waymark/);
   });
 });
