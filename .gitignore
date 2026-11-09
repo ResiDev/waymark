@@ -23,3 +23,6 @@ size-history.jsonl
 
 .tours*
 .seams*
+
+# git worktrees
+.worktrees/
