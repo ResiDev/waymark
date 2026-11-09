@@ -18,6 +18,17 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: "verification",
+          environment: "jsdom",
+          include: ["verification/**/*.test.ts"],
+          setupFiles: ["./vitest.setup.ts"],
+          globalSetup: ["./verification/tla/setup.ts"],
+          testTimeout: 300_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: "browser",
           include: ["src/**/*.browser.test.ts"],
           setupFiles: ["./src/test/leaks.ts"],
