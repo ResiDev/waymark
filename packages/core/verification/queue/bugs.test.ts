@@ -54,7 +54,7 @@ const attempt = (call: () => unknown): unknown => {
 describe("a step whose selector does not parse", () => {
   // Shell.tla MessagesRun. The first look calls querySelector outside callApp (page.ts:97);
   // the drain's finally (queue.ts:66-71) then empties the queue behind it.
-  it.fails("still runs what a listener did on seeing the walkthrough open", () => {
+  it("still runs what a listener did on seeing the walkthrough open", () => {
     fakeFrames();
     const run = createRun();
     watch(run);
@@ -73,7 +73,7 @@ describe("a step whose selector does not parse", () => {
   });
 
   // Shell.tla ErrorsSurface. The same finally drops the errors the drain had caught.
-  it.fails("still throws or reports what a listener threw before the selector failed", () => {
+  it("still throws or reports what a listener threw before the selector failed", () => {
     fakeFrames();
     const run = createRun();
     watch(run);

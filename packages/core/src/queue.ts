@@ -62,7 +62,13 @@ export function createQueue(failure: string, reportProblem: ReportProblem<never>
     let thrown: unknown[];
     try {
       // An array's iterator also reaches work pushed while it runs.
-      for (const next of queue) next();
+      for (const next of queue) {
+        try {
+          next();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
     } finally {
       queue.length = 0;
       draining = false;
