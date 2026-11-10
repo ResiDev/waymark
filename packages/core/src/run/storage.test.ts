@@ -748,8 +748,9 @@ describe("a save adapter", () => {
 
   it("saves null once nothing is left", () => {
     const storage = kept(record({}));
-    const main = connected({ storage }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
-    main.markDone("a");
+    // A skip taken back from a Task with a condition leaves no status.
+    const main = connected({ storage }).checklist(defineChecklists({ tasks: { a: { isComplete: () => false } } }).checklists.main);
+    main.skip("a");
     main.markTodo("a");
     expect(storage.save).toHaveBeenLastCalledWith(null);
   });

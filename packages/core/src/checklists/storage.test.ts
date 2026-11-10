@@ -73,8 +73,8 @@ describe("checklists storage", () => {
     expect(onChange).toHaveBeenLastCalledWith(saved({ invite: "skipped", hello: "done" }));
 
     home.markTodo("hello");
-    expect(storage.savePartial).toHaveBeenLastCalledWith(changes({}, { tasks: ["hello"] }));
-    expect(storage.stored()).toEqual(saved({ invite: "skipped" }));
+    expect(storage.savePartial).toHaveBeenLastCalledWith(changes({ tasks: { hello: "reopened" } }));
+    expect(storage.stored()).toEqual(saved({ invite: "skipped", hello: "reopened" }));
   });
 
   it("is loading until a Promise settles, then shows the statuses without announcing them", async () => {
@@ -114,7 +114,7 @@ describe("checklists storage", () => {
 
     expect(statuses(created)).toMatchObject({ hello: "done", invite: "todo", met: "done" });
     expect(events(onEvent)).toEqual(["taskReopened:invite", "taskComplete:met"]);
-    expect(stored()).toEqual(saved({ hello: "done", met: "done" }));
+    expect(stored()).toEqual(saved({ hello: "done", invite: "reopened", met: "done" }));
   });
 
   it("holds a start, so a task's walkthrough started on page load picks up where the user left it", async () => {

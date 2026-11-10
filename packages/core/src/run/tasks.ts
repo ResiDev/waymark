@@ -8,7 +8,7 @@ import type {
   DefinedTask,
   TaskStatus,
 } from "../checklists/types";
-import type { RunState, UserRecord, Work } from "../state";
+import type { Change, RunState, UserRecord, Work } from "../state";
 import type { Walkthrough } from "../walkthrough/types";
 import { setStatus } from "./record";
 import { act, start } from "./walkthroughs";
@@ -42,11 +42,16 @@ const withStatus = (runState: RunState, id: string, status: StoredStatus | undef
   return userRecord === runState.userRecord ? runState : { ...runState, userRecord };
 };
 
-/** Done or skipped back to todo. A condition that is likely still true would tick a done Task straight back. */
+/**
+ * Done or skipped back to todo, as `reopened`, so nothing ticks it again by
+ * itself: not a condition that likely still holds, nor a mount that finds its
+ * walkthrough finished. A skipped Task with a condition goes back to having no
+ * status, since its condition did not hold.
+ */
 const reopen = (runState: RunState, task: DefinedTask): RunState => {
   const status = statusIn(runState.userRecord.taskStatusById, task.id);
   if (status === "todo") return runState;
-  return withStatus(runState, task.id, status === "done" && task.isComplete !== undefined ? "reopened" : undefined);
+  return withStatus(runState, task.id, status === "skipped" && task.isComplete !== undefined ? undefined : "reopened");
 };
 
 export const markDone =
@@ -60,7 +65,7 @@ export const markTodo =
     const task = taskOf(runState.walkthroughsAndChecklistsInUse.checklistDefinitions, id);
     if (task === undefined) return runState;
     change.credits.set(id, from);
-    return reopen(runState, task);
+    return conditions(reopen(runState, task), change);
   };
 
 export const toggle =
@@ -69,7 +74,7 @@ export const toggle =
     const task = taskOf(runState.walkthroughsAndChecklistsInUse.checklistDefinitions, id);
     if (task === undefined) return runState;
     change.credits.set(id, from);
-    return statusIn(runState.userRecord.taskStatusById, id) === "todo" ? withStatus(runState, id, "done") : reopen(runState, task);
+    return statusIn(runState.userRecord.taskStatusById, id) === "todo" ? withStatus(runState, id, "done") : conditions(reopen(runState, task), change);
   };
 
 export const skip =
@@ -81,7 +86,7 @@ export const skip =
     const walkthrough = task.walkthrough === undefined ? undefined : runState.walkthroughsAndChecklistsInUse.walkthroughsById.get(task.walkthrough.id);
     const credited = from ?? (walkthrough === undefined ? undefined : runState.startRequests.startedFromChecklist.get(walkthrough.id));
     if (credited !== undefined) change.credits.set(id, credited);
-    return walkthrough === undefined ? next : act("exit", walkthrough)(next, change);
+    return conditions(walkthrough === undefined ? next : act("exit", walkthrough)(next, change), change);
   };
 
 export const startFrom =
@@ -93,8 +98,13 @@ export const startFrom =
     return { ...next, startRequests: { ...next.startRequests, startedFromChecklist: new Map(startedFromChecklist).set(walkthrough.id, checklist) } };
   };
 
-/** Every completion condition asked before anything is recorded, so one that throws changes nothing. */
-export const conditions: Work = (runState, change) => {
+/**
+ * Every completion condition asked before anything is recorded, so one that
+ * throws changes nothing. Asked on a mount, a context change, and after each
+ * untick or skip, so a Task taken back while its condition was false ticks
+ * once it holds.
+ */
+export function conditions(runState: RunState, change: Change): RunState {
   const { checklistContext } = runState;
   if (checklistContext === undefined) return runState;
   const { taskStatusById } = runState.userRecord;
@@ -114,12 +124,29 @@ export const conditions: Work = (runState, change) => {
     }
   }
   return next;
-};
+}
 
 const walkthroughStatus = (userRecord: UserRecord, task: DefinedTask) =>
   task.walkthrough === undefined ? undefined : userRecord.walkthroughProgressById[task.walkthrough.id]?.status;
 
-/** A Task with no condition is done once its walkthrough finishes; one with a condition waits for it. */
+/**
+ * A Task with no condition whose walkthrough finished while no checklist
+ * listing it was in use: done once one is. One the user took back stays todo.
+ */
+export const tickFinished: Work = (runState) => {
+  let next = runState;
+  for (const task of tasksOf(runState.walkthroughsAndChecklistsInUse.checklistDefinitions)) {
+    if (task.isComplete !== undefined || next.userRecord.taskStatusById[task.id] !== undefined) continue;
+    if (walkthroughStatus(next.userRecord, task) === "finished") next = withStatus(next, task.id, "done");
+  }
+  return next;
+};
+
+/**
+ * A Task with no condition is done once its walkthrough finishes; one with a
+ * condition waits for it. One the user took back is no longer held back once
+ * its walkthrough starts again.
+ */
 export function finish(before: RunState, after: RunState): RunState {
   const { walkthroughProgressById } = after.userRecord;
   if (
@@ -132,9 +159,10 @@ export function finish(before: RunState, after: RunState): RunState {
   const moved = walkthroughProgressById !== before.userRecord.walkthroughProgressById;
   for (const task of moved ? tasksOf(after.walkthroughsAndChecklistsInUse.checklistDefinitions) : []) {
     if (task.isComplete !== undefined) continue;
-    if (walkthroughStatus(before.userRecord, task) === "running" && walkthroughStatus(after.userRecord, task) === "finished") {
-      next = withStatus(next, task.id, "done");
-    }
+    const was = walkthroughStatus(before.userRecord, task);
+    const is = walkthroughStatus(after.userRecord, task);
+    if (was === "running" && is === "finished") next = withStatus(next, task.id, "done");
+    else if (was !== "running" && is === "running" && next.userRecord.taskStatusById[task.id] === "reopened") next = withStatus(next, task.id, undefined);
   }
   const { startedFromChecklist } = next.startRequests;
   let kept: Map<string, string> | undefined;

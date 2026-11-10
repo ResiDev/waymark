@@ -20,8 +20,7 @@ EXTENDS Naturals, FiniteSets
 
 CONSTANTS
   WalkOf,     \* each task's walkthrough
-  Cond,       \* the tasks with a completion condition
-  MountRule   \* "code", or "tick": a fix to try, where every arrival ticks a task whose walkthrough is finished
+  Cond        \* the tasks with a completion condition
 
 Tasks == {"a", "b"}
 Walks == {"w1", "w2"}
@@ -55,20 +54,23 @@ S(x) == IF x \in {"done", "skipped"} THEN x ELSE "todo"
 Complete(c, m) == \A t \in ListTasks(c) : S(m[t]) # "todo"
 
 \* tasks.ts finish: a task with no condition, of a group mounted, is done once
-\* its walkthrough goes from running to finished inside one piece of work.
+\* its walkthrough goes from running to finished inside one piece of work, and
+\* is no longer reopened once its walkthrough starts again.
 Ticked(j, pb, pa, m) == [t \in Tasks |->
-  IF j /\ t \in NoCond /\ pb[WalkOf[t]] \in Running /\ pa[WalkOf[t]] = "finished" THEN "done" ELSE m[t]]
+  IF ~j \/ t \notin NoCond THEN m[t]
+  ELSE IF pb[WalkOf[t]] \in Running /\ pa[WalkOf[t]] = "finished" THEN "done"
+  ELSE IF pb[WalkOf[t]] \notin Running /\ pa[WalkOf[t]] \in Running /\ m[t] = "reopened" THEN "absent"
+  ELSE m[t]]
+
+\* tasks.ts tickFinished: a task with no condition and no status, whose walkthrough is finished.
+TickFinished(j, p, m) == [t \in Tasks |->
+  IF j /\ t \in NoCond /\ m[t] = "absent" /\ p[WalkOf[t]] = "finished" THEN "done" ELSE m[t]]
 
 \* tasks.ts conditions
 Checked(j, m, v) == [t \in Tasks |->
   IF ~j \/ t \notin Cond \/ m[t] = "done" THEN m[t]
   ELSE IF m[t] # "reopened" THEN (IF v[t] THEN "done" ELSE m[t])
   ELSE IF v[t] THEN m[t] ELSE "absent"]
-
-\* The fix MountRule = "tick" tries, in every arrival: what finish does, for a walkthrough already finished.
-MountTicks(j, p, m) ==
-  IF MountRule = "code" THEN m
-  ELSE [t \in Tasks |-> IF j /\ t \in NoCond /\ p[WalkOf[t]] = "finished" THEN "done" ELSE m[t]]
 
 \* tasks.ts statusEvent
 Event(t, was, now) ==
@@ -89,10 +91,16 @@ Saved(old, m0, m1) == [k \in DOMAIN old |-> IF m1[k] # m0[k] THEN m1[k] ELSE old
 \* The history, carried through a step.
 Credit(o, m) == [t \in Tasks |-> o[t] /\ m[t] # "done"]
 Unblock(b, m) == [t \in Tasks |-> b[t] /\ m[t] \notin {"done", "skipped"}]
+\* What B does itself unblocks nothing A wrote that B has not heard.
+UnblockHere(b, m) == [t \in Tasks |-> b[t] /\ (m[t] \notin {"done", "skipped"} \/ t \in unheard)]
 Clear(o, ts) == [t \in Tasks |-> o[t] /\ t \notin ts]
 \* A finish stops being owed once B's memory no longer shows the walkthrough finished.
 Left(o, p0, p1) == Clear(o, {t \in Tasks : p0[WalkOf[t]] = "finished" /\ p1[WalkOf[t]] # "finished"})
-Owe(o, w, m) == [t \in Tasks |-> IF t \in TasksOf(w) \cap NoCond THEN m[t] # "done" ELSE o[t]]
+\* A finish owes a tick to each of its tasks with no status. Not to one the user
+\* took back: reopened stays so when its walkthrough restarted with no checklist of it in use.
+Owe(o, w, m) == [t \in Tasks |-> IF t \in TasksOf(w) \cap NoCond THEN m[t] = "absent" ELSE o[t]]
+\* B's statuses, with what A wrote that B has not heard yet: what is true, not what B knows.
+Latest(m) == [t \in Tasks |-> IF t \in unheard THEN stasks[t] ELSE m[t]]
 
 ----------------------------------------------------------------------------
 \* Tab B: one command, as change.ts runChange runs it, saved and announced from the state before.
@@ -101,13 +109,13 @@ Command(p1, m1, v1, o1, b1) ==
   /\ prog' = p1 /\ mem' = m1 /\ verdict' = v1
   /\ sprog' = Saved(sprog, prog, p1) /\ stasks' = Saved(stasks, mem, m1)
   /\ said' = Announced(joined, mem, m1)
-  /\ owed' = Credit(o1, m1) /\ blocked' = Unblock(b1, m1)
+  /\ owed' = Credit(o1, m1) /\ blocked' = UnblockHere(b1, m1)
   /\ UNCHANGED <<joined, unheard>>
 
 \* walkthroughs.ts begin: the one open collapses (the default dismiss), and w opens.
 Opened(w) == [v \in Walks |-> IF v = w THEN "running" ELSE IF prog[v] = "running" THEN "collapsed" ELSE prog[v]]
 
-Start(w) == prog[w] # "running" /\ Command(Opened(w), mem, verdict, Left(owed, prog, Opened(w)), blocked)
+Start(w) == prog[w] # "running" /\ Command(Opened(w), Ticked(joined, prog, Opened(w), mem), verdict, Left(owed, prog, Opened(w)), blocked)
 
 Resume(w) == prog[w] = "collapsed" /\ Command(Opened(w), mem, verdict, owed, blocked)
 
@@ -117,25 +125,28 @@ Finish(w) ==
   /\ prog[w] = "running"
   /\ LET p1 == [prog EXCEPT ![w] = "finished"]
          m1 == Ticked(joined, prog, p1, mem)
-     IN Command(p1, m1, verdict, Owe(owed, w, m1), blocked)
+     IN Command(p1, m1, verdict, Owe(owed, w, Latest(m1)), blocked)
 
 Exit(w) == prog[w] \in Running /\ Command([prog EXCEPT ![w] = "exited"], mem, verdict, owed, blocked)
 
 \* An open one-step walkthrough reset stays where it is, so only a closed one is reset.
 Reset(w) == prog[w] \in {"collapsed", "finished", "exited"} /\ Command([prog EXCEPT ![w] = "none"], mem, verdict, Left(owed, prog, [prog EXCEPT ![w] = "none"]), blocked)
 
-\* tasks.ts reopen
-Reopen(t) == IF S(mem[t]) = "todo" THEN mem[t] ELSE IF mem[t] = "done" /\ t \in Cond THEN "reopened" ELSE "absent"
+\* tasks.ts reopen: back to todo as reopened, except a skipped task with a condition, which has no status again.
+Reopen(t) == IF S(mem[t]) = "todo" THEN mem[t] ELSE IF mem[t] = "skipped" /\ t \in Cond THEN "absent" ELSE "reopened"
 TakenBack(t) == [blocked EXCEPT ![t] = IF mem[t] = "done" /\ t \in Cond THEN verdict[t] ELSE @]
 
 MarkDone(t) == joined /\ Command(prog, [mem EXCEPT ![t] = "done"], verdict, owed, blocked)
 
-MarkTodo(t) == joined /\ Command(prog, [mem EXCEPT ![t] = Reopen(t)], verdict, Clear(owed, {t}), TakenBack(t))
+\* An untick or a skip asks the conditions after it.
+MarkTodo(t) ==
+  /\ joined
+  /\ Command(prog, Checked(TRUE, [mem EXCEPT ![t] = Reopen(t)], verdict), verdict, IF S(mem[t]) = "todo" THEN owed ELSE Clear(owed, {t}), TakenBack(t))
 
 Toggle(t) ==
   /\ joined
   /\ IF S(mem[t]) = "todo" THEN Command(prog, [mem EXCEPT ![t] = "done"], verdict, owed, blocked)
-     ELSE Command(prog, [mem EXCEPT ![t] = Reopen(t)], verdict, Clear(owed, {t}), TakenBack(t))
+     ELSE Command(prog, Checked(TRUE, [mem EXCEPT ![t] = Reopen(t)], verdict), verdict, Clear(owed, {t}), TakenBack(t))
 
 \* tasks.ts skip: only from todo, and exits the task's walkthrough if it is running.
 Skip(t) ==
@@ -143,31 +154,35 @@ Skip(t) ==
   /\ IF S(mem[t]) # "todo" THEN Command(prog, mem, verdict, owed, blocked)
      ELSE LET w == WalkOf[t]
               p1 == IF prog[w] \in Running THEN [prog EXCEPT ![w] = "exited"] ELSE prog
-          IN Command(p1, [mem EXCEPT ![t] = "skipped"], verdict, Clear(owed, {t}), blocked)
+          IN Command(p1, Checked(TRUE, [mem EXCEPT ![t] = "skipped"], verdict), verdict, Clear(owed, {t}), blocked)
 
 \* setContext, which asks the conditions as a command.
 ContextFlips(t) ==
   /\ t \in Cond
   /\ LET v1 == [verdict EXCEPT ![t] = ~@]
-     IN Command(prog, Checked(joined, mem, v1), v1, owed, IF v1[t] THEN blocked ELSE [blocked EXCEPT ![t] = FALSE])
+     \* The condition false ends a take-back only where it is asked: in B with a
+     \* checklist of it in use, for a take-back B has heard of.
+     IN Command(prog, Checked(joined, mem, v1), v1, owed, IF v1[t] THEN blocked ELSE [blocked EXCEPT ![t] = @ /\ (t \in unheard \/ ~joined)])
 
-\* The checklist mounts: run.ts join sends arrived, which asks the conditions, silently.
+\* The checklist mounts: run.ts join sends arrived, which asks the conditions
+\* silently, then ticks each task whose walkthrough finished before, and announces that.
 Join ==
   /\ ~joined
-  /\ LET m1 == MountTicks(TRUE, prog, Checked(TRUE, mem, verdict))
+  /\ LET m0 == Checked(TRUE, mem, verdict)
+         m1 == TickFinished(TRUE, prog, m0)
      IN /\ joined' = TRUE /\ mem' = m1 /\ stasks' = Saved(stasks, mem, m1)
-        /\ said' = {}
-        /\ owed' = Credit(owed, m1) /\ blocked' = Unblock(blocked, m1)
+        /\ said' = Announced(TRUE, m0, m1)
+        /\ owed' = Credit(owed, m1) /\ blocked' = UnblockHere(blocked, m1)
   /\ UNCHANGED <<prog, verdict, sprog, unheard>>
 
-\* B hears what A saved: heard, whose finish runs in the storage phase, then
-\* arrived. Both silent. record.ts heard keeps the one open here, sets aside one
-\* running elsewhere, and takes the stored statuses whole.
+\* B hears what A saved: heard, whose finish and tickFinished run in the storage
+\* phase, then arrived. Both silent. record.ts heard keeps the one open here,
+\* sets aside one running elsewhere, and takes the stored statuses whole.
 Hear ==
   /\ unheard # {}
   /\ LET p1 == [w \in Walks |-> IF prog[w] = "running" THEN "running" ELSE IF sprog[w] = "running" THEN "collapsed" ELSE sprog[w]]
-         m1 == Ticked(joined, prog, p1, stasks)
-         m2 == MountTicks(joined, p1, Checked(joined, m1, verdict))
+         m1 == TickFinished(joined, p1, Ticked(joined, prog, p1, stasks))
+         m2 == Checked(joined, m1, verdict)
      IN /\ prog' = p1 /\ mem' = m2
         \* The save runs from what heard took (savedFrom is heard's record, before
         \* finish), so what finish ticks on hearing is saved, and what arrived moves.
@@ -208,9 +223,10 @@ AFinishes(w, ticks) ==
 \* blocked stays: it is about B's memory, which still shows the task taken back until B hears.
 ATicks(t) == stasks[t] # "done" /\ AWrites(sprog, [stasks EXCEPT ![t] = "done"], Clear(owed, {t}), blocked)
 
+\* A asks the conditions after it, as B does: taken back while its condition is false, it has no status.
 AUnticks(t) ==
   /\ stasks[t] = "done"
-  /\ AWrites(sprog, [stasks EXCEPT ![t] = IF t \in Cond THEN "reopened" ELSE "absent"], Clear(owed, {t}),
+  /\ AWrites(sprog, [stasks EXCEPT ![t] = IF t \in Cond /\ ~verdict[t] THEN "absent" ELSE "reopened"], Clear(owed, {t}),
              [blocked EXCEPT ![t] = t \in Cond /\ verdict[t]])
 
 ----------------------------------------------------------------------------
@@ -300,7 +316,8 @@ DoneOnFinish == joined => \A t \in NoCond : ~(owed[t] /\ prog[WalkOf[t]] = "fini
 \* GLOSSARY.md "Reopened task": stays todo only until its condition has been
 \* false. So a task whose condition holds is todo only while it was taken
 \* back by hand and the condition has held ever since.
-ConditionTicks == joined => \A t \in Cond : (verdict[t] /\ S(mem[t]) = "todo") => blocked[t]
+\* Not for a task A wrote that B has not heard yet: B's memory of it is stale.
+ConditionTicks == joined => \A t \in Cond \ unheard : (verdict[t] /\ S(mem[t]) = "todo") => blocked[t]
 
 \* GLOSSARY.md "Skipped task": becomes done if its condition later holds.
 \* As safety: no skipped task's condition holds once the Run knows it.
@@ -327,15 +344,19 @@ CompleteAnnouncedOnEachMove ==
   [][BCommand => \A c \in Lists : (<<"checklistComplete", c>> \in said') <=> (~Complete(c, mem) /\ Complete(c, mem'))]_vars
 HearingIsSilent == [][(Hear \/ Reload) => said' = {}]_vars
 
-\* Thread 7: a mount announces taskComplete for each task it ticks because its walkthrough finished.
+\* Thread 7: a mount announces taskComplete for each task with no condition it
+\* ticks, since its walkthrough finished, and for no task it ticks by its condition.
+\* TodoLeavesOnlyByCause says why each such tick is owed.
 MountAnnouncesOwedTicks ==
-  [][Join => \A t \in Tasks : (<<"taskComplete", t>> \in said') <=> (owed[t] /\ mem[t] # "done" /\ mem'[t] = "done")]_vars
+  [][Join => \A t \in Tasks : (<<"taskComplete", t>> \in said') <=> (t \in NoCond /\ mem[t] # "done" /\ mem'[t] = "done")]_vars
 
 \* A task with no condition turns from todo to done only by a tick here, its
 \* walkthrough finishing here, a finish nobody credited yet, or A ticking it.
+\* Or a mount in B before B heard what A did to the task: B ticks from what it
+\* knows, a finish of its own, and saves that over A's untick.
 TodoLeavesOnlyByCause ==
   [][\A t \in NoCond : (S(mem[t]) = "todo" /\ mem'[t] = "done") =>
        (MarkDone(t) \/ Toggle(t) \/ (prog[WalkOf[t]] \in Running /\ prog'[WalkOf[t]] = "finished")
-        \/ owed[t] \/ (t \in unheard /\ stasks[t] = "done"))]_vars
+        \/ owed[t] \/ (t \in unheard /\ stasks[t] = "done") \/ (Join /\ t \in unheard))]_vars
 
 =============================================================================

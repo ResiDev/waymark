@@ -252,7 +252,9 @@ export function App({ userId, context }: { userId: string; context: AppContext }
 
 ### Tasks
 
-A task is `todo`, `done` or `skipped`. The user can tick it, skip it, or press "Show me" to start its walkthrough. A task with `isComplete` is done when the condition holds, whether or not its walkthrough ran, and even if the user skipped it. A task without one is done when its walkthrough finishes.
+A task is `todo`, `done` or `skipped`. The user can tick it, skip it, or press "Show me" to start its walkthrough. A task with `isComplete` is done when the condition holds, whether or not its walkthrough ran, and even if the user skipped it. A task without one is done when its walkthrough finishes, also when that was before any checklist listing it was shown.
+
+A task the user unticks stays todo until something new happens. With a condition, that is the condition turning false and then true again. Without one, it is the user running its walkthrough again. So write a condition as what the task asks of the user. For "Invite a teammate", `(c: AppContext) => c.invites > 0` ticks it at the first invite. A user who unticks it then still sees it todo after a second invite, since the condition was true all along. A task that should tick again needs a condition that was false until then, such as `c.invites > 1` for "Invite a second teammate".
 
 | Field | What it does |
 | --- | --- |
@@ -276,7 +278,7 @@ A task's walkthrough has a "Skip task" button. Its × button exits the walkthrou
 | --- | --- |
 | `start(id)` | Shows the task's walkthrough as `run.start` does, where it was if part way through and otherwise from step 1. Does nothing if the task has no walkthrough. |
 | `markDone(id)` | Marks the task done. |
-| `markTodo(id)` | Takes a done or skipped task back to todo. A task with a condition stays todo until the condition has been false. |
+| `markTodo(id)` | Takes a done or skipped task back to todo. A task with a condition stays todo until the condition has been false. One without stays todo until its walkthrough runs again. |
 | `skip(id)` | Skips a todo task, and exits its walkthrough if it is running. |
 | `toggle(id)` | Ticks a todo task, and takes a done or skipped one back to todo. |
 

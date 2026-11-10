@@ -4,7 +4,7 @@ import type { RecordChanges } from "../storage/records";
 import { runChange } from "./change";
 import type { Ran } from "./change";
 import { heard, loaded, refused, replaced } from "./record";
-import { conditions, eventsBetween, isComplete, markDone, markTodo, skip, startFrom, tasksOf, toggle } from "./tasks";
+import { conditions, eventsBetween, isComplete, markDone, markTodo, skip, startFrom, tasksOf, tickFinished, toggle } from "./tasks";
 import { checklistNow, viewAll, viewRun } from "./views";
 import { act, detached, obey, openId, request, reset, seeBeaconWaymarks, start, unwait, wait } from "./walkthroughs";
 
@@ -160,9 +160,10 @@ export function update(model: Model, given: Given, msg: Msg, inputs: Inputs): Up
     // Not held: only the latest context matters, and the load asks the conditions once the record is in.
     case "contextChanged":
       return loading(model) ? unchanged(model) : change(model, given, { commands: [conditions] }, inputs);
-    // While loading, the load checks every definition there is by then.
+    // While loading, the load checks every definition there is by then. A Task
+    // ticked because its walkthrough finished before its checklist mounted is announced.
     case "arrived":
-      return loading(model) ? unchanged(model) : change(model, given, { arrival: true }, inputs);
+      return loading(model) ? unchanged(model) : change(model, given, { arrival: true, commands: [tickFinished] }, inputs);
     case "loaded": {
       const { read } = msg;
       const commands = model.held.map((held) => workOf(held));

@@ -696,8 +696,8 @@ describe("toggle and markTodo", () => {
     home.toggle("say-hello");
     expect(statuses(home)["say-hello"]).toBe("todo");
     expect(taskEvents(onEvent)).toEqual(["taskComplete:say-hello", "taskReopened:say-hello"]);
-    // No condition, so nothing to hold back: the record is empty again.
-    expect(onChange).toHaveBeenLastCalledWith(saved({}));
+    // Kept as reopened, so a checklist mounting later doesn't tick it again because its walkthrough finished.
+    expect(onChange).toHaveBeenLastCalledWith(saved({ "say-hello": "reopened" }));
   });
 
   it("takes a skipped task back, in every view", () => {

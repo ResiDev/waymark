@@ -20,9 +20,10 @@ describe("localStorageAdapter", () => {
 
   it("writes JSON under its name, and removes the key once nothing is left", () => {
     const key = localKey("setup");
-    const main = connected({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: {} } }).checklists.main);
-    main.markDone("a");
-    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 1, walkthroughs: {}, tasks: { a: "done" } });
+    // A skip taken back from a Task with a condition leaves no status.
+    const main = connected({ storage: localStorageAdapter(key) }).checklist(defineChecklists({ tasks: { a: { isComplete: () => false } } }).checklists.main);
+    main.skip("a");
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ version: 1, walkthroughs: {}, tasks: { a: "skipped" } });
     main.markTodo("a");
     expect(localStorage.getItem(key)).toBeNull();
   });

@@ -1,7 +1,7 @@
 import type { Change, RunState, Phases, UserRecord, Work } from "../state";
 import type { RecordUnreadableError } from "../storage/records";
 import { turnedUnreadable } from "./record";
-import { conditions, finish } from "./tasks";
+import { conditions, finish, tickFinished } from "./tasks";
 import { verifyAll, settle } from "./walkthroughs";
 
 export type Ran = Readonly<{
@@ -20,7 +20,8 @@ export function runChange(before: RunState, phases: Phases, now: number, verdict
   const run = (runState: RunState, work: Work) => finish(runState, work(runState, told));
 
   const heard = phases.storage === undefined ? before : phases.storage(before, told);
-  const stored = finish(before, heard);
+  // What another tab or an earlier visit finished, ticked silently, and saved since `heard` is the baseline.
+  const stored = phases.storage === undefined ? before : tickFinished(finish(before, heard), told);
   const arrived = phases.arrival === undefined ? stored : run(stored, arrive);
   let after = arrived;
   for (const work of phases.commands ?? []) after = run(after, work);

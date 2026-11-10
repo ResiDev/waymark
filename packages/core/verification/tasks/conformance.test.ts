@@ -231,7 +231,7 @@ function act(harness: Harness, world: World, action: string): World {
     }
     case "AUnticks": {
       const id = needTask();
-      return aWrites(world, (record) => (record.tasks[id] = setup.cond.includes(id) ? "reopened" : "absent"));
+      return aWrites(world, (record) => (record.tasks[id] = setup.cond.includes(id) && !world.verdict[id] ? "absent" : "reopened"));
     }
     default:
       throw new Error(`The harness has no move for the action ${action}.`);
@@ -286,7 +286,6 @@ function configFor(setup: Setup): string {
     "CONSTANTS",
     `  WalkOf <- ${setup.walkOf === SHARED ? "Shared" : "Apart"}`,
     `  Cond <- ${setup.cond.length === 0 ? "NoTasks" : "OnlyB"}`,
-    '  MountRule = "code"',
     `SPECIFICATION ${setup.spec}`,
     ...(setup.constraint === undefined ? [] : [`CONSTRAINT ${setup.constraint}`]),
     "",

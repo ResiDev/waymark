@@ -1,5 +1,4 @@
-// Each rule Tasks.tla finds broken, reproduced on the real Run. Each is
-// it.fails: it passes while the bug is there, and fails once it is fixed.
+// Each rule Tasks.tla found broken, reproduced on the real Run, and now fixed.
 import { describe, expect, it, vi } from "vitest";
 import { defineChecklists } from "../../src/checklists/checklists";
 import type { AnyTask, Checklist } from "../../src/checklists/types";
@@ -97,8 +96,8 @@ describe("a task ticked on hearing another tab", () => {
   });
 });
 
-// DoneOnFinish.cfg, and thread 7's decision.
-it.fails("ticks a task whose walkthrough finished before its checklist mounted, and announces it", () => {
+// Tasks.tla DoneOnFinish, and thread 7's decision.
+it("ticks a task whose walkthrough finished before its checklist mounted, and announces it", () => {
   const onEvent = vi.fn();
   const run = createRun({ onEvent });
   run.start(tips);
@@ -110,8 +109,8 @@ it.fails("ticks a task whose walkthrough finished before its checklist mounted, 
   expect(said(onEvent)).toEqual(expect.arrayContaining(["taskComplete:read-tips", "checklistComplete:tipsOnly"]));
 });
 
-// ConditionTicks.cfg: GLOSSARY.md "Reopened task".
-it.fails("ticks a task unticked while its condition was false, once the condition comes true", () => {
+// Tasks.tla ConditionTicks: GLOSSARY.md "Reopened task".
+it("ticks a task unticked while its condition was false, once the condition comes true", () => {
   const run = createRun({ context: { invited: false } });
   const home = mounted(run.checklist(onboarding.checklists.home));
   home.markDone("invite");
@@ -122,8 +121,8 @@ it.fails("ticks a task unticked while its condition was false, once the conditio
   expect(statusOf(home, "invite")).toBe("done");
 });
 
-// SkippedBecomesDone.cfg: GLOSSARY.md "Skipped task".
-it.fails("leaves a skipped task as it was when an unrelated checklist mounts", () => {
+// Tasks.tla SkippedBecomesDone: GLOSSARY.md "Skipped task".
+it("leaves a skipped task as it was when an unrelated checklist mounts", () => {
   const run = createRun({ context: { invited: true } });
   const home = mounted(run.checklist(onboarding.checklists.home));
   expect(statusOf(home, "invite")).toBe("done");
@@ -133,4 +132,36 @@ it.fails("leaves a skipped task as it was when an unrelated checklist mounts", (
 
   mounted(run.checklist(elsewhere.checklists.main));
   expect(statusOf(home, "invite")).toBe(afterSkip);
+});
+
+// Tasks.tla TodoLeavesOnlyByCause: what a mount that ticks finished walkthroughs must not undo.
+it("keeps a task the user unticked todo when its checklist mounts again after a reload", () => {
+  const storage = sharedStorage();
+  const first = connected({ storage: storage.tab() });
+  first.start(tips);
+  first.act("advance");
+  const tipsOnly = mounted(first.checklist(onboarding.checklists.tipsOnly));
+  expect(statusOf(tipsOnly, "read-tips")).toBe("done");
+  tipsOnly.markTodo("read-tips");
+
+  const home = mounted(connected({ storage: storage.tab() }).checklist(onboarding.checklists.home));
+  expect(statusOf(home, "read-tips")).toBe("todo");
+});
+
+// Thread 7: an untick lasts until the walkthrough runs again.
+it("ticks a task unticked and then run again, when its checklist mounts after a reload", () => {
+  const storage = sharedStorage();
+  const first = connected({ storage: storage.tab() });
+  first.start(tips);
+  first.act("advance");
+  mounted(first.checklist(onboarding.checklists.tipsOnly)).markTodo("read-tips");
+  first.start(tips);
+
+  const onEvent = vi.fn();
+  const reloaded = connected({ storage: storage.tab(), onEvent });
+  reloaded.start(tips);
+  reloaded.act("advance");
+  const tipsOnly = mounted(reloaded.checklist(onboarding.checklists.tipsOnly));
+  expect(statusOf(tipsOnly, "read-tips")).toBe("done");
+  expect(said(onEvent)).toEqual(expect.arrayContaining(["taskComplete:read-tips"]));
 });

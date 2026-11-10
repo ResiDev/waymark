@@ -95,7 +95,7 @@ _Avoid_: Completion
 A task the user chose not to do. It counts toward finishing its checklists, and becomes done if its completion condition later holds.
 
 **Reopened task**:
-A task taken back from done to todo. If it has a completion condition, it stays todo until that condition has been false, so a condition that still holds does not tick it straight back.
+A task taken back from done to todo. If it has a completion condition, it stays todo until that condition has been false, so a condition that still holds does not tick it straight back. If it has none, it stays todo until its walkthrough starts again, so a checklist mounting later does not tick it because its walkthrough finished.
 
 **Context**:
 Application information used to check whether checklist tasks are complete, even when their walkthroughs never ran. It describes the application, not the task statuses.

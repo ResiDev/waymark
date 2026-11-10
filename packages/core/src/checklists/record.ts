@@ -3,8 +3,9 @@ import type { TaskStatus } from "./types";
 
 /**
  * Each Task's status, as the stored record keeps it. `reopened` is todo for a
- * Task taken back from done. Its condition may still hold, so it stays todo
- * until the condition has been false.
+ * Task taken back by hand. Its condition may still hold, so it stays todo
+ * until the condition has been false. One with no condition stays todo until
+ * its walkthrough starts again.
  */
 export type Stored = Readonly<Record<string, "done" | "skipped" | "reopened">>;
 
