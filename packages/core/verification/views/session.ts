@@ -416,6 +416,8 @@ export function* play(session: Session): Generator<Turn> {
         return send({ _tag: "withdrawRequest", walkthrough: move.walkthrough });
       case "contextChanged":
         holding = move.verdicts;
+        // As `setContext` does: a context that is `undefined` asks no condition, so each one here is a new object.
+        given = { ...given, checklistContext: {} };
         return send({ _tag: "contextChanged" });
       case "arrived": {
         const joined = turns.length;
