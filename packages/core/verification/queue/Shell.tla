@@ -32,6 +32,7 @@ CONSTANTS
 Listeners == {1, 2}
 NoExc == [k |-> "none", n |-> 0]
 RawExc == [k |-> "raw", n |-> 1]
+NoErrors == [n |-> 0, raw |-> FALSE]
 NoSub == [done |-> FALSE, threw |-> FALSE, kept |-> FALSE, own |-> FALSE]
 Min(a, b) == IF a < b THEN a ELSE b
 
@@ -39,7 +40,8 @@ VARIABLES
   sync, bad, handler, script, onEvent,  \* what the app wired up, fixed for a behaviour
   queue,      \* queue.ts queue: work waiting, oldest first
   draining,   \* queue.ts draining
-  errors,     \* queue.ts errors: how many the drain caught and keeps for its end
+  errors,     \* queue.ts errors: how many the drain keeps for its end, n, and whether
+              \* one is raw, so that a raw one kept alone is thrown as itself
   todo,       \* the call stack: Head runs next
   exc,        \* an exception unwinding the stack, or NoExc
   f,          \* the facts update() keeps: see Box
@@ -146,13 +148,19 @@ RunMsg(m, rest) ==
      /\ stepNo' = s
      /\ todo' = effects \o rest
 
+\* queue.ts errors.push(x): kept for the drain's end.
+Keep(e, x) == [n |-> e.n + x.n, raw |-> e.raw \/ x.k = "raw"]
+
+\* queue.ts run's end: one error is thrown as itself, more as one AggregateError.
+Thrown(e) == IF e.n = 0 THEN NoExc ELSE IF e.n = 1 /\ e.raw THEN RawExc ELSE [k |-> "app", n |-> e.n]
+
 (***************************************************************************)
 (* An app callback threw inside queue.callApp: queue.fail reports it.      *)
 (* Unhandled, the default callbackThrew handler throws it again, and       *)
 (* queue.invoke keeps it for the drain's end.                              *)
 (***************************************************************************)
 Raise(throws) ==
-  /\ errors' = IF throws /\ handler = "default" THEN errors + 1 ELSE errors
+  /\ errors' = IF throws /\ handler = "default" THEN Keep(errors, [k |-> "app", n |-> 1]) ELSE errors
   /\ unsurfaced' = IF throws /\ handler = "default" THEN unsurfaced + 1 ELSE unsurfaced
   /\ handled' = IF throws /\ handler = "handles" THEN Min(handled + 1, Cap) ELSE handled
 
@@ -172,7 +180,7 @@ Init ==
   /\ onEvent \in EventScripts
   /\ queue = <<>>
   /\ draining = FALSE
-  /\ errors = 0
+  /\ errors = NoErrors
   /\ todo = <<>>
   /\ exc = NoExc
   /\ f = [loading |-> TRUE, held |-> <<>>, open |-> FALSE, step |-> 0, looked |-> FALSE, started |-> FALSE, found |-> FALSE]
@@ -291,7 +299,8 @@ DrainNext ==
                   IF pg.attachments = 0 \/ ~f.open \/ f.looked THEN
                     UNCHANGED <<todo, f, version, stepNo, unprocessed, exc, unsurfaced>>
                   ELSE IF bad /\ f.step = 0 THEN
-                    \* measure's querySelector throws, outside callApp: a raw throw.
+                    \* measure's querySelector throws, outside callApp: a raw throw,
+                    \* which the drain's catch keeps (Unwinds).
                     /\ exc' = RawExc /\ unsurfaced' = unsurfaced + 1
                     /\ UNCHANGED <<todo, f, version, stepNo, unprocessed>>
                   ELSE
@@ -305,8 +314,8 @@ DrainNext ==
 DrainEnds ==
   /\ Running("drain") /\ queue = <<>>
   /\ draining' = FALSE
-  /\ errors' = 0
-  /\ exc' = IF errors > 0 THEN [k |-> "app", n |-> errors] ELSE NoExc
+  /\ errors' = NoErrors
+  /\ exc' = Thrown(errors)
   /\ todo' = rest
   /\ UNCHANGED <<wired, queue, f, version, stepNo, listeners, calls, subscribed, pg, ln, budget, result, evDone,
                  events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
@@ -540,10 +549,11 @@ Returns ==
 Unwinds ==
   /\ todo # <<>> /\ exc # NoExc
   /\ CASE h.t = "drain" ->
-            \* queue.ts run's finally: the queue and the errors kept are dropped.
-            /\ queue' = <<>> /\ draining' = FALSE /\ errors' = 0
-            /\ todo' = rest
-            /\ UNCHANGED <<exc, pg, ln, listeners, subResult, result, unsurfaced, unprocessed, ownThrew>>
+            \* queue.ts run's loop: each work's own catch keeps what it threw, and the
+            \* drain goes on to the next work.
+            /\ errors' = Keep(errors, exc)
+            /\ exc' = NoExc
+            /\ UNCHANGED <<todo, queue, draining, pg, ln, listeners, subResult, result, unsurfaced, unprocessed, ownThrew>>
        [] h.t = "subRet" ->
             \* subscribe.ts: the listener is removed if it threw itself, and the error thrown on.
             /\ listeners' = [listeners EXCEPT ![h.l] = @ /\ ~OwnThrown(h.l)]
@@ -557,7 +567,7 @@ Unwinds ==
             /\ ownThrew' = [ownThrew EXCEPT ![h.l] = TRUE]
             /\ IF h.m = "here"
                THEN /\ todo' = rest /\ UNCHANGED <<exc, errors>>
-               ELSE /\ exc' = NoExc /\ errors' = errors + exc.n /\ todo' = rest
+               ELSE /\ exc' = NoExc /\ errors' = Keep(errors, exc) /\ todo' = rest
             /\ UNCHANGED <<queue, draining, pg, ln, listeners, subResult, result, unsurfaced, unprocessed>>
        [] h.t = "attachRet" ->
             \* page.ts attach's catch: detach, then throw on.
@@ -595,7 +605,7 @@ Spec == Init /\ [][Next]_vars /\ WF_vars(Internal)
 (* Properties                                                              *)
 (***************************************************************************)
 TypeOK ==
-  /\ errors \in Nat /\ unsurfaced \in Nat
+  /\ errors.n \in Nat /\ errors.raw \in BOOLEAN /\ unsurfaced \in Nat
   /\ draining \in BOOLEAN
   /\ listeners \in [Listeners -> BOOLEAN]
   /\ pg.attachments \in 0..2 /\ pg.handles \in 0..2

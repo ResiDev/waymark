@@ -13,8 +13,6 @@ it.concurrent("holds every rule the shell keeps, for every script of two listene
 // Each of these is a bug in the code, reproduced in bugs.test.ts. Once one is fixed, its
 // part of Shell.tla changes with the code, and its rule moves to MCShell.cfg.
 const broken = [
-  ["MCMessagesRun.cfg", "a step whose selector does not parse loses what was queued behind its look", /Invariant MessagesRun is violated/],
-  ["MCErrorsSurface.cfg", "a step whose selector does not parse loses the errors the drain had caught", /Invariant ErrorsSurface is violated/],
   ["MCConnectionsHeld.cfg", "a connect that throws stays connected with no disconnect", /Invariant ConnectionsHeld is violated/],
   ["MCHearsOnceConnected.cfg", "a connect inside a drain, with a sync adapter, never hears", /Temporal properties were violated/],
 ] as const;
