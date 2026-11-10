@@ -1,8 +1,9 @@
 import { EMPTY } from "../checklists/record";
 import type { StoredStatus } from "../checklists/record";
 import { dictionary } from "../dictionary";
-import { entryDropped } from "../problems";
+import { entryDropped, recordDropped } from "../problems";
 import type { Change, UserRecord, StorageState } from "../state";
+import { DEFAULT_MAX_AGE, staleness } from "../storage/records";
 import type { Parsed, Read, RecordUnreadableError } from "../storage/records";
 import type { Walkthrough, WalkthroughProgress } from "../walkthrough/types";
 
@@ -85,8 +86,15 @@ export function heard(
       delete next[id];
       continue;
     }
+    const walkthrough = walkthroughs.get(id);
+    const reason = walkthrough && staleness(walkthroughProgress, walkthrough.steps.length, walkthrough.maxAge ?? DEFAULT_MAX_AGE, change.now);
+    if (reason !== undefined) {
+      change.problems.push(recordDropped(id, reason));
+      delete next[id];
+      continue;
+    }
     next[id] = walkthroughProgress;
-    if (!walkthroughs.has(id)) (unverified ??= new Map(userRecord.unverifiedWalkthroughProgressById)).set(id, walkthroughProgress);
+    if (walkthrough === undefined) (unverified ??= new Map(userRecord.unverifiedWalkthroughProgressById)).set(id, walkthroughProgress);
   }
   return {
     walkthroughProgressById: next ?? walkthroughProgressById,

@@ -1,6 +1,6 @@
-// What Lifecycle.tla found, on the real Run. Each `it.fails` states the behaviour
-// the user should see; it fails today, so the suite stays green, and flips once
-// the code is fixed. The Broken*.cfg next to each finding shows TLC's trace.
+// What Lifecycle.tla found, on the real Run. Each test states the behaviour the
+// user should see. Each was an `it.fails` until the code was fixed; the rule it
+// names now holds in MCLifecycle.cfg.
 import { describe, expect, it } from "vitest";
 import type { StoredRecord } from "../../src/storage/records";
 import { connected } from "../../src/test/run";
@@ -25,11 +25,11 @@ const running = (step: number, stepCount: number, collapsed: boolean, changedAt 
 // The newer release's tour, collapsed on its third step, which this release does not have.
 const onThirdStep = (collapsed: boolean) => record({ tour: running(2, 3, collapsed) });
 
-// StepInRange and ChangesNeverThrow, BrokenStepInRange.cfg and BrokenChangesNeverThrow.cfg.
-// record.ts heardWalkthroughProgress takes the heard entry of a walkthrough this
-// tab knows without checking it against the definition, as verifyOne does.
+// StepInRange and ChangesNeverThrow. record.ts heard took the heard entry of a
+// walkthrough this tab knows without checking it against the definition, as
+// verifyOne does. It now checks it, and drops a stale one from this tab's record.
 describe("another tab on a release where the tour has more steps", () => {
-  it.fails("hears the tour on a step this release does not have without throwing", () => {
+  it("hears the tour on a step this release does not have without throwing", () => {
     const { storage, push } = elsewhere();
     const run = connected({ storage });
     run.start(tour);
@@ -38,7 +38,7 @@ describe("another tab on a release where the tour has more steps", () => {
     expect(() => push(onThirdStep(true))).not.toThrow();
   });
 
-  it.fails("lets the user close the open hint after hearing the tour on a step this release does not have", () => {
+  it("lets the user close the open hint after hearing the tour on a step this release does not have", () => {
     const { storage, push } = elsewhere();
     const run = connected({ storage });
     run.start(tour);
@@ -50,8 +50,8 @@ describe("another tab on a release where the tour has more steps", () => {
     expect(run.getSnapshot().open).toBeNull();
   });
 
-  // BrokenStartAlwaysShows.cfg: run.md:285, a click always shows something.
-  it.fails("opens the tour from its button after hearing it on a step this release does not have", () => {
+  // StartAlwaysShows. run.md:285: a click always shows something.
+  it("opens the tour from its button after hearing it on a step this release does not have", () => {
     const { storage, push } = elsewhere();
     const run = connected({ storage });
     run.start(tour);

@@ -13,7 +13,8 @@
 (* Left out: the page and the advance gate (AdvanceGate.tla checks those;  *)
 (* here every step has no condition, so Next always moves), events,        *)
 (* beacon placement, maxAge (a stale entry stands for both reasons         *)
-(* verifyOne drops one), checklists, and act() with no walkthrough.        *)
+(* staleness gives, which verifyOne and heard drop one for), checklists,   *)
+(* and act() with no walkthrough.                                          *)
 (*                                                                         *)
 (* A change that throws leaves the Run as it was (run.ts assigns the       *)
 (* model only after update returns), so the model keeps every variable     *)
@@ -47,7 +48,8 @@ LoadEntries(w) ==
   \cup {Run(0, c, FALSE) : c \in BOOLEAN}
 
 \* What another tab can save for w: also entries from a release where w has
-\* ElseSteps[w] steps, so a step this release does not have.
+\* ElseSteps[w] steps, so a step this release does not have. heard drops
+\* those when w is defined here, and keeps them unverified when not.
 HeardEntries(w) ==
   {None, Ended("finished"), Ended("exited")}
   \cup {Run(s, c, TRUE) : s \in 0..Steps[w] - 1, c \in BOOLEAN}
@@ -181,15 +183,20 @@ RunAll(R, cs) == IF cs = <<>> THEN R ELSE RunAll(RunCmd(R, Head(cs)), Tail(cs))
 \* An echo is the same write heard again, so what this tab made of it stands:
 \* the code keeps ours when theirs, or theirs collapsed, is in our place, and
 \* an echo here is always ours as it is.
+\* An entry heard for a walkthrough defined here is checked as verifyOne
+\* checks a restored one: a stale one is dropped from this tab's record (not
+\* from storage, which keeps it).
 HeardEntry(R, D, w, theirs, mode, openHere) ==
   LET ours == R.p[w]
       keep == [p |-> ours, u |-> R.u[w], ho |-> R.ho[w], ac |-> R.ac[w], ro |-> R.ro[w]]
+      gone == [p |-> None, u |-> FALSE, ho |-> FALSE, ac |-> FALSE, ro |-> FALSE]
       closed == IF theirs.status = "running" /\ ~theirs.collapsed THEN [theirs EXCEPT !.collapsed = TRUE] ELSE theirs
   IN
   IF w = openHere THEN keep
-  ELSE IF theirs.status = "none" THEN (IF ours.status = "none" THEN keep ELSE [p |-> None, u |-> FALSE, ho |-> FALSE, ac |-> FALSE, ro |-> FALSE])
+  ELSE IF theirs.status = "none" THEN (IF ours.status = "none" THEN keep ELSE gone)
   ELSE IF ours.status # "none" /\ mode = "older" THEN keep
   ELSE IF ours.status # "none" /\ mode = "same" /\ (theirs = ours \/ closed = ours) THEN keep
+  ELSE IF D[w] /\ closed.status = "running" /\ ~closed.fresh THEN gone
   ELSE [p |-> closed,
         u |-> ~D[w],
         ho |-> closed # theirs,

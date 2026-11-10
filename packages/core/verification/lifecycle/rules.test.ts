@@ -15,13 +15,6 @@ it("holds every rule that the code keeps, for two tours and a hint", async () =>
   expect(await checkModel(model("MCLifecycle.cfg"))).not.toBe("");
 });
 
-// Each rule the code breaks, in a config of its own. findings.test.ts
-// reproduces each on the real Run. Once the code is fixed and the model copies
-// the fix, the rule moves into MCLifecycle.cfg and its line here goes.
-it.concurrent.for([
-  ["StepInRange", "a heard step this release's tour does not have", "Invariant"],
-  ["ChangesNeverThrow", "the same, as a RangeError inside the change", "Invariant"],
-  ["StartAlwaysShows", "the same, as a click on the tour's button that shows nothing", "Action property"],
-] as const)("finds %s broken: %s", async ([rule, , kind]) => {
-  await expect(checkModel(model(`Broken${rule}.cfg`))).rejects.toThrow(`${kind} ${rule} is violated`);
-});
+// A rule the code breaks gets a Broken<Rule>.cfg of its own and an `it` here
+// that expects TLC to find it violated, with a repro in findings.test.ts. Once
+// the code is fixed and the model copies the fix, it moves into MCLifecycle.cfg.
