@@ -38,9 +38,12 @@ export type SavePartialAdapter = Readonly<{
    * Makes `changes` to what is stored. Not a record: storing it as one loses
    * every entry it leaves out. Hand it to `applyChanges` with what is stored,
    * and store what that returns, in one transaction where two devices may
-   * save at once. A `RecordUnreadableError` thrown here is reported as
-   * `recordUnreadable`; anything else as `storageFailed`. Core does not wait
-   * for it, and does not try again.
+   * save at once. Calls may land in any order, so a walkthrough's stored
+   * entry stays when it changed later than the one in `changes`: code that
+   * merges without `applyChanges` must do the same, or an older save that
+   * lands last opens a finished walkthrough again. A `RecordUnreadableError`
+   * thrown here is reported as `recordUnreadable`; anything else as
+   * `storageFailed`. Core does not wait for it, and does not try again.
    */
   savePartial: (changes: RecordChanges) => MaybePromise<void>;
   subscribe?: Subscribe;

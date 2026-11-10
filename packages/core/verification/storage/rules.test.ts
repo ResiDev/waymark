@@ -15,6 +15,7 @@ it.each([
   ["localStorage", "MCLocal.cfg"],
   ["a server that pushes every write", "MCRemote.cfg"],
   ["a server that pushes every write, to tabs that disconnect", "MCRemoteUnmounts.cfg"],
+  ["a server that pushes every write and never fails", "MCRemoteReliable.cfg"],
   ["a save adapter that answers later", "MCSaveAsync.cfg"],
 ])("holds every rule its config lists on %s", async (_, file) => {
   expect(await checkModel(model(file))).not.toBe("");
@@ -24,9 +25,6 @@ it.each([
 it.each([
   ["NoReshowHere", "BrokenNoReshowHere.cfg"],
   ["NoReshowHere", "BrokenNoReshowHereLocal.cfg"],
-  ["MostRecentStored", "BrokenMostRecentStored.cfg"],
-  ["MostRecentStored", "BrokenMostRecentStoredLocal.cfg"],
-  ["QuietTabsAgree", "BrokenQuietTabsAgree.cfg"],
   ["HearsEveryWrite", "BrokenHearsEveryWrite.cfg"],
   ["SaveKeepsOthersEntries", "BrokenSaveKeepsOthersEntries.cfg"],
   ["NeverOverwriteUnreadable", "BrokenNeverOverwriteUnreadable.cfg"],

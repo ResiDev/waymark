@@ -116,7 +116,7 @@ describe("a heard record without a walkthrough this tab just finished (NoReshowH
   });
 });
 
-describe("the store keeps the save that lands last, not the newest change (MostRecentStored, QuietTabsAgree)", () => {
+describe("the store keeps the newest change, whichever save lands last (MostRecentStored, QuietTabsAgree)", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
   });
@@ -140,7 +140,7 @@ describe("the store keeps the save that lands last, not the newest change (MostR
     return tabs;
   };
 
-  it.fails("a hint finished in one tab opens again on reload, when the other tab's older save lands last", () => {
+  it("a hint finished in one tab stays finished on reload, when the other tab's older save lands last", () => {
     const { net } = race();
     const reloaded = tabOn(net);
     net.readLoad(2);
@@ -149,13 +149,13 @@ describe("the store keeps the save that lands last, not the newest change (MostR
     expect(open(reloaded)).toBeUndefined();
   });
 
-  it.fails("a tab shows a hint finished while storage holds it running, after every save landed and was heard", () => {
+  it("a tab shows a hint finished as storage holds it, after every save landed and was heard", () => {
     const { net, b } = race();
     expect(hintOf(b)).toBe(storedHint(net));
   });
 
   // savePartial calls are not queued, so two from one tab can reach a server out of order.
-  it.fails("a finished hint opens again on reload, when its tab's two saves reach the server out of order", () => {
+  it("a finished hint stays finished on reload, when its tab's two saves reach the server out of order", () => {
     at(1_000);
     const net = backend(null, remote);
     const a = tabOn(net);

@@ -105,10 +105,13 @@ TypeOK ==
 ------------------------------------------------------------------------------
 (* The merges, as src/storage/records.ts makes them. *)
 
-\* merge: changes made to what is stored; a replace starts from nothing.
+\* merge: changes made to what is stored; a replace starts from nothing. The stored entry stays
+\* when it changed later than the one set, so an older save landing last does not undo a newer one;
+\* at the same time the set one wins. A removal has no time, and always goes through.
 Merge(base, c) ==
   LET b == IF c.replace THEN Empty ELSE base
-  IN [w |-> IF c.w = Keep THEN b.w ELSE c.w, task |-> IF c.task = "keep" THEN b.task ELSE c.task]
+      newerStored == c.w # Keep /\ c.w # None /\ b.w # None /\ b.w.at > c.w.at
+  IN [w |-> IF c.w = Keep \/ newerStored THEN b.w ELSE c.w, task |-> IF c.task = "keep" THEN b.task ELSE c.task]
 
 \* combine: two saves' changes as one, the later's over the earlier's.
 Combine(e, l) ==
@@ -176,7 +179,7 @@ TabWrite(W, t, v, c) ==
       h == [W.hist EXCEPT
               !.overwrote = W.hist.overwrote \/ (old = Unreadable /\ ~c.replace),
               !.clobbered = W.hist.clobbered \/ (both /\ ~c.replace /\ ((c.w = Keep /\ v.w # old.w) \/ (c.task = "keep" /\ v.task # old.task))),
-              !.reverted  = W.hist.reverted \/ (both /\ old.w # None /\ v.w # None /\ v.w.at < old.w.at)]
+              !.reverted  = W.hist.reverted \/ (both /\ ~c.replace /\ old.w # None /\ v.w # None /\ v.w.at < old.w.at)]
   IN Write([W EXCEPT !.hist = h], t, v)
 
 \* The Run hears RecordUnreadableError: unreadable, reported on the change into it (turnedUnreadable).
@@ -431,7 +434,8 @@ NeverOverwriteUnreadable == ~hist.overwrote
 \* Thread 10: so A's tick survives B's write.
 SaveKeepsOthersEntries == ~hist.clobbered
 
-\* Thread 11, most recent wins: the store never takes an entry older than the one it holds.
+\* Thread 11, most recent wins: the store never takes an entry older than the one it holds,
+\* but from a replace, which stores the app's record whole, in place of whatever is stored.
 MostRecentStored == ~hist.reverted
 
 \* turnedUnreadable: reported again only after a readable record.

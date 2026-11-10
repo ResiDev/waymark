@@ -213,10 +213,20 @@ export const combine = (earlier: RecordChanges, later: RecordChanges): RecordCha
   };
 };
 
-/** What is stored, read, with `changes` made to it, or `null` once nothing is left. */
+/**
+ * What is stored, read, with `changes` made to it, or `null` once nothing is
+ * left. A walkthrough's stored entry stays when it changed later than the one
+ * in `changes`, so an older save that lands last does not take its place. A
+ * removal carries no time, so it always goes through, and a replace stores
+ * its record whole.
+ */
 export const merge = (stored: Read | null, changes: RecordChanges): StoredRecord | null => {
   const base = changes.replace === true ? null : stored;
-  const walkthroughs = Object.assign(dictionary<WalkthroughProgress>(), base?.walkthroughs, changes.set.walkthroughs);
+  const walkthroughs = Object.assign(dictionary<WalkthroughProgress>(), base?.walkthroughs);
+  for (const [id, progress] of Object.entries(changes.set.walkthroughs)) {
+    const kept = walkthroughs[id];
+    if (kept === undefined || kept.changedAt <= progress.changedAt) walkthroughs[id] = progress;
+  }
   const tasks = Object.assign(copy(base?.tasks ?? {}), changes.set.tasks);
   for (const id of changes.remove.walkthroughs) delete walkthroughs[id];
   for (const id of changes.remove.tasks) delete tasks[id];

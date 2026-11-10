@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyChanges, combine, isRecordUnreadable, parseRecord, RecordUnreadableError } from "./records";
+import type { WalkthroughProgress } from "../walkthrough/types";
 import type { RecordChanges } from "./records";
 
 /** A save that sets these tasks' statuses and removes these. */
@@ -50,6 +51,23 @@ describe("applyChanges", () => {
       tasks: { b: "skipped", c: "done" },
     });
     expect(applyChanges({ version: 1, walkthroughs: {}, tasks: { a: "done" } }, changes({}, ["a"]))).toBeNull();
+  });
+
+  it("keeps a walkthrough's stored entry when it changed later than the save's, so an older save landing last does not undo it", () => {
+    const finished = { ...progress, status: "finished", step: 2, changedAt: 2_000 } as const;
+    const record = (tour: WalkthroughProgress) => ({ version: 1, walkthroughs: { tour }, tasks: {} });
+    const saving = (tour: WalkthroughProgress, replace?: true): RecordChanges => ({
+      ...changes({}, [], replace),
+      set: { walkthroughs: { tour }, tasks: {} },
+    });
+    expect(applyChanges(record(finished), saving(progress))).toEqual(record(finished));
+    expect(applyChanges(record(progress), saving(finished))).toEqual(record(finished));
+    // At the same time the save wins, so a tab that starts and finishes within a millisecond keeps the finish.
+    const sameTime = { ...progress, changedAt: 2_000 };
+    expect(applyChanges(record(finished), saving(sameTime))).toEqual(record(sameTime));
+    // A removal has no time, so it goes through, and a replace stores its record whole.
+    expect(applyChanges(record(finished), { ...changes({}), remove: { walkthroughs: ["tour"], tasks: [] } })).toBeNull();
+    expect(applyChanges(record(finished), saving(progress, true))).toEqual(record(progress));
   });
 
   it("takes changes as a request body parsed them, and refuses what a Run did not send", () => {
