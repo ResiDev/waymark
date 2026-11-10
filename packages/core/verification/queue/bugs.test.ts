@@ -144,10 +144,10 @@ describe("subscribe, under thread 12's rule (a): only the listener's own throw",
 });
 
 describe("connect", () => {
-  // Shell.tla HearsOnceConnected. Inside a drain, link.ts take queues `loaded`
-  // (link.ts:68), so both calls to hear (link.ts:70 and :91) find the record still
-  // loading, and nothing calls hear once it is in.
-  it.fails("hears other tabs when called from inside a listener, with a synchronous adapter", () => {
+  // Shell.tla HearsOnceConnected. Inside a drain, link.ts take queues `loaded`, so the
+  // record is not in when connect returns. connect listens before it sends the load
+  // (link.ts listen), not once the record is in, so it hears all the same.
+  it("hears other tabs from the call on, even from inside a listener with a synchronous adapter", () => {
     fakeFrames();
     const storage = syncStorage();
     const run = createRun({ storage: storage.adapter });
@@ -164,9 +164,10 @@ describe("connect", () => {
   });
 
   // Shell.tla ConnectionsHeld. When the load's change throws an app error, connect
-  // (link.ts:74-102) has no catch: the connection is counted and hearing, and the app
-  // never gets the function that would stop it. attach undoes itself in the same case
-  // (page.ts:222-228).
+  // (link.ts connect) has no catch: the connection is counted and hearing, and the app
+  // never gets the function that would stop it. A subscribe that throws leaves the
+  // connection counted too, though not hearing (Shell.tla does not model that one).
+  // attach undoes itself in the same case (page.ts:222-228).
   it.fails("leaves nothing hearing other tabs when it throws a listener's error", () => {
     fakeFrames();
     const storage = syncStorage();

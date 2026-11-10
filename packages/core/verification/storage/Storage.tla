@@ -78,6 +78,8 @@ vars == <<stored, writer, version, tabs, hist, clock, cmds, device>>
    storeValue                 (loading what is stored, or storing storeValue) and its changes
    sent                       savePartial calls not yet answered
    toHear, notified           records the store told this tab of, each with its write's number, not yet heard
+   heldRecord                 the latest record heard while loading, with its write's number, taken in after
+                              the load: link.ts's held, empty or one
    seen                       the number of the last write this tab loaded or heard, or knows it made
    owed                       history: a write while connected, since its load was read, not yet heard
    dropped                    a savePartial failed, so its changes never land, and no record taken in since
@@ -87,7 +89,7 @@ TabInit == [status |-> "loading", mem |-> Empty, held |-> <<>>,
             connected |-> FALSE, subscribed |-> FALSE, everConnected |-> FALSE,
             load |-> "idle", loadValue |-> Empty, loadVersion |-> 0,
             pending |-> NoChange, phase |-> "idle", sending |-> NoChange, storeValue |-> Empty,
-            sent |-> <<>>, toHear |-> <<>>, notified |-> FALSE, seen |-> -1, owed |-> FALSE, dropped |-> FALSE,
+            sent |-> <<>>, toHear |-> <<>>, notified |-> FALSE, heldRecord |-> <<>>, seen |-> -1, owed |-> FALSE, dropped |-> FALSE,
             reported |-> FALSE, finishedHere |-> FALSE, reshown |-> FALSE]
 
 TypeOK ==
@@ -245,12 +247,19 @@ Run(W, t, cmd) ==
   LET rRun == W.tabs[t].mem
   IN Changed(Track([W EXCEPT !.tabs[t].mem = Do(cmd, rRun, clock)], t, cmd, rRun), t, rRun)
 
-\* hear(), link.ts:61: listen once connected and loaded.
+\* listen(), link.ts: from connect, before the load is sent.
 Subscribe(W, t) ==
-  IF W.tabs[t].connected /\ ~W.tabs[t].subscribed /\ W.tabs[t].status # "loading"
-  THEN [W EXCEPT !.tabs[t].subscribed = TRUE] ELSE W
+  IF W.tabs[t].connected /\ ~W.tabs[t].subscribed THEN [W EXCEPT !.tabs[t].subscribed = TRUE] ELSE W
 
-\* The load at connect arrives: loaded() in record.ts, the held commands, then hear().
+\* heard() in record.ts: task statuses whole, walkthrough by changedAt, the open one kept.
+Heard(W, t, v, n) ==
+  IF v = Unreadable THEN [Refuse(W, t) EXCEPT !.tabs[t].seen = n, !.tabs[t].dropped = FALSE]
+  ELSE LET rHeard == W.tabs[t].mem IN
+       [W EXCEPT !.tabs[t].mem = [w |-> HeardW(rHeard.w, v.w, IsOpen(rHeard)), task |-> v.task],
+                 !.tabs[t].status = IF W.tabs[t].status = "unreadable" THEN "ready" ELSE W.tabs[t].status,
+                 !.tabs[t].reported = FALSE, !.tabs[t].seen = n, !.tabs[t].dropped = FALSE]
+
+\* The load at connect arrives: loaded() in record.ts with the held commands, then the record heard meanwhile.
 Take(W, t, v, n) ==
   LET tabTake == W.tabs[t]
       st == IF v = Failed THEN "error" ELSE IF v = Unreadable THEN "unreadable" ELSE "ready"
@@ -260,15 +269,10 @@ Take(W, t, v, n) ==
                       !.tabs[t].reported = (v = Unreadable),
                       !.hist.double = W.hist.double \/ (v = Unreadable /\ tabTake.reported)]
       Ws == IF tabTake.held = <<>> THEN {WTake} ELSE Run(WTake, t, Head(tabTake.held))
-  IN {Subscribe(X, t) : X \in Ws}
-
-\* heard() in record.ts: task statuses whole, walkthrough by changedAt, the open one kept.
-Heard(W, t, v, n) ==
-  IF v = Unreadable THEN [Refuse(W, t) EXCEPT !.tabs[t].seen = n, !.tabs[t].dropped = FALSE]
-  ELSE LET rHeard == W.tabs[t].mem IN
-       [W EXCEPT !.tabs[t].mem = [w |-> HeardW(rHeard.w, v.w, IsOpen(rHeard)), task |-> v.task],
-                 !.tabs[t].status = IF W.tabs[t].status = "unreadable" THEN "ready" ELSE W.tabs[t].status,
-                 !.tabs[t].reported = FALSE, !.tabs[t].seen = n, !.tabs[t].dropped = FALSE]
+      heardAfter(X) ==
+        IF tabTake.heldRecord = <<>> THEN X
+        ELSE Heard([X EXCEPT !.tabs[t].heldRecord = <<>>], t, Head(tabTake.heldRecord).record, Head(tabTake.heldRecord).version)
+  IN {heardAfter(X) : X \in Ws}
 
 LoadOutcomes(v) == {v} \cup (IF Failures THEN {Failed} ELSE {})
 
@@ -308,25 +312,25 @@ Replace(t) ==
   /\ cmds' = cmds + 1
   /\ UNCHANGED <<clock, device>>
 
-\* run.connect(): the first loads, every one listens once loaded, and a save adapter saves what waits.
+\* run.connect(): every one listens, the first then loads, and a save adapter saves what waits.
 Connect(t) ==
   /\ ~tabs[t].connected
   /\ \/ ~Unmounts /\ ~tabs[t].everConnected
      \/ Unmounts
-  /\ LET VConnect == [World EXCEPT !.tabs[t].connected = TRUE, !.tabs[t].everConnected = TRUE]
+  /\ LET VConnect == Subscribe([World EXCEPT !.tabs[t].connected = TRUE, !.tabs[t].everConnected = TRUE], t)
          Ws1 == IF tabs[t].load # "idle" THEN {VConnect}
                 ELSE IF Async THEN {[VConnect EXCEPT !.tabs[t].load = "asked"]}
                 ELSE UNION {Take([VConnect EXCEPT !.tabs[t].owed = FALSE], t, v, version) : v \in LoadOutcomes(VConnect.stored)}
-         Ws2 == {Subscribe(X, t) : X \in Ws1}
-         Ws3 == IF Adapter = "whole" THEN UNION {Flush(X, t) : X \in Ws2} ELSE Ws2
-     IN \E W \in Ws3 : Become(W)
+         Ws2 == IF Adapter = "whole" THEN UNION {Flush(X, t) : X \in Ws1} ELSE Ws1
+     IN \E W \in Ws2 : Become(W)
   /\ UNCHANGED <<clock, cmds, device>>
 
-\* The connection's cleanup: it stops listening.
+\* The connection's cleanup: it stops listening, and drops a record held.
 Disconnect(t) ==
   /\ Unmounts
   /\ tabs[t].connected
-  /\ Become([World EXCEPT !.tabs[t] = [tabs[t] EXCEPT !.connected = FALSE, !.subscribed = FALSE, !.toHear = <<>>, !.notified = FALSE, !.owed = FALSE]])
+  /\ Become([World EXCEPT !.tabs[t] = [tabs[t] EXCEPT !.connected = FALSE, !.subscribed = FALSE, !.toHear = <<>>, !.notified = FALSE,
+                                                      !.heldRecord = <<>>, !.owed = FALSE]])
   /\ UNCHANGED <<clock, cmds, device>>
 
 \* The store reads the record for a tab's load at connect, or fails it.
@@ -342,13 +346,18 @@ LoadArrive(t) ==
   /\ \E W \in Take(World, t, tabs[t].loadValue, tabs[t].loadVersion) : Become(W)
   /\ UNCHANGED <<clock, cmds, device>>
 
+\* A record heard: taken in, or held while the load at connect is out, in place of any held before.
+HeardOrHeld(W, t, v, n) ==
+  IF W.tabs[t].status = "loading" THEN [W EXCEPT !.tabs[t].heldRecord = <<[record |-> v, version |-> n]>>]
+  ELSE Heard(W, t, v, n)
+
 \* The tab hears a record the store told it of.
 Hear(t) ==
   /\ tabs[t].subscribed
   /\ \/ /\ HearCurrent /\ tabs[t].notified
-        /\ Become(Heard([World EXCEPT !.tabs[t].notified = FALSE, !.tabs[t].owed = FALSE], t, stored, version))
+        /\ Become(HeardOrHeld([World EXCEPT !.tabs[t].notified = FALSE, !.tabs[t].owed = FALSE], t, stored, version))
      \/ /\ ~HearCurrent /\ tabs[t].toHear # <<>>
-        /\ Become(Heard([World EXCEPT !.tabs[t].toHear = Tail(tabs[t].toHear), !.tabs[t].owed = Tail(tabs[t].toHear) # <<>>], t, Head(tabs[t].toHear).record, Head(tabs[t].toHear).version))
+        /\ Become(HeardOrHeld([World EXCEPT !.tabs[t].toHear = Tail(tabs[t].toHear), !.tabs[t].owed = Tail(tabs[t].toHear) # <<>>], t, Head(tabs[t].toHear).record, Head(tabs[t].toHear).version))
   /\ UNCHANGED <<clock, cmds, device>>
 
 \* A save adapter's load before a save answers: it fails, refuses an unreadable record, or the changes are merged in.
@@ -423,9 +432,12 @@ NoReadBeforeConnect ==
 NoListenAfterUnmount ==
   \A t \in Tabs : ~tabs[t].connected => ~tabs[t].subscribed
 
-\* link.ts:59: a change heard lands on the record, not on none.
-ListensOnlyOnceLoaded ==
-  \A t \in Tabs : tabs[t].subscribed => tabs[t].status # "loading"
+\* link.ts: a record heard while loading waits for the load, so it lands on the record, not on none.
+\* Only a listening tab holds one.
+HoldsHeardWhileLoading ==
+  \A t \in Tabs :
+    /\ tabs[t].status = "loading" => tabs[t].mem = Empty
+    /\ tabs[t].heldRecord # <<>> => tabs[t].status = "loading" /\ tabs[t].subscribed
 
 \* docs/design/storage-saves/README.md:15: no save writes over a record Waymark cannot read.
 NeverOverwriteUnreadable == ~hist.overwrote
@@ -459,7 +471,8 @@ QuietTabsAgree ==
 
 \* src/run/types.ts:216, connect: "while one is open the Run hears changes made elsewhere".
 \* A tab listening will hear of every write made while it was connected, since its load
-\* read the record; its own aside when the store does not tell it of those.
+\* read the record; its own aside when the store does not tell it of those. A record held
+\* while loading is heard once the load is in.
 HearsEveryWrite ==
-  \A t \in Tabs : tabs[t].subscribed /\ tabs[t].owed => tabs[t].notified \/ tabs[t].toHear # <<>>
+  \A t \in Tabs : tabs[t].subscribed /\ tabs[t].owed => tabs[t].notified \/ tabs[t].toHear # <<>> \/ tabs[t].heldRecord # <<>>
 =============================================================================

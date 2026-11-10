@@ -36,7 +36,6 @@ export function createLink({
   queue,
   report,
   hasInitial,
-  loading,
   loaded,
   heard,
   refused,
@@ -45,7 +44,6 @@ export function createLink({
   queue: Queue;
   report: ReportProblem<never>;
   hasInitial: boolean;
-  loading: () => boolean;
   loaded: (read: Parsed | "failed") => void;
   heard: (value: unknown) => void;
   refused: (error: RecordUnreadableError) => void;
@@ -55,40 +53,58 @@ export function createLink({
   // Storage is read only once connected, in the browser; a `save` adapter's save reads first.
   let everConnected = false;
   let unsubscribe: (() => void) | undefined;
+  // While the load at connect is out, the latest record heard, applied once the load is in: on the
+  // record, not on none, and after it. Each is the whole stored record, so the latest is enough.
+  let awaitingLoad = false;
+  let held: Readonly<{ value: unknown }> | undefined;
 
-  // Once the record is in, so a change heard lands on the record rather than on none.
-  const hear = () => {
+  // From connect, before the load is sent, so a write the load misses is still heard.
+  const listen = () => {
     if (adapter?.subscribe === undefined || unsubscribe !== undefined) return;
-    if (connections === 0 || loading()) return;
-    unsubscribe = adapter.subscribe(heard);
+    unsubscribe = adapter.subscribe((value) => {
+      if (awaitingLoad) held = { value };
+      else heard(value);
+    });
   };
 
+  // A write both in the load and in the record held is made twice; the second changes nothing.
   const take = (read: Parsed | "failed") => {
     try {
       loaded(read);
     } finally {
-      hear();
+      awaitingLoad = false;
+      const latest = held;
+      held = undefined;
+      if (latest !== undefined) heard(latest.value);
     }
   };
 
   const connect = () => {
     connections += 1;
     everConnected = true;
-    if (adapter !== undefined && !asked) {
+    const toLoad = asked ? undefined : adapter;
+    if (toLoad !== undefined) {
       asked = true;
-      loadFrom({
-        adapter,
-        onValue: (value) => take(parseRecord(value)),
-        fail: (error) => {
-          try {
-            report(storageFailed(error));
-          } finally {
-            take("failed");
-          }
-        },
-      });
+      awaitingLoad = true;
     }
-    hear();
+    try {
+      listen();
+    } finally {
+      // Sent even when subscribe throws, or the Run would wait on it for good.
+      if (toLoad !== undefined) {
+        loadFrom({
+          adapter: toLoad,
+          onValue: (value) => take(parseRecord(value)),
+          fail: (error) => {
+            try {
+              report(storageFailed(error));
+            } finally {
+              take("failed");
+            }
+          },
+        });
+      }
+    }
     if (adapter !== undefined && !isPartial(adapter)) flush(adapter);
     let connected = true;
     return () => {
@@ -98,6 +114,7 @@ export function createLink({
       if (connections > 0) return;
       unsubscribe?.();
       unsubscribe = undefined;
+      held = undefined;
     };
   };
 

@@ -578,20 +578,121 @@ describe("run storage", () => {
     expect(storage.load).toHaveBeenCalledOnce();
   });
 
-  it("hears storage only once the record is in, and not at all if it disconnected first", async () => {
-    const subscribe = vi.fn(() => () => {});
-    const storage = later();
-    const run = createRun({ storage: { ...storage.adapter, subscribe } });
-    run.connect()();
-    await storage.answer(null);
-    expect(subscribe).not.toHaveBeenCalled();
+  describe("while its record loads", () => {
+    /** A load that answers when the test says so, and a record pushed as if another tab saved it. */
+    const loadingWhileHearing = (value: StoredRecord | null = null) => {
+      const storage = later(value);
+      let push: (heard: StoredRecord | null) => void = () => {};
+      const unsubscribe = vi.fn();
+      const subscribe = vi.fn((listener: (heard: StoredRecord | null) => void) => {
+        push = listener;
+        return unsubscribe;
+      });
+      const adapter = { ...storage.adapter, subscribe };
+      return { ...storage, adapter, subscribe, unsubscribe, push: (heard: StoredRecord | null) => push(heard) };
+    };
+    const checklist = defineChecklists({ tasks: { met: {} } }).checklists.main;
+    const taskOf = (run: ReturnType<typeof createRun>) => run.checklist(checklist).getSnapshot().tasks[0]?.status;
 
-    const waiting = later();
-    const next = createRun({ storage: { ...waiting.adapter, subscribe } });
-    onTestFinished(next.connect());
-    expect(subscribe).not.toHaveBeenCalled();
-    await waiting.answer(null);
-    expect(subscribe).toHaveBeenCalledOnce();
+    it("listens from connect, before it loads, so it hears a save its load missed", async () => {
+      const storage = loadingWhileHearing();
+      const run = createRun({ storage: storage.adapter });
+      onTestFinished(run.connect());
+      expect(storage.subscribe).toHaveBeenCalledOnce();
+      expect(storage.subscribe.mock.invocationCallOrder[0]).toBeLessThan(storage.adapter.load.mock.invocationCallOrder[0]!);
+
+      storage.push(record({ tour: progress({ status: "finished" }) }));
+      expect(run.getSnapshot().storageStatus).toBe("loading");
+      expect(progressOf(run)).toBeUndefined();
+
+      await storage.answer(null);
+      expect(progressOf(run)?.status).toBe("finished");
+    });
+
+    it("takes the record loaded, then only the latest one heard meanwhile", async () => {
+      fakeTimers(3_000);
+      const storage = loadingWhileHearing();
+      const run = createRun({ storage: storage.adapter });
+      onTestFinished(run.connect());
+      storage.push(record({ tour: progress({ status: "exited", changedAt: 1_000 }) }));
+      storage.push(record({ tour: progress({ status: "finished", changedAt: 2_000 }) }, { met: "done" }));
+
+      await storage.answer(record({ tour: progress({ changedAt: 1_500 }) }));
+      expect(progressOf(run)?.status).toBe("finished");
+      expect(taskOf(run)).toBe("done");
+    });
+
+    it("changes nothing on hearing again a write its load had, and saves nothing", async () => {
+      const stored = record({ tour: progress({ collapsed: false }), hint: progress({ status: "finished", stepCount: 1, step: 0 }) }, { met: "done" });
+      const storage = loadingWhileHearing();
+      const onEvent = vi.fn<(event: WaymarkEvent) => void>();
+      const onChange = vi.fn();
+      const run = createRun({ storage: storage.adapter, onEvent, onChange });
+      run.requestStart(tour);
+      onTestFinished(run.connect());
+      storage.push(stored);
+
+      await storage.answer(stored);
+      expect(run.getSnapshot().open?.walkthrough.id).toBe("tour");
+      expect(progressOf(run)).toEqual(stored.walkthroughs["tour"]);
+      expect(progressOf(run, "hint")).toEqual(stored.walkthroughs["hint"]);
+      expect(taskOf(run)).toBe("done");
+      expect(storage.adapter.savePartial).not.toHaveBeenCalled();
+      expect(onChange).not.toHaveBeenCalled();
+      expect(types(onEvent)).not.toContain("interrupt");
+    });
+
+    it("takes the record heard meanwhile after a load that failed", async () => {
+      const storage = loadingWhileHearing();
+      const run = createRun({ storage: storage.adapter, problemHandlers: everyProblem(() => {}) });
+      onTestFinished(run.connect());
+      storage.push(record({ tour: progress({ status: "finished" }) }));
+
+      await storage.refuse(new Error("offline"));
+      expect(run.getSnapshot().storageStatus).toBe("error");
+      expect(progressOf(run)?.status).toBe("finished");
+    });
+
+    it("stops listening when it disconnects first, and drops what it heard", async () => {
+      const storage = loadingWhileHearing();
+      const run = createRun({ storage: storage.adapter });
+      const disconnect = run.connect();
+      storage.push(record({ tour: progress({ status: "finished" }) }));
+      disconnect();
+      expect(storage.unsubscribe).toHaveBeenCalledOnce();
+
+      await storage.answer(null);
+      expect(progressOf(run)).toBeUndefined();
+    });
+
+    it("listens once across connections, and keeps what it heard while one stays open", async () => {
+      const storage = loadingWhileHearing();
+      const run = createRun({ storage: storage.adapter });
+      const first = run.connect();
+      onTestFinished(run.connect());
+      expect(storage.subscribe).toHaveBeenCalledOnce();
+      storage.push(record({ tour: progress({ status: "finished" }) }));
+      first();
+      expect(storage.unsubscribe).not.toHaveBeenCalled();
+
+      await storage.answer(null);
+      expect(storage.adapter.load).toHaveBeenCalledOnce();
+      expect(progressOf(run)?.status).toBe("finished");
+    });
+
+    it("still loads when subscribe throws", async () => {
+      const storage = loadingWhileHearing();
+      const broken = new Error("no socket");
+      storage.subscribe.mockImplementation(() => {
+        throw broken;
+      });
+      const run = createRun({ storage: storage.adapter });
+      expect(() => run.connect()).toThrow(broken);
+      expect(storage.adapter.load).toHaveBeenCalledOnce();
+
+      await storage.answer(record({ tour: progress({ status: "finished" }) }));
+      expect(progressOf(run)?.status).toBe("finished");
+    });
   });
 
   it("starts from a record given it, and hears storage, without loading, once it connects", () => {

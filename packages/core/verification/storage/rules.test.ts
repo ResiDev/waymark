@@ -25,7 +25,6 @@ it.each([
 it.each([
   ["NoReshowHere", "BrokenNoReshowHere.cfg"],
   ["NoReshowHere", "BrokenNoReshowHereLocal.cfg"],
-  ["HearsEveryWrite", "BrokenHearsEveryWrite.cfg"],
   ["SaveKeepsOthersEntries", "BrokenSaveKeepsOthersEntries.cfg"],
   ["NeverOverwriteUnreadable", "BrokenNeverOverwriteUnreadable.cfg"],
 ])("breaks %s in %s", async (rule, file) => {

@@ -261,7 +261,7 @@ The new modules replace `run.ts`, `rules.ts`, `run/state.ts`, `checklists/tasks.
 ### `storage/link.ts`, 92 lines
 
 - Owns: the open connections, whether storage was asked, and how to stop hearing it.
-- Contract: asks storage for the record once, on the first `connect`, hears other tabs while connected and the record is in, and sends saves. A save storage refuses as unreadable goes back to the Run as `refused`.
+- Contract: asks storage for the record once, on the first `connect`, hears other tabs from `connect` until the last disconnect, holding what it hears while the record loads and applying it after, and sends saves. A save storage refuses as unreadable goes back to the Run as `refused`.
 - Exports: `createLink`, the type `Link`.
 
 ### Unchanged

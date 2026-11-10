@@ -14,7 +14,6 @@ it.concurrent("holds every rule the shell keeps, for every script of two listene
 // part of Shell.tla changes with the code, and its rule moves to MCShell.cfg.
 const broken = [
   ["MCConnectionsHeld.cfg", "a connect that throws stays connected with no disconnect", /Invariant ConnectionsHeld is violated/],
-  ["MCHearsOnceConnected.cfg", "a connect inside a drain, with a sync adapter, never hears", /Temporal properties were violated/],
 ] as const;
 
 it.concurrent.for(broken)("TLC finds the bug: %s, %s", async ([config, , violation]) => {

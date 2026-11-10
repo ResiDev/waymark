@@ -71,7 +71,6 @@ export function createRun(options: RunOptions = {}): Run {
     queue,
     report,
     hasInitial: options.initial !== undefined,
-    loading,
     loaded: (read) => send({ _tag: "loaded", read }),
     heard: (value) => {
       const read = parseRecord(value);

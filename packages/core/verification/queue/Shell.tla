@@ -14,8 +14,8 @@
 (* JavaScript runs one call at a time, to the end. `todo` is the call      *)
 (* stack, flattened: its head runs next, and a call made in place is put   *)
 (* in front of what it returns to. Frames that catch or clean up (`drain`, *)
-(* `subRet`, `appRet`, `attachRet`, `takeFin`, `rethrow`, `top`) also act  *)
-(* when an exception, `exc`, unwinds through them.                         *)
+(* `subRet`, `appRet`, `attachRet`, `rethrow`, `top`) also act when an    *)
+(* exception, `exc`, unwinds through them.                                 *)
 (***************************************************************************)
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
@@ -52,7 +52,8 @@ VARIABLES
   calls,      \* calls[l]: how many times listener l was called, up to Cap
   subscribed, \* subscribed[l]: the app or a listener has handed l to subscribe
   pg,         \* page.ts: attachments, the detach functions the app holds, the input listener open
-  ln,         \* link.ts: connections, the disconnects the app holds, asked, hearing, a load in flight
+  ln,         \* link.ts: connections, the disconnects the app holds, asked, hearing (subscribed
+              \* to other tabs), a load in flight
   budget,     \* calls the app and the browser may still make
   result,     \* what the app's last call threw: NoExc, RawExc, or n app errors
   evDone,     \* onEvent's "send" has sent
@@ -167,8 +168,6 @@ Raise(throws) ==
 \* subscribe.ts ownThrew: l's own first call threw, and the default handler threw it back.
 OwnThrown(l) == ownThrew[l] /\ handler = "default"
 
-Hear(l) == IF ~l.hearing /\ l.connections > 0 /\ ~f.loading THEN [l EXCEPT !.hearing = TRUE] ELSE l
-
 (***************************************************************************)
 (* The start                                                               *)
 (***************************************************************************)
@@ -266,7 +265,7 @@ AppDisconnects ==
 \* An async load's promise settles, as a microtask, outside any drain: link.ts take.
 LoadSettles ==
   /\ ln.inFlight
-  /\ App(<<T("sendLoaded"), T("takeFin")>>)
+  /\ App(<<T("sendLoaded")>>)
   /\ UNCHANGED <<wired, queue, draining, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, ln,
                  result, evDone, events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
 
@@ -492,14 +491,18 @@ Rethrows ==
                  result, evDone, events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
 
 (***************************************************************************)
-(* link.ts connect, take and hear                                          *)
+(* link.ts connect and take. connect listens to other tabs at once, before *)
+(* it sends the load. Other tabs' writes are not modelled: the record      *)
+(* link.ts holds while the load is out, and take's finally hears, is       *)
+(* always none here, so take is only loaded(read). The adapter's subscribe *)
+(* does not throw here.                                                    *)
 (***************************************************************************)
 Connect ==
   /\ Running("connect")
   /\ LET load == ~ln.asked
-     IN /\ ln' = [ln EXCEPT !.connections = @ + 1, !.asked = TRUE, !.inFlight = @ \/ (load /\ ~sync)]
-        /\ todo' = (IF load /\ sync THEN <<T("sendLoaded"), T("takeFin")>> ELSE <<>>)
-                   \o <<T("hear"), T("connRet")>> \o rest
+     IN /\ ln' = [ln EXCEPT !.connections = @ + 1, !.asked = TRUE, !.hearing = TRUE,
+                            !.inFlight = @ \/ (load /\ ~sync)]
+        /\ todo' = (IF load /\ sync THEN <<T("sendLoaded")>> ELSE <<>>) \o <<T("connRet")>> \o rest
   /\ UNCHANGED <<wired, queue, draining, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, budget,
                  result, evDone, events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
 
@@ -513,14 +516,6 @@ SendLoaded ==
   /\ UNCHANGED <<wired, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, budget, result, evDone,
                  events, handled, ownThrew, subResult, unsurfaced, staleCall, staleEvent, lookLate>>
 
-\* take's finally, and connect's own call: hear.
-Hears ==
-  /\ todo # <<>> /\ exc = NoExc /\ h.t \in {"takeFin", "hear"}
-  /\ ln' = Hear(ln)
-  /\ todo' = rest
-  /\ UNCHANGED <<wired, queue, draining, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, budget,
-                 result, evDone, events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
-
 ConnectReturns ==
   /\ Running("connRet")
   /\ ln' = [ln EXCEPT !.handles = @ + 1]
@@ -528,6 +523,7 @@ ConnectReturns ==
   /\ UNCHANGED <<wired, queue, draining, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, budget,
                  result, evDone, events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
 
+\* The last one unsubscribes.
 Disconnect ==
   /\ Running("disconnect")
   /\ ln' = [ln EXCEPT !.handles = @ - 1, !.connections = @ - 1, !.hearing = @ /\ ln.connections > 1]
@@ -574,11 +570,6 @@ Unwinds ==
             /\ exc' = NoExc
             /\ DetachWith(0, <<[T("rethrow") EXCEPT !.e = exc]>> \o rest)
             /\ UNCHANGED <<errors, ln, listeners, subResult, result, unsurfaced, ownThrew>>
-       [] h.t = "takeFin" ->
-            \* link.ts take's finally
-            /\ ln' = Hear(ln)
-            /\ todo' = rest
-            /\ UNCHANGED <<queue, draining, errors, exc, pg, listeners, subResult, result, unsurfaced, unprocessed, ownThrew>>
        [] h.t = "top" ->
             /\ result' = exc
             /\ unsurfaced' = unsurfaced - exc.n
@@ -595,7 +586,7 @@ Unwinds ==
 Internal ==
   \/ DrainNext \/ DrainEnds \/ SendFrame \/ Act \/ Sync \/ Notify \/ Call \/ Event
   \/ AppReturns \/ Subscribe \/ SubReturns \/ Attach \/ AttachReturns \/ Detach \/ Rethrows
-  \/ Connect \/ SendLoaded \/ Hears \/ ConnectReturns \/ Disconnect \/ Returns \/ Unwinds
+  \/ Connect \/ SendLoaded \/ ConnectReturns \/ Disconnect \/ Returns \/ Unwinds
 
 Next == AppCall \/ Internal
 
@@ -649,6 +640,7 @@ ConnectionsHeld == Idle => ln.connections = ln.handles
 \* A drain always ends.
 QueueEmpties == draining ~> ~draining
 
-\* DESIGN.md:264, "hears other tabs while connected and the record is in".
+\* DESIGN.md:264, "hears other tabs while connected and the record is in". link.ts
+\* hears from connect on, before the record is in, so this holds at once.
 HearsOnceConnected == (ln.connections > 0 /\ ~f.loading) ~> (ln.hearing \/ ln.connections = 0)
 =============================================================================

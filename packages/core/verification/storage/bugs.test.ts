@@ -171,8 +171,8 @@ describe("the store keeps the newest change, whichever save lands last (MostRece
 });
 
 describe("a tab that loads while another tab saves (HearsEveryWrite)", () => {
-  // B finishes the hint while A's load is on its way: the server read the record before B's save, and A
-  // listens only once the load arrives, so it is never told of B's save.
+  // B finishes the hint while A's load is on its way: the server read the record before B's save. A listens
+  // from connect, so it is told of B's save, and takes in what it heard meanwhile once the load arrives.
   const race = () => {
     const net = backend(null, remote);
     const b = tabOn(net);
@@ -183,18 +183,22 @@ describe("a tab that loads while another tab saves (HearsEveryWrite)", () => {
     b.start(hint);
     b.act("advance");
     landAll(net);
-    net.deliverLoad(1);
     return { net, a, b };
   };
 
-  it.fails("a tab that opened while another tab saved never hears that save", () => {
+  it("a tab that opened while another tab saved is told of that save", () => {
     const { net } = race();
+    net.deliverLoad(1);
     const told = net.side(1);
     expect(told.toHear.length > 0 || told.notified).toBe(true);
   });
 
-  it.fails("a hint finished in another tab shows again in a tab that opened as it was saved", () => {
-    const { a } = race();
+  it("a hint finished in another tab stays finished in a tab that opened as it was saved, heard while it loaded", () => {
+    const { net, a } = race();
+    while (net.side(1).toHear.length > 0) net.hear(1);
+    expect(hintOf(a)).toBeUndefined();
+    net.deliverLoad(1);
+    expect(hintOf(a)).toBe("finished");
     a.requestStart(hint);
     expect(open(a)).toBeUndefined();
   });
