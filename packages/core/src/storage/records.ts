@@ -148,10 +148,11 @@ export const staleness = (
   progress: WalkthroughProgress,
   stepCount: number,
   maxAge: number,
+  now: number,
 ): "stepsChanged" | "expired" | undefined => {
   if (progress.status !== "running") return undefined;
   if (progress.stepCount !== stepCount) return "stepsChanged";
-  return Date.now() - progress.changedAt > maxAge ? "expired" : undefined;
+  return now - progress.changedAt > maxAge ? "expired" : undefined;
 };
 
 /** The entries that differ between two moments, or none. Entries are replaced, never changed in place, so identity says which. */

@@ -119,7 +119,7 @@ const verifyOne = (runState: RunState, walkthrough: Walkthrough, change: Change)
   const walkthroughProgress = runState.userRecord.walkthroughProgressById[id];
   if (walkthroughProgress === undefined || !isUnverified(runState.userRecord, id)) return runState;
   const at = withUserRecord(runState, verified(runState.userRecord, id));
-  const reason = staleness(walkthroughProgress, walkthrough.steps.length, walkthrough.maxAge ?? DEFAULT_MAX_AGE);
+  const reason = staleness(walkthroughProgress, walkthrough.steps.length, walkthrough.maxAge ?? DEFAULT_MAX_AGE, change.now);
   if (reason !== undefined) {
     // Dropped before the handler hears, so a walkthrough it starts keeps its progress.
     change.problems.push(recordDropped(id, reason));
