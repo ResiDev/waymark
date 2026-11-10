@@ -26,7 +26,8 @@ const DAY = 24 * 60 * MINUTE;
 
 // ─── The app: what it defines ───────────────────────────────────────────────
 
-const tour = defineWalkthrough({ id: "tour", steps: [{ waymark: "a" }, { waymark: "b", advance: "click" }, {}] });
+// The click on `b` must wait out a delay: the only way a step's gate stays `met`.
+const tour = defineWalkthrough({ id: "tour", steps: [{ waymark: "a" }, { waymark: "b", advance: { click: true, delayMs: 500 } }, {}] });
 const tips = defineWalkthrough({
   id: "tips",
   steps: [
@@ -50,7 +51,7 @@ const onboarding = defineChecklists({
   },
   checklists: { home: ["take-tour", "read-tips", "invite", "profile"], side: ["take-tour", "invite"] },
 });
-const extras = defineChecklists({ tasks: { welcome: { walkthrough: intro }, shortcuts: { walkthrough: [{ waymark: "e" }] } } });
+const extras = defineChecklists({ tasks: { welcome: { walkthrough: intro }, shortcuts: { walkthrough: [{ waymark: "e", advance: "click" }] } } });
 
 const checklists = {
   home: onboarding.checklists.home,
@@ -117,7 +118,7 @@ export type Session = Readonly<{ loads: boolean; moves: readonly Move[] }>;
 // ─── Arbitraries ────────────────────────────────────────────────────────────
 
 /** Every member of a union of strings. A member missing from `all`, or one too many, does not compile. */
-function each<T extends string>(all: Readonly<Record<T, true>>): T[] {
+export function each<T extends string>(all: Readonly<Record<T, true>>): T[] {
   const members: T[] = [];
   for (const member in all) members.push(member);
   return members;
@@ -177,7 +178,7 @@ const seen: fc.Arbitrary<Seen> = fc.oneof(
 );
 
 // `request` is the part of `requestStart` that update holds while loading; the shell never sends it.
-type Sent = Exclude<Msg["_tag"], "request">;
+export type Sent = Exclude<Msg["_tag"], "request">;
 
 /** One entry for each kind of Msg the shell sends. */
 const sent: { readonly [Tag in Sent]: fc.WeightedArbitrary<Extract<Told, { send: Tag }>> } = {
@@ -225,8 +226,11 @@ export const sessions: fc.Arbitrary<Session> = fc.record({
 
 // ─── Playing one ────────────────────────────────────────────────────────────
 
+/** What became of the Tasks' conditions in one call of update(). */
+export type Asked = "not asked" | "answered" | "threw";
+
 /** One call of update(): the Msg, the model either side of it, and what the app had handed over by then. */
-export type Turn = Readonly<{ msg: Msg; before: Model; model: Model; given: Given; effects: readonly Effect[] }>;
+export type Turn = Readonly<{ msg: Msg; before: Model; model: Model; given: Given; effects: readonly Effect[]; conditions: Asked }>;
 
 /** What the views are worked out from. */
 export const shownOf = (model: Model, given: Given): ShownRunState => ({
@@ -274,20 +278,25 @@ export function* play(session: Session): Generator<Turn> {
   /** The app holds `replace` once a `recordUnreadable` problem has handed it over. */
   let canReplace = false;
   let turns: Turn[] = [];
+  let conditions: Asked = "not asked";
 
   const inputs = (): Inputs => ({
     now,
-    verdicts: (tasks) => (holding === "throws" ? undefined : new Map(tasks.map((task) => [task.id, task.isComplete !== undefined && holding.includes(task.id)]))),
+    verdicts: (tasks) => {
+      conditions = holding === "throws" ? "threw" : "answered";
+      return holding === "throws" ? undefined : new Map(tasks.map((task) => [task.id, task.isComplete !== undefined && holding.includes(task.id)]));
+    },
   });
 
   const send = (msg: Msg) => {
     const before = model;
+    conditions = "not asked";
     const next = update(model, given, msg, inputs());
     model = next.model;
     const was = before.live.openStep?.showingId;
     if (was !== undefined && was !== model.live.openStep?.showingId) lastVisit = was;
     if (next.effects.some((effect) => effect._tag === "recordUnreadable")) canReplace = true;
-    turns.push({ msg, before, model, given, effects: next.effects });
+    turns.push({ msg, before, model, given, effects: next.effects, conditions });
   };
 
   // ── run.ts's part: `given` is written by the call that hands something over, never by update ──
