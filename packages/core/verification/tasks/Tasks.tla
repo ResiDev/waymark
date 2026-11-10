@@ -169,8 +169,9 @@ Hear ==
          m1 == Ticked(joined, prog, p1, stasks)
          m2 == MountTicks(joined, p1, Checked(joined, m1, verdict))
      IN /\ prog' = p1 /\ mem' = m2
-        \* heard saves nothing (savedFrom is its own end); arrived saves what it moved.
-        /\ stasks' = Saved(stasks, m1, m2)
+        \* The save runs from what heard took (savedFrom is heard's record, before
+        \* finish), so what finish ticks on hearing is saved, and what arrived moves.
+        /\ stasks' = Saved(stasks, stasks, m2)
         /\ owed' = Credit(Left(owed, prog, p1), m2) /\ blocked' = Unblock(blocked, m2)
   /\ unheard' = {} /\ said' = {}
   /\ UNCHANGED <<joined, verdict, sprog>>

@@ -15,8 +15,6 @@ it.concurrent.for(["MCTasks.cfg", "MCTasksShared.cfg", "MountTicksFinishedDone.c
 // bugs.test.ts reproduces each on the real Run. When the code is fixed, fix the model
 // to match (conformance.test.ts says where), and move the rule into MCTasks.cfg.
 it.concurrent.for([
-  ["SavedMatchesMemory.cfg", "Invariant SavedMatchesMemory is violated"],
-  ["DoneLeavesOnlyByHand.cfg", "Action property DoneLeavesOnlyByHand is violated"],
   ["DoneOnFinish.cfg", "Invariant DoneOnFinish is violated"],
   ["ConditionTicks.cfg", "Invariant ConditionTicks is violated"],
   ["SkippedBecomesDone.cfg", "Invariant SkippedBecomesDone is violated"],

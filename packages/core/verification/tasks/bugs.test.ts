@@ -64,8 +64,8 @@ const said = (onEvent: { mock: { calls: unknown[][] } }) =>
   });
 
 describe("a task ticked on hearing another tab", () => {
-  // SavedMatchesMemory.cfg
-  it.fails("is saved", () => {
+  // Tasks.tla SavedMatchesMemory
+  it("is saved", () => {
     const storage = sharedStorage();
     const tabA = connected({ storage: storage.tab() });
     const tabB = connected({ storage: storage.tab() });
@@ -81,8 +81,8 @@ describe("a task ticked on hearing another tab", () => {
     expect(storage.stored()).toMatchObject({ tasks: { "read-tips": "done" } });
   });
 
-  // DoneLeavesOnlyByHand.cfg
-  it.fails("stays done when another tab saves something else, and after a reload", () => {
+  // Tasks.tla DoneLeavesOnlyByHand
+  it("stays done when another tab saves something else, and after a reload", () => {
     const storage = sharedStorage();
     const tabA = connected({ storage: storage.tab() });
     const tabB = connected({ storage: storage.tab() });

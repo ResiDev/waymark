@@ -19,7 +19,8 @@ export function runChange(before: RunState, phases: Phases, now: number, verdict
   const told: Change = { now, verdicts, events: [], problems: [], credits: new Map(), scrolls: [] };
   const run = (runState: RunState, work: Work) => finish(runState, work(runState, told));
 
-  const stored = phases.storage === undefined ? before : run(before, phases.storage);
+  const heard = phases.storage === undefined ? before : phases.storage(before, told);
+  const stored = finish(before, heard);
   const arrived = phases.arrival === undefined ? stored : run(stored, arrive);
   let after = arrived;
   for (const work of phases.commands ?? []) after = run(after, work);
@@ -28,7 +29,7 @@ export function runChange(before: RunState, phases: Phases, now: number, verdict
   const silent = (phases.commands ?? []).length === 0 && (phases.storage !== undefined || phases.arrival !== undefined);
   return {
     after,
-    savedFrom: phases.replace === true ? "whole" : stored.userRecord,
+    savedFrom: phases.replace === true ? "whole" : heard.userRecord,
     announcedFrom: silent ? undefined : arrived.userRecord,
     unreadable: turnedUnreadable(before.userRecord.storageStatus, after.userRecord.storageStatus),
     told,
