@@ -14,17 +14,19 @@ export function parseValue(text: string): Value {
   };
   const value = (): Value => {
     skip();
-    if (text.startsWith("<<", at)) {
-      at += 2;
+    // A sequence, or a set, read as a list in TLC's order.
+    const close = text.startsWith("<<", at) ? ">>" : text.startsWith("{", at) ? "}" : undefined;
+    if (close !== undefined) {
+      at += close.length;
       const items: Value[] = [];
       skip();
-      while (!text.startsWith(">>", at)) {
+      while (!text.startsWith(close, at)) {
         items.push(value());
         skip();
         if (text.startsWith(",", at)) at++;
         skip();
       }
-      at += 2;
+      at += close.length;
       return items;
     }
     if (text.startsWith("[", at)) {

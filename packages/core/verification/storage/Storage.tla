@@ -46,11 +46,12 @@ Running(collapsed, time) == [s |-> "running", c |-> collapsed, at |-> time]
 Finished(time) == [s |-> "finished", c |-> FALSE, at |-> time]
 Entries == {None} \cup {Running(b, n) : b \in BOOLEAN, n \in 0..MaxClock} \cup {Finished(n) : n \in 0..MaxClock}
 \* A record Waymark can read. Empty stands for null too: parseRecord reads both as no entries.
-Records == [w : Entries, task : {"todo", "done"}]
+\* task "reopened" is a tick taken back (tasks.ts reopen): todo, and stored.
+Records == [w : Entries, task : {"todo", "done", "reopened"}]
 Empty == [w |-> None, task |-> "todo"]
 StoredValues == Records \cup {Unreadable}
 \* RecordChanges: None as w removes the entry; a task's "todo" removes its status.
-Changes == [w : Entries \cup {Keep}, task : {"keep", "todo", "done"}, replace : BOOLEAN]
+Changes == [w : Entries \cup {Keep}, task : {"keep", "todo", "done", "reopened"}, replace : BOOLEAN]
 NoChange == [w |-> Keep, task |-> "keep", replace |-> FALSE]
 
 Statuses == {"loading", "ready", "error", "unreadable"}
@@ -76,20 +77,21 @@ vars == <<stored, writer, version, tabs, hist, clock, cmds, device>>
    loadValue, loadVersion     then delivered with loadValue, read at write loadVersion
    pending, phase, sending,   a save adapter's changes not yet saved, the save under way
    storeValue                 (loading what is stored, or storing storeValue) and its changes
-   sent                       savePartial calls not yet answered
+   sent, sentLater            savePartial calls not yet answered, and for each the entries ("w", "task") a
+                              call sent after it set: newer, so not sent again if it fails
+   retry                      a savePartial's changes that failed, sent with the next save, under it
    toHear, notified           records the store told this tab of, each with its write's number, not yet heard
    heldRecord                 the latest record heard while loading, with its write's number, taken in after
                               the load: link.ts's held, empty or one
    seen                       the number of the last write this tab loaded or heard, or knows it made
    owed                       history: a write while connected, since its load was read, not yet heard
-   dropped                    a savePartial failed, so its changes never land, and no record taken in since
    reported, finishedHere,    history: recordUnreadable reported since the last readable record;
    reshown                    this tab finished the hint since starting it; and showed it again *)
 TabInit == [status |-> "loading", mem |-> Empty, held |-> <<>>,
             connected |-> FALSE, subscribed |-> FALSE, everConnected |-> FALSE,
             load |-> "idle", loadValue |-> Empty, loadVersion |-> 0,
             pending |-> NoChange, phase |-> "idle", sending |-> NoChange, storeValue |-> Empty,
-            sent |-> <<>>, toHear |-> <<>>, notified |-> FALSE, heldRecord |-> <<>>, seen |-> -1, owed |-> FALSE, dropped |-> FALSE,
+            sent |-> <<>>, sentLater |-> <<>>, retry |-> NoChange, toHear |-> <<>>, notified |-> FALSE, heldRecord |-> <<>>, seen |-> -1, owed |-> FALSE,
             reported |-> FALSE, finishedHere |-> FALSE, reshown |-> FALSE]
 
 TypeOK ==
@@ -103,6 +105,8 @@ TypeOK ==
        /\ tabs[t].phase \in Phases
        /\ tabs[t].pending \in Changes
        /\ tabs[t].sending \in Changes
+       /\ tabs[t].retry \in Changes
+       /\ Len(tabs[t].sentLater) = Len(tabs[t].sent)
 
 ------------------------------------------------------------------------------
 (* The merges, as src/storage/records.ts makes them. *)
@@ -119,6 +123,14 @@ Merge(base, c) ==
 Combine(e, l) ==
   IF l.replace THEN l
   ELSE [w |-> IF l.w = Keep THEN e.w ELSE l.w, task |-> IF l.task = "keep" THEN e.task ELSE l.task, replace |-> e.replace]
+
+\* The entries changes set or remove.
+Keys(c) == {k \in {"w", "task"} : c.replace \/ (k = "w" /\ c.w # Keep) \/ (k = "task" /\ c.task # "keep")}
+
+\* records.ts without: changes but for the entries in ks. A replace stays whole.
+Without(c, ks) ==
+  IF c.replace THEN c
+  ELSE [w |-> IF "w" \in ks THEN Keep ELSE c.w, task |-> IF "task" \in ks THEN "keep" ELSE c.task, replace |-> FALSE]
 
 \* changesBetween, from the record before a change to the one after it.
 Diff(b, a) == [w |-> IF b.w = a.w THEN Keep ELSE a.w, task |-> IF b.task = a.task THEN "keep" ELSE a.task, replace |-> FALSE]
@@ -137,7 +149,7 @@ Do(cmd, r, now) ==
     [] cmd = "finish"  -> IF IsOpen(r) THEN [r EXCEPT !.w = Finished(now)] ELSE r
     \* reset: back to step 0 when open, which for a one-step hint changes nothing; otherwise the entry goes.
     [] cmd = "reset"   -> IF IsOpen(r) THEN r ELSE [r EXCEPT !.w = None]
-    [] cmd = "tick"    -> [r EXCEPT !.task = IF r.task = "done" THEN "todo" ELSE "done"]
+    [] cmd = "tick"    -> [r EXCEPT !.task = IF r.task = "done" THEN "reopened" ELSE "done"]
 
 \* heardWalkthroughProgress, record.ts:53-63.
 HeardW(ours, theirs, openHere) ==
@@ -215,16 +227,25 @@ Flush(W, t) ==
                 ELSE StoreDone(WFlush, t, Merge(WFlush.stored, out))}
                \cup (IF Failures THEN {FailSave(WFlush, t, FALSE)} ELSE {})
 
+\* link.ts sendPartial: a savePartial call that failed keeps its changes for the next, less what a
+\* call sent after it set, under any kept already.
+PartialFail(W, t, c, later) == [W EXCEPT !.tabs[t].retry = Combine(Without(c, later), W.tabs[t].retry)]
+
 \* applyChanges on the server: it refuses to save over a record it cannot read, unless replacing.
-PartialApply(W, t, c) ==
-  IF W.stored = Unreadable /\ ~c.replace THEN Refuse(W, t)
+PartialApply(W, t, c, later) ==
+  IF W.stored = Unreadable /\ ~c.replace THEN PartialFail(Refuse(W, t), t, c, later)
   ELSE TabWrite(W, t, Merge(IF W.stored = Unreadable THEN Empty ELSE W.stored, c), c)
 
-\* link.save
+\* link.save: a savePartial goes with what failed before, under it.
 Save(W, t, c) ==
   IF Adapter = "partial"
-  THEN IF Async THEN {[W EXCEPT !.tabs[t].sent = Append(W.tabs[t].sent, c)]}
-       ELSE {PartialApply(W, t, c)} \cup (IF Failures THEN {[W EXCEPT !.tabs[t].dropped = TRUE]} ELSE {})
+  THEN LET tabSave == W.tabs[t]
+           out == Combine(tabSave.retry, c)
+           WSave == [W EXCEPT !.tabs[t].retry = NoChange]
+       IN IF Async
+          THEN {[WSave EXCEPT !.tabs[t].sent = Append(tabSave.sent, out),
+                              !.tabs[t].sentLater = Append([j \in 1..Len(tabSave.sentLater) |-> tabSave.sentLater[j] \cup Keys(out)], {})]}
+          ELSE {PartialApply(WSave, t, out, {})} \cup (IF Failures THEN {PartialFail(WSave, t, out, {})} ELSE {})
   ELSE Flush([W EXCEPT !.tabs[t].pending = Combine(W.tabs[t].pending, c)], t)
 
 \* The save effect of a change: what changed since `before`, if anything.
@@ -251,28 +272,32 @@ Run(W, t, cmd) ==
 Subscribe(W, t) ==
   IF W.tabs[t].connected /\ ~W.tabs[t].subscribed THEN [W EXCEPT !.tabs[t].subscribed = TRUE] ELSE W
 
-\* heard() in record.ts: task statuses whole, walkthrough by changedAt, the open one kept.
+\* heard() in record.ts: task statuses whole, walkthrough by changedAt, the open one kept. An entry
+\* this tab kept over an older one heard is saved again (change.ts asStored), so storage catches up.
 Heard(W, t, v, n) ==
-  IF v = Unreadable THEN [Refuse(W, t) EXCEPT !.tabs[t].seen = n, !.tabs[t].dropped = FALSE]
-  ELSE LET rHeard == W.tabs[t].mem IN
-       [W EXCEPT !.tabs[t].mem = [w |-> HeardW(rHeard.w, v.w, IsOpen(rHeard)), task |-> v.task],
-                 !.tabs[t].status = IF W.tabs[t].status = "unreadable" THEN "ready" ELSE W.tabs[t].status,
-                 !.tabs[t].reported = FALSE, !.tabs[t].seen = n, !.tabs[t].dropped = FALSE]
+  IF v = Unreadable THEN {[Refuse(W, t) EXCEPT !.tabs[t].seen = n]}
+  ELSE LET rHeard == W.tabs[t].mem
+           WHeard == [W EXCEPT !.tabs[t].mem = [w |-> HeardW(rHeard.w, v.w, IsOpen(rHeard)), task |-> v.task],
+                               !.tabs[t].status = IF W.tabs[t].status = "unreadable" THEN "ready" ELSE W.tabs[t].status,
+                               !.tabs[t].reported = FALSE, !.tabs[t].seen = n]
+       IN IF rHeard.w # None /\ v.w # None /\ rHeard.w.at > v.w.at
+          THEN Save(WHeard, t, [w |-> rHeard.w, task |-> "keep", replace |-> FALSE])
+          ELSE {WHeard}
 
 \* The load at connect arrives: loaded() in record.ts with the held commands, then the record heard meanwhile.
 Take(W, t, v, n) ==
   LET tabTake == W.tabs[t]
       st == IF v = Failed THEN "error" ELSE IF v = Unreadable THEN "unreadable" ELSE "ready"
       WTake == [W EXCEPT !.tabs[t].status = st, !.tabs[t].mem = IF v \in Records THEN v ELSE tabTake.mem,
-                      !.tabs[t].load = "done", !.tabs[t].held = <<>>, !.tabs[t].dropped = FALSE,
+                      !.tabs[t].load = "done", !.tabs[t].held = <<>>,
                       !.tabs[t].seen = IF v = Failed THEN tabTake.seen ELSE n,
                       !.tabs[t].reported = (v = Unreadable),
                       !.hist.double = W.hist.double \/ (v = Unreadable /\ tabTake.reported)]
       Ws == IF tabTake.held = <<>> THEN {WTake} ELSE Run(WTake, t, Head(tabTake.held))
       heardAfter(X) ==
-        IF tabTake.heldRecord = <<>> THEN X
+        IF tabTake.heldRecord = <<>> THEN {X}
         ELSE Heard([X EXCEPT !.tabs[t].heldRecord = <<>>], t, Head(tabTake.heldRecord).record, Head(tabTake.heldRecord).version)
-  IN {heardAfter(X) : X \in Ws}
+  IN UNION {heardAfter(X) : X \in Ws}
 
 LoadOutcomes(v) == {v} \cup (IF Failures THEN {Failed} ELSE {})
 
@@ -348,16 +373,16 @@ LoadArrive(t) ==
 
 \* A record heard: taken in, or held while the load at connect is out, in place of any held before.
 HeardOrHeld(W, t, v, n) ==
-  IF W.tabs[t].status = "loading" THEN [W EXCEPT !.tabs[t].heldRecord = <<[record |-> v, version |-> n]>>]
+  IF W.tabs[t].status = "loading" THEN {[W EXCEPT !.tabs[t].heldRecord = <<[record |-> v, version |-> n]>>]}
   ELSE Heard(W, t, v, n)
 
 \* The tab hears a record the store told it of.
 Hear(t) ==
   /\ tabs[t].subscribed
   /\ \/ /\ HearCurrent /\ tabs[t].notified
-        /\ Become(HeardOrHeld([World EXCEPT !.tabs[t].notified = FALSE, !.tabs[t].owed = FALSE], t, stored, version))
+        /\ \E W \in HeardOrHeld([World EXCEPT !.tabs[t].notified = FALSE, !.tabs[t].owed = FALSE], t, stored, version) : Become(W)
      \/ /\ ~HearCurrent /\ tabs[t].toHear # <<>>
-        /\ Become(HeardOrHeld([World EXCEPT !.tabs[t].toHear = Tail(tabs[t].toHear), !.tabs[t].owed = Tail(tabs[t].toHear) # <<>>], t, Head(tabs[t].toHear).record, Head(tabs[t].toHear).version))
+        /\ \E W \in HeardOrHeld([World EXCEPT !.tabs[t].toHear = Tail(tabs[t].toHear), !.tabs[t].owed = Tail(tabs[t].toHear) # <<>>], t, Head(tabs[t].toHear).record, Head(tabs[t].toHear).version) : Become(W)
   /\ UNCHANGED <<clock, cmds, device>>
 
 \* A save adapter's load before a save answers: it fails, refuses an unreadable record, or the changes are merged in.
@@ -384,15 +409,17 @@ WholeStoreFailed(t) ==
 PartialLanded(t) ==
   /\ tabs[t].sent # <<>>
   /\ \E i \in (IF InOrder THEN {1} ELSE 1..Len(tabs[t].sent)) :
-       Become(PartialApply([World EXCEPT !.tabs[t].sent = Remove(tabs[t].sent, i)], t, tabs[t].sent[i]))
+       Become(PartialApply([World EXCEPT !.tabs[t].sent = Remove(tabs[t].sent, i), !.tabs[t].sentLater = Remove(tabs[t].sentLater, i)],
+                           t, tabs[t].sent[i], tabs[t].sentLater[i]))
   /\ UNCHANGED <<clock, cmds, device>>
 
-\* A savePartial call fails, and its changes are dropped.
+\* A savePartial call fails, and its changes wait for the next save.
 PartialFailed(t) ==
   /\ Failures
   /\ tabs[t].sent # <<>>
   /\ \E i \in (IF InOrder THEN {1} ELSE 1..Len(tabs[t].sent)) :
-       Become([World EXCEPT !.tabs[t].sent = Remove(tabs[t].sent, i), !.tabs[t].dropped = TRUE])
+       Become(PartialFail([World EXCEPT !.tabs[t].sent = Remove(tabs[t].sent, i), !.tabs[t].sentLater = Remove(tabs[t].sentLater, i)],
+                          t, tabs[t].sent[i], tabs[t].sentLater[i]))
   /\ UNCHANGED <<clock, cmds, device>>
 
 \* Another device writes.
@@ -458,12 +485,11 @@ NoReshowHere == \A t \in Tabs : ~tabs[t].reshown
 
 \* Thread 10, storage wins: once every save has landed and every tab has heard the latest
 \* record, every tab shows what is stored, but for the walkthrough open in it (thread 11).
-\* A dropped savePartial never lands (adapter.ts:61, "does not try again"), so a tab is not
-\* quiet until it takes in a record after one.
+\* A failed savePartial waits for the tab's next save, so a tab is not quiet while one waits.
 Quiet ==
   \A t \in Tabs :
     /\ tabs[t].sent = <<>> /\ tabs[t].phase = "idle" /\ tabs[t].pending = NoChange /\ tabs[t].held = <<>>
-    /\ tabs[t].toHear = <<>> /\ ~tabs[t].notified /\ tabs[t].seen = version /\ ~tabs[t].dropped
+    /\ tabs[t].toHear = <<>> /\ ~tabs[t].notified /\ tabs[t].seen = version /\ tabs[t].retry = NoChange
 
 QuietTabsAgree ==
   Quiet /\ stored \in Records =>

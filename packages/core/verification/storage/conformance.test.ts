@@ -96,7 +96,7 @@ function changesOf(change: Change): unknown {
     if (progress !== undefined) set.walkthroughs["hint"] = progress;
     else if (!change.replace) remove.walkthroughs.push("hint");
   }
-  if (change.task === "done") set.tasks["t"] = "done";
+  if (change.task === "done" || change.task === "reopened") set.tasks["t"] = change.task;
   else if (change.task === "todo" && !change.replace) remove.tasks.push("t");
   return change.replace ? { version: 1, set, remove, replace: true } : { version: 1, set, remove };
 }
@@ -221,7 +221,8 @@ function apply(real: Real, { action, from, to }: Step) {
       net.deliverLoad(tabWhere(from, to, (a, b) => a.load !== b.load));
       break;
     case "Hear":
-      net.hear(tabWhere(from, to, (a, b) => a.toHear.length !== b.toHear.length || a.notified !== b.notified));
+      // The tab that took a record in. Hearing may save, and that save can tell the other tab.
+      net.hear(tabWhere(from, to, (a, b) => b.toHear.length < a.toHear.length || (a.notified && !b.notified)));
       break;
     case "WholeLoaded": {
       const index = tabWhere(from, to, (a, b) => a.phase === "loading" && !sameJson(a, b));
@@ -270,7 +271,8 @@ function differences(real: Real, state: State): string[] {
     const expected = progressOf(tab.mem.w);
     if (!same(progress, expected)) problems.push(`${name} hint: ${show(progress)}, the model ${show(expected)}`);
     const row = run.checklist(checklist).getSnapshot().tasks[0]?.status;
-    if (row !== tab.mem.task) problems.push(`${name} task: ${row}, the model ${tab.mem.task}`);
+    const shows = tab.mem.task === "reopened" ? "todo" : tab.mem.task;
+    if (row !== shows) problems.push(`${name} task: ${row}, the model ${tab.mem.task}`);
     const isOpen = snapshot.open?.walkthrough.id === "hint";
     const modelOpen = tab.mem.w.s === "running" && !tab.mem.w.c;
     if (isOpen !== modelOpen) problems.push(`${name} open: ${isOpen}, the model ${modelOpen}`);

@@ -244,3 +244,85 @@ describe("what thread 10 accepted", () => {
     expect(taskOf(a)).toBe("done");
   });
 });
+
+describe("a save that failed, and a replace over what another tab could not save (QuietTabsAgree)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const hearAll = (net: Backend, tabs: readonly number[]) => {
+    for (const index of tabs) while (net.side(index).toHear.length > 0) net.hear(index);
+  };
+
+  // Thread 12.
+  it("a finish whose save failed reaches storage with the next save", () => {
+    at(1_000);
+    const net = backend(null, remote);
+    const a = tabOn(net);
+    net.readLoad(0);
+    net.deliverLoad(0);
+    a.start(hint);
+    net.land(0);
+    at(2_000);
+    a.act("advance");
+    net.failSave(0);
+    const list = a.checklist(checklist);
+    list.subscribe(() => {});
+    list.markDone("t");
+    net.land(0);
+    expect([storedHint(net), storedTask(net)]).toEqual(["finished", "done"]);
+  });
+
+  // Thread 12: a task's status has no time, so the failed tick must not come back over the untick.
+  it("does not send a failed entry again once a later save sent it anew", () => {
+    const net = backend(null, remote);
+    const a = tabOn(net);
+    net.readLoad(0);
+    net.deliverLoad(0);
+    const list = a.checklist(checklist);
+    list.subscribe(() => {});
+    list.markDone("t");
+    list.markTodo("t");
+    net.failSave(0, 0);
+    net.land(0, 0);
+    a.start(hint);
+    net.land(0);
+    expect([storedTask(net), storedHint(net)]).toEqual(["reopened", "running"]);
+  });
+
+  // Thread 13.
+  it("a hint finished while the record was unreadable stays finished after another tab replaces the record", () => {
+    at(1_000);
+    const net = backend(null, remote);
+    let replaceInA: ((record: null) => void) | undefined;
+    const a = createRun({ storage: net.tab(), problemHandlers: { recordUnreadable: ({ replace }) => (replaceInA = replace) } });
+    onTestFinished(a.connect());
+    const b = createRun({ storage: net.tab(), problemHandlers: { recordUnreadable: () => {} } });
+    onTestFinished(b.connect());
+    for (const index of [0, 1]) {
+      net.readLoad(index);
+      net.deliverLoad(index);
+    }
+    a.start(hint);
+    net.land(0);
+    hearAll(net, [0, 1]);
+    net.put({ version: 99 });
+    hearAll(net, [0, 1]);
+
+    at(2_000);
+    b.start(hint);
+    b.act("advance");
+    while (net.side(1).saves.length > 0) net.land(1);
+    expect(hintOf(b)).toBe("finished");
+
+    replaceInA?.(null);
+    net.land(0);
+    expect(storedHint(net)).toBe("running");
+    hearAll(net, [0, 1]);
+    while (net.side(1).saves.length > 0) net.land(1);
+    expect(storedHint(net)).toBe("finished");
+  });
+});

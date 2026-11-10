@@ -43,7 +43,9 @@ export type SavePartialAdapter = Readonly<{
    * merges without `applyChanges` must do the same, or an older save that
    * lands last opens a finished walkthrough again. A `RecordUnreadableError`
    * thrown here is reported as `recordUnreadable`; anything else as
-   * `storageFailed`. Core does not wait for it, and does not try again.
+   * `storageFailed`. Core does not wait for it. Changes that failed go again
+   * with the next save, under its own, less any entry saved again since: a
+   * task's status has no time, so one sent late could undo a newer one.
    */
   savePartial: (changes: RecordChanges) => MaybePromise<void>;
   subscribe?: Subscribe;

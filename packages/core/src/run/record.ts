@@ -79,8 +79,12 @@ export function heard(
   let next: Record<string, WalkthroughProgress> | undefined;
   let unverified: Map<string, WalkthroughProgress> | undefined;
   for (const id of new Set([...Object.keys(walkthroughProgressById), ...Object.keys(theirs)])) {
-    const walkthroughProgress = heardWalkthroughProgress(walkthroughProgressById[id], theirs[id], id === openHere);
-    if (walkthroughProgress === walkthroughProgressById[id]) continue;
+    const ours = walkthroughProgressById[id];
+    const heardEntry = theirs[id];
+    const walkthroughProgress = heardWalkthroughProgress(ours, heardEntry, id === openHere);
+    // Storage holds an older entry than this one: saved again, or nothing would ever bring storage up to it.
+    if (ours !== undefined && heardEntry !== undefined && ours.changedAt > heardEntry.changedAt) change.storedOlder.set(id, heardEntry);
+    if (walkthroughProgress === ours) continue;
     next ??= Object.assign(dictionary<WalkthroughProgress>(), walkthroughProgressById);
     if (walkthroughProgress === undefined) {
       delete next[id];

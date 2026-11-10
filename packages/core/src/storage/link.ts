@@ -3,8 +3,8 @@ import type { ReportProblem } from "../problems";
 import type { Queue } from "../queue";
 import { isPromise, loadFrom } from "./adapter";
 import type { SaveAdapter, SavePartialAdapter, StorageAdapter } from "./adapter";
-import { combine, isRecordUnreadable, merge, parseRecord, RecordUnreadableError } from "./records";
-import type { Parsed, RecordChanges, StoredRecord } from "./records";
+import { combine, isRecordUnreadable, merge, noteIds, parseRecord, RecordUnreadableError, without } from "./records";
+import type { ChangedIds, Parsed, RecordChanges, StoredRecord } from "./records";
 
 export type Link = Readonly<{
   connect: () => () => void;
@@ -165,10 +165,35 @@ export function createLink({
     );
   };
 
+  // A `savePartial` adapter's changes that failed, sent again with the next save, under it. Each call
+  // still out notes the entries saved after it, which are newer: if it fails, those are not sent again.
+  let failedPartial: RecordChanges | undefined;
+  const out = new Set<ChangedIds>();
+
+  const sendPartial = (partial: SavePartialAdapter, changes: RecordChanges) => {
+    const sending = failedPartial === undefined ? changes : combine(failedPartial, changes);
+    failedPartial = undefined;
+    for (const savedLater of out) noteIds(savedLater, sending);
+    const savedLater: ChangedIds = { walkthroughs: new Set(), tasks: new Set() };
+    out.add(savedLater);
+    attempt(
+      () => partial.savePartial(sending),
+      () => {
+        out.delete(savedLater);
+      },
+      (error) => {
+        out.delete(savedLater);
+        const kept = without(sending, savedLater);
+        if (kept !== undefined) failedPartial = failedPartial === undefined ? kept : combine(kept, failedPartial);
+        failed(error);
+      },
+    );
+  };
+
   const save = (changes: RecordChanges) => {
     if (adapter === undefined) return;
     if (isPartial(adapter)) {
-      attempt(() => adapter.savePartial(changes), () => {}, failed);
+      sendPartial(adapter, changes);
       return;
     }
     pending = pending === undefined ? changes : combine(pending, changes);

@@ -95,6 +95,8 @@ export type Change = Readonly<{
   problems: WaymarkProblem[];
   credits: Map<TaskId, ChecklistName>;
   scrolls: Element[];
+  /** Each entry heard older than this tab's, which this tab kept: what storage holds, so the change saves this tab's again. */
+  storedOlder: Map<WalkthroughId, WalkthroughProgress>;
   verdicts: (tasks: readonly DefinedTask[], context: unknown) => ReadonlyMap<TaskId, boolean> | undefined;
 }>;
 

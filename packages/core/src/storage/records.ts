@@ -189,6 +189,31 @@ export const replacing = (record: StoredRecord): RecordChanges => ({
 
 const NOTHING_REMOVED: RecordChanges["remove"] = { walkthroughs: [], tasks: [] };
 
+/** The ids of the entries `changes` sets or removes, walkthroughs and tasks apart. */
+export type ChangedIds = Readonly<{ walkthroughs: Set<string>; tasks: Set<string> }>;
+
+/** Adds the ids `changes` sets or removes to `ids`. */
+export const noteIds = (ids: ChangedIds, changes: RecordChanges): void => {
+  for (const id of [...Object.keys(changes.set.walkthroughs), ...changes.remove.walkthroughs]) ids.walkthroughs.add(id);
+  for (const id of [...Object.keys(changes.set.tasks), ...changes.remove.tasks]) ids.tasks.add(id);
+};
+
+/** `changes` but for the entries named in `ids`, or `undefined` once none is left. A replace stays whole: it is one record. */
+export const without = (changes: RecordChanges, ids: ChangedIds): RecordChanges | undefined => {
+  if (changes.replace === true) return changes;
+  const walkthroughs = dictionary<WalkthroughProgress>();
+  for (const [id, progress] of Object.entries(changes.set.walkthroughs)) if (!ids.walkthroughs.has(id)) walkthroughs[id] = progress;
+  const tasks = copy({});
+  for (const [id, status] of Object.entries(changes.set.tasks)) if (!ids.tasks.has(id)) tasks[id] = status;
+  const remove = {
+    walkthroughs: changes.remove.walkthroughs.filter((id) => !ids.walkthroughs.has(id)),
+    tasks: changes.remove.tasks.filter((id) => !ids.tasks.has(id)),
+  };
+  const none = Object.keys(walkthroughs).length === 0 && Object.keys(tasks).length === 0;
+  if (none && remove.walkthroughs.length === 0 && remove.tasks.length === 0) return undefined;
+  return { version: VERSION, set: { walkthroughs, tasks }, remove };
+};
+
 /** Two saves' changes as one, the later's entries over the earlier's. */
 export const combine = (earlier: RecordChanges, later: RecordChanges): RecordChanges => {
   if (later.replace === true) return later;
