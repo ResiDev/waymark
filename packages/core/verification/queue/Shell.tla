@@ -14,8 +14,8 @@
 (* JavaScript runs one call at a time, to the end. `todo` is the call      *)
 (* stack, flattened: its head runs next, and a call made in place is put   *)
 (* in front of what it returns to. Frames that catch or clean up (`drain`, *)
-(* `subRet`, `attachRet`, `takeFin`, `rethrow`, `top`) also act when an    *)
-(* exception, `exc`, unwinds through them.                                 *)
+(* `subRet`, `appRet`, `attachRet`, `takeFin`, `rethrow`, `top`) also act  *)
+(* when an exception, `exc`, unwinds through them.                         *)
 (***************************************************************************)
 EXTENDS Integers, Sequences, FiniteSets, TLC
 
@@ -156,6 +156,9 @@ Raise(throws) ==
   /\ unsurfaced' = IF throws /\ handler = "default" THEN unsurfaced + 1 ELSE unsurfaced
   /\ handled' = IF throws /\ handler = "handles" THEN Min(handled + 1, Cap) ELSE handled
 
+\* subscribe.ts ownThrew: l's own first call threw, and the default handler threw it back.
+OwnThrown(l) == ownThrew[l] /\ handler = "default"
+
 Hear(l) == IF ~l.hearing /\ l.connections > 0 /\ ~f.loading THEN [l EXCEPT !.hearing = TRUE] ELSE l
 
 (***************************************************************************)
@@ -281,7 +284,7 @@ DrainNext ==
                   /\ unprocessed' = unprocessed - 1
                   /\ exc' = exc /\ unsurfaced' = unsurfaced
              [] item.w = "call" ->
-                  /\ todo' = <<[T("call") EXCEPT !.l = item.l, !.m = "now"]>> \o todo
+                  /\ todo' = <<[T("call") EXCEPT !.l = item.l, !.m = "queued"]>> \o todo
                   /\ UNCHANGED <<f, version, stepNo, unprocessed, exc, unsurfaced>>
              [] item.w = "look" ->
                   \* page.ts look: only attached, and only a step state not looked at yet.
@@ -349,7 +352,8 @@ Notify ==
 (***************************************************************************)
 (* A listener's call, inside queue.callApp. Its script runs on its first   *)
 (* call only, except that "throw" throws on every call and "throwLater" on *)
-(* every call after the first:                                             *)
+(* every call after the first. A first call's script frames end in        *)
+(* `appRet`, its catch, as a subscribe among them may throw in place:      *)
 (*   none, throw, throwLater, send (run.act), subscribe (listener 2),      *)
 (*   connect (run.connect), and sendLater, which calls run.act on its      *)
 (*   second call: what code that reacts to a change does.                  *)
@@ -360,25 +364,43 @@ ScriptFrames(s) ==
     [] s = "connect" -> <<T("connect")>>
     [] OTHER -> <<>>
 
+\* m: "notify"; "queued", subscribe's first call, run by the drain that subscribe
+\* started; or "here", its first call made in place inside a drain. subscribe makes
+\* its first call through queue.callAppOrThrow, so what the default handler throws
+\* back is thrown in place, not kept.
 Call ==
   /\ Running("call")
   /\ IF h.m = "notify" /\ ~listeners[h.l]
      THEN /\ todo' = rest
-          /\ UNCHANGED <<errors, calls, ownThrew, unsurfaced, handled, staleCall, staleEvent>>
+          /\ UNCHANGED <<errors, exc, calls, ownThrew, unsurfaced, handled, staleCall, staleEvent>>
      ELSE LET l == h.l
               first == calls[l] = 0
               s == script[l]
               throws == s = "throw" \/ (s = "throwLater" /\ ~first)
+              ret == <<[T("appRet") EXCEPT !.l = l, !.m = h.m]>>
+              frames == IF first /\ ScriptFrames(s) # <<>> THEN ScriptFrames(s) \o ret
+                        ELSE IF s = "sendLater" /\ calls[l] = 1 THEN <<T("act")>>
+                        ELSE <<>>
           IN /\ calls' = [calls EXCEPT ![l] = Min(@ + 1, Cap)]
              /\ ownThrew' = IF first THEN [ownThrew EXCEPT ![l] = throws] ELSE ownThrew
              /\ staleCall' = (staleCall \/ (h.m = "notify" /\ h.v # version))
              /\ staleEvent' = (staleEvent \/ (h.m = "notify" /\ h.s # stepNo))
-             /\ Raise(throws)
-             /\ todo' = (IF first THEN ScriptFrames(s)
-                        ELSE IF s = "sendLater" /\ calls[l] = 1 THEN <<T("act")>>
-                        ELSE <<>>) \o rest
-  /\ UNCHANGED <<wired, queue, draining, exc, f, version, stepNo, listeners, subscribed, pg, ln, budget, result,
+             /\ IF h.m = "here" /\ throws /\ handler = "default"
+                THEN /\ exc' = [k |-> "app", n |-> 1]
+                     /\ unsurfaced' = unsurfaced + 1
+                     /\ UNCHANGED <<errors, handled>>
+                ELSE /\ Raise(throws)
+                     /\ UNCHANGED exc
+             /\ todo' = frames \o rest
+  /\ UNCHANGED <<wired, queue, draining, f, version, stepNo, listeners, subscribed, pg, ln, budget, result,
                  evDone, events, subResult, unprocessed, lookLate>>
+
+\* The first call's script frames returned.
+AppReturns ==
+  /\ Running("appRet")
+  /\ todo' = rest
+  /\ UNCHANGED <<wired, queue, draining, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, ln, budget,
+                 result, evDone, events, handled, ownThrew, subResult, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
 
 \* onEvent, inside queue.callApp. "throw" throws every time; "send" sends once.
 Event ==
@@ -393,15 +415,15 @@ Event ==
 
 (***************************************************************************)
 (* subscribe.ts listen: added, then called at once through queue.now: in   *)
-(* place inside a drain, or as a drain of its own outside one. Removed if  *)
-(* that throws.                                                            *)
+(* place inside a drain, or as a drain of its own outside one. What that   *)
+(* throws is thrown on, and the listener removed only if it threw itself.  *)
 (***************************************************************************)
 Subscribe ==
   /\ Running("subscribe")
   /\ listeners' = [listeners EXCEPT ![h.l] = TRUE]
   /\ subscribed' = [subscribed EXCEPT ![h.l] = TRUE]
   /\ IF draining
-     THEN /\ todo' = <<[T("call") EXCEPT !.l = h.l, !.m = "now"], [T("subRet") EXCEPT !.l = h.l]>> \o rest
+     THEN /\ todo' = <<[T("call") EXCEPT !.l = h.l, !.m = "here"], [T("subRet") EXCEPT !.l = h.l]>> \o rest
           /\ UNCHANGED <<queue, draining>>
      ELSE /\ queue' = Append(queue, CallItem(h.l))
           /\ draining' = TRUE
@@ -411,7 +433,7 @@ Subscribe ==
 
 SubReturns ==
   /\ Running("subRet")
-  /\ subResult' = [subResult EXCEPT ![h.l] = [done |-> TRUE, threw |-> FALSE, kept |-> listeners[h.l], own |-> ownThrew[h.l]]]
+  /\ subResult' = [subResult EXCEPT ![h.l] = [done |-> TRUE, threw |-> FALSE, kept |-> listeners[h.l], own |-> OwnThrown(h.l)]]
   /\ todo' = rest
   /\ UNCHANGED <<wired, queue, draining, errors, exc, f, version, stepNo, listeners, calls, subscribed, pg, ln, budget,
                  result, evDone, events, handled, ownThrew, unsurfaced, unprocessed, staleCall, staleEvent, lookLate>>
@@ -521,39 +543,48 @@ Unwinds ==
             \* queue.ts run's finally: the queue and the errors kept are dropped.
             /\ queue' = <<>> /\ draining' = FALSE /\ errors' = 0
             /\ todo' = rest
-            /\ UNCHANGED <<exc, pg, ln, listeners, subResult, result, unsurfaced, unprocessed>>
+            /\ UNCHANGED <<exc, pg, ln, listeners, subResult, result, unsurfaced, unprocessed, ownThrew>>
        [] h.t = "subRet" ->
-            \* subscribe.ts: the listener is removed, and the error thrown on.
-            /\ listeners' = [listeners EXCEPT ![h.l] = FALSE]
-            /\ subResult' = [subResult EXCEPT ![h.l] = [done |-> TRUE, threw |-> TRUE, kept |-> FALSE, own |-> ownThrew[h.l]]]
+            \* subscribe.ts: the listener is removed if it threw itself, and the error thrown on.
+            /\ listeners' = [listeners EXCEPT ![h.l] = @ /\ ~OwnThrown(h.l)]
+            /\ subResult' = [subResult EXCEPT ![h.l] = [done |-> TRUE, threw |-> TRUE, kept |-> listeners'[h.l], own |-> OwnThrown(h.l)]]
             /\ todo' = rest
-            /\ UNCHANGED <<queue, draining, errors, exc, pg, ln, result, unsurfaced, unprocessed>>
+            /\ UNCHANGED <<queue, draining, errors, exc, pg, ln, result, unsurfaced, unprocessed, ownThrew>>
+       [] h.t = "appRet" ->
+            \* The listener's first call throws on what its subscribe threw: its own throw.
+            \* Only the default handler let that one throw, and it throws this one back too:
+            \* in place for a first call made "here", else kept for the drain's end.
+            /\ ownThrew' = [ownThrew EXCEPT ![h.l] = TRUE]
+            /\ IF h.m = "here"
+               THEN /\ todo' = rest /\ UNCHANGED <<exc, errors>>
+               ELSE /\ exc' = NoExc /\ errors' = errors + exc.n /\ todo' = rest
+            /\ UNCHANGED <<queue, draining, pg, ln, listeners, subResult, result, unsurfaced, unprocessed>>
        [] h.t = "attachRet" ->
             \* page.ts attach's catch: detach, then throw on.
             /\ exc' = NoExc
             /\ DetachWith(0, <<[T("rethrow") EXCEPT !.e = exc]>> \o rest)
-            /\ UNCHANGED <<errors, ln, listeners, subResult, result, unsurfaced>>
+            /\ UNCHANGED <<errors, ln, listeners, subResult, result, unsurfaced, ownThrew>>
        [] h.t = "takeFin" ->
             \* link.ts take's finally
             /\ ln' = Hear(ln)
             /\ todo' = rest
-            /\ UNCHANGED <<queue, draining, errors, exc, pg, listeners, subResult, result, unsurfaced, unprocessed>>
+            /\ UNCHANGED <<queue, draining, errors, exc, pg, listeners, subResult, result, unsurfaced, unprocessed, ownThrew>>
        [] h.t = "top" ->
             /\ result' = exc
             /\ unsurfaced' = unsurfaced - exc.n
             /\ exc' = NoExc
             /\ todo' = rest
-            /\ UNCHANGED <<queue, draining, errors, pg, ln, listeners, subResult, unprocessed>>
+            /\ UNCHANGED <<queue, draining, errors, pg, ln, listeners, subResult, unprocessed, ownThrew>>
        [] OTHER ->
             \* No catch here: a rethrow frame's own error is dropped for the newer one.
             /\ todo' = rest
-            /\ UNCHANGED <<queue, draining, errors, exc, pg, ln, listeners, subResult, result, unsurfaced, unprocessed>>
-  /\ UNCHANGED <<wired, f, version, stepNo, calls, subscribed, budget, evDone, events, handled, ownThrew,
+            /\ UNCHANGED <<queue, draining, errors, exc, pg, ln, listeners, subResult, result, unsurfaced, unprocessed, ownThrew>>
+  /\ UNCHANGED <<wired, f, version, stepNo, calls, subscribed, budget, evDone, events, handled,
                  staleCall, staleEvent, lookLate>>
 
 Internal ==
   \/ DrainNext \/ DrainEnds \/ SendFrame \/ Act \/ Sync \/ Notify \/ Call \/ Event
-  \/ Subscribe \/ SubReturns \/ Attach \/ AttachReturns \/ Detach \/ Rethrows
+  \/ AppReturns \/ Subscribe \/ SubReturns \/ Attach \/ AttachReturns \/ Detach \/ Rethrows
   \/ Connect \/ SendLoaded \/ Hears \/ ConnectReturns \/ Disconnect \/ Returns \/ Unwinds
 
 Next == AppCall \/ Internal
@@ -590,18 +621,14 @@ LookFirst == ~lookLate
 \* GLOSSARY.md:52, "Only an attached Run reacts to the page".
 ListenersOnlyWhileAttached == Idle => (pg.open => pg.attachments > 0)
 
-\* subscribe throws exactly when it does not keep the listener.
-FailedSubscribeKeepsNoListener ==
-  \A l \in Listeners : subResult[l].done => subResult[l].kept = ~subResult[l].threw
-
-\* Thread 12, option (a): subscribe removes the listener and throws exactly when
-\* the listener's own first call throws, inside a drain or out. Only an unhandled
-\* throw can be thrown; with a callbackThrew handler the rule says nothing.
+\* Thread 12, option (a): subscribe removes the listener exactly when the listener's
+\* own first call throws, inside a drain or out, and then it throws. It may also throw
+\* what other work its call set off threw, such as onEvent's error, and keep the listener.
+\* Only an unhandled throw counts as its own: with a callbackThrew handler, nothing is removed.
 SubscribeOnlyItsOwnThrow ==
-  handler = "default" =>
-    \A l \in Listeners : subResult[l].done =>
-      /\ subResult[l].threw = subResult[l].own
-      /\ subResult[l].kept = ~subResult[l].own
+  \A l \in Listeners : subResult[l].done =>
+    /\ subResult[l].kept = ~subResult[l].own
+    /\ subResult[l].own => subResult[l].threw
 
 \* page.ts:225, "The caller gets no detach to call, so nothing may stay attached".
 AttachmentsHeld == Idle => pg.attachments = pg.handles

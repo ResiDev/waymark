@@ -92,7 +92,7 @@ describe("a step whose selector does not parse", () => {
 describe("subscribe, under thread 12's rule (a): only the listener's own throw", () => {
   // Shell.tla SubscribeOnlyItsOwnThrow, outside a drain. subscribe.ts:9-11 removes the
   // listener whenever the drain its first call started throws, whoever threw.
-  it.fails("keeps a listener whose first call ran fine, though onEvent throws on the change it made", () => {
+  it("keeps a listener whose first call ran fine, though onEvent throws on the change it made", () => {
     fakeFrames();
     const run = createRun({
       onEvent: () => {
@@ -118,7 +118,7 @@ describe("subscribe, under thread 12's rule (a): only the listener's own throw",
   // Shell.tla SubscribeOnlyItsOwnThrow, inside a drain. queue.now runs the first call in
   // place (queue.ts:77), and callApp keeps its error for the drain's end, so
   // subscribe.ts:8 returns and keeps the listener.
-  it.fails("throws from a subscribe made inside a listener, and drops that listener, when its first call throws", () => {
+  it("throws from a subscribe made inside a listener, and drops that listener, when its first call throws", () => {
     fakeFrames();
     const run = createRun();
     run.start(tour);

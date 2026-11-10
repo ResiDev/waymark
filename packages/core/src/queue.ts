@@ -12,6 +12,8 @@ export type Queue = Readonly<{
   invoke: (work: () => void) => void;
   /** One of the app's functions: what it throws is reported as `callbackThrew`. */
   callApp: (callback: CallbackName, work: () => void) => void;
+  /** `callApp` for a caller that must know the call failed: what the handler throws back is thrown here, not kept. */
+  callAppOrThrow: (callback: CallbackName, work: () => void) => void;
   notify: <T>(listeners: ReadonlySet<(snapshot: T) => void>, snapshot: T) => void;
   /**
    * Runs work in place, even inside a drain: Svelte's store contract wants a
@@ -43,6 +45,14 @@ export function createQueue(failure: string, reportProblem: ReportProblem<never>
       work();
     } catch (error) {
       fail(callback, error);
+    }
+  };
+
+  const callAppOrThrow = (callback: CallbackName, work: () => void) => {
+    try {
+      work();
+    } catch (error) {
+      reportProblem(callbackThrew(callback, error));
     }
   };
 
@@ -82,5 +92,5 @@ export function createQueue(failure: string, reportProblem: ReportProblem<never>
 
   const now = (work: () => void) => (draining ? work() : run(work));
 
-  return { run, invoke, callApp, notify, now, fail };
+  return { run, invoke, callApp, callAppOrThrow, notify, now, fail };
 }
