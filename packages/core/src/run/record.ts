@@ -59,7 +59,9 @@ const heardWalkthroughProgress = (
   if (theirs === undefined) return undefined;
   if (ours !== undefined && ours.changedAt > theirs.changedAt) return ours;
   const closedHere: WalkthroughProgress = theirs.status === "running" && !theirs.collapsed ? { ...theirs, collapsed: true } : theirs;
-  return ours !== undefined && samePlace(ours, closedHere) && ours.changedAt === closedHere.changedAt ? ours : closedHere;
+  // The same write heard again, such as the record this tab restored: what this tab made of it stands.
+  const again = ours !== undefined && ours.changedAt === theirs.changedAt && (samePlace(ours, theirs) || samePlace(ours, closedHere));
+  return again ? ours : closedHere;
 };
 
 export function heard(

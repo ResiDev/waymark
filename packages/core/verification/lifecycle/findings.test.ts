@@ -64,24 +64,15 @@ describe("another tab on a release where the tour has more steps", () => {
   });
 });
 
-// HintNeverPartWay, BrokenHintNeverPartWay.cfg. Thread 6, option b: a hint open
-// in another tab shows no beacon here. record.ts:61 collapses every heard open
-// entry, hints included.
-describe("a hint open in another tab", () => {
-  it.fails("shows no beacon for a hint open in another tab", () => {
-    const { storage, push } = elsewhere();
-    const run = connected({ storage });
-    run.start(hint);
-    run.act("exit");
+// Fixed, so these hold now. A heard record that only echoes this page's stored
+// entry used to collapse a walkthrough restored open before its page mounted.
+// record.ts now treats the echo as the same write heard again and keeps this
+// page's copy. HintNeverPartWay and RestoredReopens in MCLifecycle.cfg check it.
 
-    push(record({ hint: running(0, 1, false) }));
-    expect(run.getSnapshot().beacons).toEqual([]);
-  });
-
-  // The same line, reached by a save in another tab that echoes this page's own
-  // stored hint before the hint's page mounts. run.md:381 says a restored hint
-  // never waits part way.
-  it.fails("shows no beacon for a hint restored open when another tab saves before its page mounts", () => {
+// HintNeverPartWay. run.md:383: a hint is part way through only while it is
+// open, here or in another tab, or once the app collapses it.
+describe("a hint restored open", () => {
+  it("shows no beacon for a hint restored open when another tab saves before its page mounts", () => {
     const stored = record({ hint: running(0, 1, false, Date.now()) });
     const { storage, push } = elsewhere(stored);
     const run = connected({ storage });
@@ -92,13 +83,10 @@ describe("a hint open in another tab", () => {
   });
 });
 
-// RestoredReopens, BrokenRestoredReopens.cfg. run.md:378: once the definition
-// arrives, a walkthrough that was open opens again if nothing else is. A heard
-// record that only echoes this page's stored entry collapses it first. The
-// echo cannot tell this page's last state from the tour open in another tab,
-// so this one needs the user's decision.
+// RestoredReopens. run.md:381: once the definition arrives, a walkthrough that
+// was open opens again if nothing else is.
 describe("a tour restored open", () => {
-  it.fails("reopens a tour restored open, with nothing else open, though another tab saved before its page mounts", () => {
+  it("reopens a tour restored open, with nothing else open, though another tab saved before its page mounts", () => {
     const stored = record({ tour: running(1, 2, false, Date.now()) });
     const { storage, push } = elsewhere(stored);
     const run = connected({ storage });

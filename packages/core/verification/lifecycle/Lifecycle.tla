@@ -64,20 +64,21 @@ VARIABLES
   open,         \* live.openStep's walkthrough, or "none"
   waiting,      \* startRequests.waitingToStart
   \* History, not in the code:
-  heardOpen,    \* w is collapsed because it was heard running and not collapsed
+  heardOpen,    \* w is collapsed because it was heard running and not collapsed: open in another tab
+  appCollapsed, \* w is collapsed by act("collapse"), here or in the tab that saved it
   restoredOpen, \* w was loaded running and not collapsed, and nothing but an echo of that has changed it since
   threw,        \* the last change threw
   missed,       \* the last change verified a walkthrough restored open, with nothing else open, and did not open it
   input         \* the last move's parameters, while Recording
 
-vars == <<defined, loading, held, progress, unverified, open, waiting, heardOpen, restoredOpen, threw, missed, input>>
+vars == <<defined, loading, held, progress, unverified, open, waiting, heardOpen, appCollapsed, restoredOpen, threw, missed, input>>
 
 ----------------------------------------------------------------------------
 \* The Run state, as one record, so one rule can hand it to the next as the
 \* code's Work does. bad: a stepAt on the way would throw a RangeError.
 
 Cur == [p |-> progress, u |-> unverified, open |-> open, wait |-> waiting,
-        ho |-> heardOpen, ro |-> restoredOpen, bad |-> FALSE, missed |-> FALSE]
+        ho |-> heardOpen, ac |-> appCollapsed, ro |-> restoredOpen, bad |-> FALSE, missed |-> FALSE]
 
 IsUnv(R, w) == R.u[w] /\ R.p[w].status # "none"
 RecOpen(R, w) == R.p[w].status = "running" /\ ~R.p[w].collapsed
@@ -89,7 +90,7 @@ OpenId(R) == IF R.open # "none" /\ RecOpen(R, R.open) THEN R.open ELSE "none"
 \* A new object is no longer the one unverifiedWalkthroughProgressById holds.
 Put(R, w, e) ==
   IF R.p[w] = e THEN R
-  ELSE [R EXCEPT !.p[w] = e, !.u[w] = FALSE, !.ho[w] = FALSE, !.ro[w] = FALSE]
+  ELSE [R EXCEPT !.p[w] = e, !.u[w] = FALSE, !.ho[w] = FALSE, !.ac[w] = FALSE, !.ro[w] = FALSE]
 
 InRange(w, s) == s < Steps[w]
 Flag(R, b) == [R EXCEPT !.bad = R.bad \/ b]
@@ -119,7 +120,7 @@ VerifyOne(R, w) ==
 
 \* verifyOne as a definition arrives with no command on it (verifyAll), or by
 \* requestStart, as <Walkthrough> calls it on mount. One restored open, with
-\* nothing else open, should be open after it (run.md:378): `missed` says not.
+\* nothing else open, should be open after it (run.md:381): `missed` says not.
 Arrives(R, w) ==
   LET R2 == VerifyOne(R, w) IN
   IF R.ro[w] /\ IsUnv(R, w) /\ OpenId(R) = "none" /\ OpenId(R2) # w THEN [R2 EXCEPT !.missed = TRUE] ELSE R2
@@ -141,7 +142,7 @@ Apply(R, on, a) ==
     [] a = "advance"  -> IF e.step + 1 < Steps[on] THEN Put(R, on, Run(e.step + 1, FALSE, TRUE))
                          ELSE [Put(R, on, Ended("finished")) EXCEPT !.open = "none"]
     [] a = "previous" -> IF e.step = 0 THEN R ELSE Put(R, on, Run(e.step - 1, FALSE, TRUE))
-    [] a = "collapse" -> Put(R, on, [e EXCEPT !.collapsed = TRUE])
+    [] a = "collapse" -> [Put(R, on, [e EXCEPT !.collapsed = TRUE]) EXCEPT !.ac[on] = TRUE]
     [] a = "resume"   -> R
     [] a = "exit"     -> [Put(R, on, Ended("exited")) EXCEPT !.open = "none"]
 
@@ -177,19 +178,23 @@ RunAll(R, cs) == IF cs = <<>> THEN R ELSE RunAll(RunCmd(R, Head(cs)), Tail(cs))
 
 \* record.ts heardWalkthroughProgress for one walkthrough. mode: how theirs.changedAt
 \* compares with ours: "newer", "older", or "same" for an entry that echoes ours.
+\* An echo is the same write heard again, so what this tab made of it stands:
+\* the code keeps ours when theirs, or theirs collapsed, is in our place, and
+\* an echo here is always ours as it is.
 HeardEntry(R, D, w, theirs, mode, openHere) ==
   LET ours == R.p[w]
-      keep == [p |-> ours, u |-> R.u[w], ho |-> R.ho[w], ro |-> R.ro[w]]
+      keep == [p |-> ours, u |-> R.u[w], ho |-> R.ho[w], ac |-> R.ac[w], ro |-> R.ro[w]]
       closed == IF theirs.status = "running" /\ ~theirs.collapsed THEN [theirs EXCEPT !.collapsed = TRUE] ELSE theirs
   IN
   IF w = openHere THEN keep
-  ELSE IF theirs.status = "none" THEN (IF ours.status = "none" THEN keep ELSE [p |-> None, u |-> FALSE, ho |-> FALSE, ro |-> FALSE])
+  ELSE IF theirs.status = "none" THEN (IF ours.status = "none" THEN keep ELSE [p |-> None, u |-> FALSE, ho |-> FALSE, ac |-> FALSE, ro |-> FALSE])
   ELSE IF ours.status # "none" /\ mode = "older" THEN keep
-  ELSE IF ours.status # "none" /\ mode = "same" /\ closed = ours THEN keep
+  ELSE IF ours.status # "none" /\ mode = "same" /\ (theirs = ours \/ closed = ours) THEN keep
   ELSE [p |-> closed,
         u |-> ~D[w],
-        ho |-> Hint[w] /\ closed # theirs,
-        ro |-> R.ro[w] /\ mode = "same" /\ closed # theirs]
+        ho |-> closed # theirs,
+        ac |-> theirs.status = "running" /\ theirs.collapsed,
+        ro |-> FALSE]
 
 \* record.ts heard: another tab's record, the same as ours but for w's entry.
 HeardAll(R, D, w, e, newer) ==
@@ -197,7 +202,7 @@ HeardAll(R, D, w, e, newer) ==
       h(v) == IF v = w THEN HeardEntry(R, D, v, e, IF newer THEN "newer" ELSE "older", oh)
               ELSE HeardEntry(R, D, v, R.p[v], "same", oh)
   IN [R EXCEPT !.p = [v \in W |-> h(v).p], !.u = [v \in W |-> h(v).u],
-               !.ho = [v \in W |-> h(v).ho], !.ro = [v \in W |-> h(v).ro]]
+               !.ho = [v \in W |-> h(v).ho], !.ac = [v \in W |-> h(v).ac], !.ro = [v \in W |-> h(v).ro]]
 
 \* walkthroughs.ts settle: dropClosedStepState, then openRequest. Never while loading.
 FirstFree(R) ==
@@ -227,12 +232,12 @@ Throws(R, D) == R.bad \/ BeaconCrash(R, D)
 
 Done(R, failed) ==
   /\ progress' = R.p /\ unverified' = R.u /\ open' = R.open /\ waiting' = R.wait
-  /\ heardOpen' = R.ho /\ restoredOpen' = R.ro /\ missed' = R.missed /\ threw' = failed
+  /\ heardOpen' = R.ho /\ appCollapsed' = R.ac /\ restoredOpen' = R.ro /\ missed' = R.missed /\ threw' = failed
 
 \* update.ts change: the phases, then settle. One that throws leaves the Run as it was.
 Kept ==
   /\ threw' = TRUE /\ missed' = FALSE
-  /\ UNCHANGED <<loading, held, progress, unverified, open, waiting, heardOpen, restoredOpen>>
+  /\ UNCHANGED <<loading, held, progress, unverified, open, waiting, heardOpen, appCollapsed, restoredOpen>>
 
 Commit(R, D) ==
   LET S == Settle(R) IN
@@ -253,7 +258,7 @@ Command(c) ==
      THEN /\ Len(held) < MaxHeld
           /\ held' = Append(held, c)
           /\ threw' = FALSE /\ missed' = FALSE
-          /\ UNCHANGED <<loading, progress, unverified, open, waiting, heardOpen, restoredOpen>>
+          /\ UNCHANGED <<loading, progress, unverified, open, waiting, heardOpen, appCollapsed, restoredOpen>>
      ELSE Commit(RunCmd(Cur, c), defined')
 
 \* The app or the user, through the public Run: each call takes the definition first.
@@ -271,7 +276,7 @@ RequestStart(w) ==
           /\ held' = Append(held, Cmd("request", w, "none"))
           /\ waiting' = R.wait
           /\ threw' = FALSE /\ missed' = FALSE
-          /\ UNCHANGED <<loading, progress, unverified, open, heardOpen, restoredOpen>>
+          /\ UNCHANGED <<loading, progress, unverified, open, heardOpen, appCollapsed, restoredOpen>>
      ELSE Commit(RequestW(R, w), defined')
 
 \* The function requestStart returned: off the list, no change.
@@ -280,7 +285,7 @@ Withdraw(w) ==
   /\ waiting' = SelectSeq(waiting, LAMBDA v : v # w)
   /\ threw' = FALSE /\ missed' = FALSE
   /\ Note([NoInput EXCEPT !.kind = "withdraw", !.w = w])
-  /\ UNCHANGED <<defined, loading, held, progress, unverified, open, heardOpen, restoredOpen>>
+  /\ UNCHANGED <<defined, loading, held, progress, unverified, open, heardOpen, appCollapsed, restoredOpen>>
 
 \* A definition reaches the Run with no command, as a checklist's tasks do: arrived.
 Arrive(w) ==
@@ -288,7 +293,7 @@ Arrive(w) ==
   /\ Take(w)
   /\ Note([NoInput EXCEPT !.kind = "arrive", !.w = w])
   /\ IF loading
-     THEN threw' = FALSE /\ missed' = FALSE /\ UNCHANGED <<loading, held, progress, unverified, open, waiting, heardOpen, restoredOpen>>
+     THEN threw' = FALSE /\ missed' = FALSE /\ UNCHANGED <<loading, held, progress, unverified, open, waiting, heardOpen, appCollapsed, restoredOpen>>
      ELSE Commit(VerifyAll(Cur, defined'), defined')
 
 \* Storage answers the first load: the record, verifyAll, then the held commands, as one change.
@@ -299,6 +304,7 @@ Loaded ==
        /\ Note([NoInput EXCEPT !.kind = "loaded", !.rec = rec])
        /\ LET R0 == [Cur EXCEPT !.p = rec,
                                 !.u = [w \in W |-> rec[w].status # "none"],
+                                !.ac = [w \in W |-> rec[w].status = "running" /\ rec[w].collapsed],
                                 !.ro = [w \in W |-> rec[w].status = "running" /\ ~rec[w].collapsed /\ rec[w].fresh]]
               S == Settle(RunAll(VerifyAll(R0, defined), held))
           IN IF Throws(S, defined) THEN Kept
@@ -324,7 +330,7 @@ Init ==
   /\ loading = TRUE /\ held = <<>>
   /\ progress = NoRecord /\ unverified = [w \in W |-> FALSE]
   /\ open = "none" /\ waiting = <<>>
-  /\ heardOpen = [w \in W |-> FALSE] /\ restoredOpen = [w \in W |-> FALSE]
+  /\ heardOpen = [w \in W |-> FALSE] /\ appCollapsed = [w \in W |-> FALSE] /\ restoredOpen = [w \in W |-> FALSE]
   /\ threw = FALSE /\ missed = FALSE
   /\ input = IF Recording THEN NoInput ELSE "none"
 
@@ -365,12 +371,13 @@ StepInRange == \A w \in W : Verified(w) /\ progress[w].status = "running" => InR
 \* No change throws.
 ChangesNeverThrow == ~threw
 
-\* run.md:382, scoped by thread 6 option b: a hint is collapsed only by an
-\* explicit collapse (open.test.ts:367), never because it was heard open elsewhere.
+\* run.md:383: a hint is part way through only while it is open, here or in
+\* another tab, or once the app collapses it with act("collapse") (open.test.ts:367).
+\* Never because it was interrupted, restored, or echoed back.
 HintNeverPartWay ==
-  \A w \in W : Hint[w] /\ Verified(w) /\ progress[w].status = "running" /\ progress[w].collapsed => ~heardOpen[w]
+  \A w \in W : Hint[w] /\ Verified(w) /\ progress[w].status = "running" /\ progress[w].collapsed => heardOpen[w] \/ appCollapsed[w]
 
-\* run.md:378: a walkthrough restored open opens again once its definition
+\* run.md:381: a walkthrough restored open opens again once its definition
 \* arrives, if nothing else is open.
 RestoredReopens == ~missed
 

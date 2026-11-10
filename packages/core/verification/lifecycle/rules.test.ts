@@ -22,8 +22,6 @@ it.concurrent.for([
   ["StepInRange", "a heard step this release's tour does not have", "Invariant"],
   ["ChangesNeverThrow", "the same, as a RangeError inside the change", "Invariant"],
   ["StartAlwaysShows", "the same, as a click on the tour's button that shows nothing", "Action property"],
-  ["HintNeverPartWay", "a hint heard open in another tab waits collapsed here, behind a beacon", "Invariant"],
-  ["RestoredReopens", "a heard echo collapses a walkthrough restored open before its page mounts", "Invariant"],
 ] as const)("finds %s broken: %s", async ([rule, , kind]) => {
   await expect(checkModel(model(`Broken${rule}.cfg`))).rejects.toThrow(`${kind} ${rule} is violated`);
 });

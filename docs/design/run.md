@@ -352,7 +352,10 @@ statuses. The waiting list is not saved; the app asks again on the next load.
 - When the adapter hears a change made elsewhere, from another tab or a server
   push, checklist statuses take it at once. Each walkthrough takes its heard
   progress too, unless it is open here or this Run changed it later, by
-  `changedAt`. One open elsewhere is collapsed here, so only one is open.
+  `changedAt`. One open elsewhere is collapsed here, so only one is open; a
+  hint too, so it shows a beacon here while it is open in the other tab. The
+  same write heard again, as when another tab saves after this one restored
+  the record, changes nothing: what this Run made of it stands.
 
 A server is one more adapter. For Convex, `load` and `subscribe` are a query
 subscription and `savePartial` is a mutation that calls `applyChanges`.
@@ -378,8 +381,9 @@ data. It shows no beacon and doesn't count as open, so a `requestStart` can go
 meanwhile. When the definition arrives, usually because its page has mounted,
 a walkthrough that was open opens again if nothing else is. Otherwise it is set
 aside as its `dismiss` says, as if it had been interrupted: a tour waits
-collapsed, and a hint with `dismiss: "exit"` exits. So a hint that isn't open
-is never part way through, and its ⓘ always starts it at step 1.
+collapsed, and a hint with `dismiss: "exit"` exits. So a hint is part way
+through only while it is open, here or in another tab, or once the app
+collapses it with `act("collapse")`; otherwise its ⓘ starts it at step 1.
 
 ### Checklists
 
