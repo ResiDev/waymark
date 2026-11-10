@@ -10,7 +10,8 @@ export default defineConfig({
         test: {
           name: "unit",
           environment: "jsdom",
-          include: ["src/**/*.test.ts"],
+          // verification/views needs no Java, so it runs here as well as under `verify`.
+          include: ["src/**/*.test.ts", "verification/views/**/*.test.ts"],
           exclude: ["src/**/*.browser.test.ts"],
           setupFiles: ["./vitest.setup.ts", "./src/test/leaks.ts"],
         },
@@ -23,6 +24,7 @@ export default defineConfig({
           include: ["verification/**/*.test.ts"],
           setupFiles: ["./vitest.setup.ts"],
           globalSetup: ["./verification/tla/setup.ts"],
+          env: { FASTCHECK_RUNS: process.env["FASTCHECK_RUNS"] ?? "1000" },
           testTimeout: 300_000,
         },
       },
