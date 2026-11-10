@@ -23,8 +23,6 @@ it.each([
 
 // Each a bug: bugs.test.ts reproduces it on the real code. Flip one to the list above once it is fixed.
 it.each([
-  ["NoReshowHere", "BrokenNoReshowHere.cfg"],
-  ["NoReshowHere", "BrokenNoReshowHereLocal.cfg"],
   ["SaveKeepsOthersEntries", "BrokenSaveKeepsOthersEntries.cfg"],
   ["NeverOverwriteUnreadable", "BrokenNeverOverwriteUnreadable.cfg"],
 ])("breaks %s in %s", async (rule, file) => {

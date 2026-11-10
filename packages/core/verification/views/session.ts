@@ -241,6 +241,7 @@ export const shownOf = (model: Model, given: Given): ShownRunState => ({
 
 const userRecordAt = (type: "loading" | "ready"): UserRecord => ({
   walkthroughProgressById: {},
+  walkthroughResetAt: {},
   taskStatusById: {},
   unverifiedWalkthroughProgressById: new Map(),
   storageStatus: { type },

@@ -12,8 +12,18 @@ import { migrate, VERSION } from "./migrations";
 export type StoredRecord = Readonly<{
   version: typeof VERSION;
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
+  /**
+   * When each walkthrough was last reset, epoch ms, for one with no entry
+   * since. Whichever is newer, a walkthrough's entry or its reset, wins, and
+   * at the same time the entry. Left
+   * out when there are none, and an older Waymark leaves it out when it saves.
+   */
+  resets?: Readonly<Record<string, number>>;
   tasks: Readonly<Record<string, "done" | "skipped" | "reopened">>;
 }>;
+
+/** When each walkthrough was reset, by id. */
+export type Resets = Readonly<Record<string, number>>;
 
 /**
  * What one save changes, for an adapter's `savePartial`. Shaped unlike a
@@ -26,6 +36,8 @@ export type RecordChanges = Readonly<{
   /** Entries to store, each in place of the one under its id. */
   set: Readonly<{
     walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
+    /** Resets, each in place of the walkthrough's entry unless that changed later. Its id is in `remove` too, for an older server. */
+    resets?: Resets;
     tasks: Readonly<Record<string, "done" | "skipped" | "reopened">>;
   }>;
   /** Ids whose entries go. */
@@ -44,6 +56,7 @@ export type DroppedEntry = Readonly<{ walkthrough: string }> | Readonly<{ task: 
 /** What a record holds once read: copies, with no prototype, so any id is an ordinary key. */
 export type Read = Readonly<{
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>;
+  resets: Resets;
   tasks: Stored;
   dropped: readonly DroppedEntry[];
 }>;
@@ -95,6 +108,19 @@ const isProgress = (value: unknown): value is WalkthroughProgress =>
   typeof value["collapsed"] === "boolean" &&
   Number.isFinite(value["changedAt"]);
 
+const isTime = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+/** Each reset that can be read, and each whose walkthrough has no entry changed since. */
+function readResets(value: unknown, walkthroughs: Readonly<Record<string, WalkthroughProgress>>): Resets {
+  const resets = dictionary<number>();
+  if (!isRecord(value)) return resets;
+  for (const [id, at] of Object.entries(value)) {
+    const entry = walkthroughs[id];
+    if (isTime(at) && (entry === undefined || at > entry.changedAt)) resets[id] = at;
+  }
+  return resets;
+}
+
 const NOT_OURS = "The stored record is not one Waymark wrote.";
 
 const STORED_CHANGES =
@@ -140,7 +166,10 @@ export function parseRecord(value: unknown): Parsed {
     if (isStatus(status)) statuses[id] = status;
     else dropped.push({ task: id });
   }
-  return { ok: true, value: { walkthroughs: progress, tasks: statuses, dropped } };
+  // A reset no newer than its walkthrough's entry is spent; the entry wins.
+  const resets = readResets(current["resets"], progress);
+  for (const id of Object.keys(resets)) delete progress[id];
+  return { ok: true, value: { walkthroughs: progress, resets, tasks: statuses, dropped } };
 }
 
 /** Progress part way through that its walkthrough cannot pick up again. Ended progress stays ended. */
@@ -157,10 +186,13 @@ export const staleness = (
 
 /** The entries that differ between two moments, or none. Entries are replaced, never changed in place, so identity says which. */
 export const changesBetween = (
-  before: Readonly<{ progress: Readonly<Record<string, WalkthroughProgress>>; statuses: Stored }>,
-  after: Readonly<{ progress: Readonly<Record<string, WalkthroughProgress>>; statuses: Stored }>,
+  before: Readonly<{ progress: Readonly<Record<string, WalkthroughProgress>>; resets: Resets; statuses: Stored }>,
+  after: Readonly<{ progress: Readonly<Record<string, WalkthroughProgress>>; resets: Resets; statuses: Stored }>,
 ): RecordChanges | undefined => {
   const set = { walkthroughs: dictionary<WalkthroughProgress>(), tasks: copy({}) };
+  // A reset gone is not sent: it went because an entry newer than it came, and that entry is sent.
+  const resets = dictionary<number>();
+  for (const [id, at] of Object.entries(after.resets)) if (before.resets[id] !== at) resets[id] = at;
   const remove = { walkthroughs: [] as string[], tasks: [] as string[] };
   for (const id of new Set([...Object.keys(before.progress), ...Object.keys(after.progress)])) {
     const progress = after.progress[id];
@@ -174,15 +206,19 @@ export const changesBetween = (
     if (status === undefined) remove.tasks.push(id);
     else set.tasks[id] = status;
   }
-  const none = [set.walkthroughs, set.tasks].every((entries) => Object.keys(entries).length === 0);
+  const none = [set.walkthroughs, resets, set.tasks].every((entries) => Object.keys(entries).length === 0);
   if (none && remove.walkthroughs.length === 0 && remove.tasks.length === 0) return undefined;
-  return { version: VERSION, set, remove };
+  return { version: VERSION, set: withResets(set, resets), remove };
 };
+
+/** `set` with `resets`, left out when there are none, so changes without a reset are shaped as before. */
+const withResets = <T extends object>(set: T, resets: Resets | undefined): T & { resets?: Resets } =>
+  resets === undefined || Object.keys(resets).length === 0 ? set : { ...set, resets };
 
 /** The whole record, as changes that store it in place of whatever is stored. */
 export const replacing = (record: StoredRecord): RecordChanges => ({
   version: VERSION,
-  set: { walkthroughs: record.walkthroughs, tasks: record.tasks },
+  set: withResets({ walkthroughs: record.walkthroughs, tasks: record.tasks }, record.resets),
   remove: { walkthroughs: [], tasks: [] },
   replace: true,
 });
@@ -194,7 +230,7 @@ export type ChangedIds = Readonly<{ walkthroughs: Set<string>; tasks: Set<string
 
 /** Adds the ids `changes` sets or removes to `ids`. */
 export const noteIds = (ids: ChangedIds, changes: RecordChanges): void => {
-  for (const id of [...Object.keys(changes.set.walkthroughs), ...changes.remove.walkthroughs]) ids.walkthroughs.add(id);
+  for (const id of [...Object.keys(changes.set.walkthroughs), ...Object.keys(changes.set.resets ?? {}), ...changes.remove.walkthroughs]) ids.walkthroughs.add(id);
   for (const id of [...Object.keys(changes.set.tasks), ...changes.remove.tasks]) ids.tasks.add(id);
 };
 
@@ -203,25 +239,30 @@ export const without = (changes: RecordChanges, ids: ChangedIds): RecordChanges 
   if (changes.replace === true) return changes;
   const walkthroughs = dictionary<WalkthroughProgress>();
   for (const [id, progress] of Object.entries(changes.set.walkthroughs)) if (!ids.walkthroughs.has(id)) walkthroughs[id] = progress;
+  const resets = dictionary<number>();
+  for (const [id, at] of Object.entries(changes.set.resets ?? {})) if (!ids.walkthroughs.has(id)) resets[id] = at;
   const tasks = copy({});
   for (const [id, status] of Object.entries(changes.set.tasks)) if (!ids.tasks.has(id)) tasks[id] = status;
   const remove = {
     walkthroughs: changes.remove.walkthroughs.filter((id) => !ids.walkthroughs.has(id)),
     tasks: changes.remove.tasks.filter((id) => !ids.tasks.has(id)),
   };
-  const none = Object.keys(walkthroughs).length === 0 && Object.keys(tasks).length === 0;
+  const none = [walkthroughs, resets, tasks].every((entries) => Object.keys(entries).length === 0);
   if (none && remove.walkthroughs.length === 0 && remove.tasks.length === 0) return undefined;
-  return { version: VERSION, set: { walkthroughs, tasks }, remove };
+  return { version: VERSION, set: withResets({ walkthroughs, tasks }, resets), remove };
 };
 
 /** Two saves' changes as one, the later's entries over the earlier's. */
 export const combine = (earlier: RecordChanges, later: RecordChanges): RecordChanges => {
   if (later.replace === true) return later;
   const walkthroughs = Object.assign(dictionary<WalkthroughProgress>(), earlier.set.walkthroughs, later.set.walkthroughs);
+  const resets = Object.assign(dictionary<number>(), earlier.set.resets, later.set.resets);
   const tasks = Object.assign(copy({}), earlier.set.tasks, later.set.tasks);
   for (const id of later.remove.walkthroughs) delete walkthroughs[id];
   for (const id of later.remove.tasks) delete tasks[id];
-  const set = { walkthroughs, tasks };
+  // An entry set later is newer than an earlier reset of it.
+  for (const id of Object.keys(later.set.walkthroughs)) delete resets[id];
+  const set = withResets({ walkthroughs, tasks }, resets);
   // Whole, the record needs no removals: what it leaves out goes.
   if (earlier.replace === true) return { version: VERSION, set, remove: NOTHING_REMOVED, replace: true };
   // An id set later is no longer removed.
@@ -240,22 +281,35 @@ export const combine = (earlier: RecordChanges, later: RecordChanges): RecordCha
 
 /**
  * What is stored, read, with `changes` made to it, or `null` once nothing is
- * left. A walkthrough's stored entry stays when it changed later than the one
- * in `changes`, so an older save that lands last does not take its place. A
- * removal carries no time, so it always goes through, and a replace stores
- * its record whole.
+ * left. For each walkthrough the newest wins, of its stored entry, its stored
+ * reset, and what `changes` sets: so an older save that lands last does not
+ * take the place of a newer entry, nor bring back one reset since. At the same
+ * time the change wins over an entry, and an entry over a reset. A removal
+ * with no reset always goes through, and a replace stores its record whole.
  */
 export const merge = (stored: Read | null, changes: RecordChanges): StoredRecord | null => {
   const base = changes.replace === true ? null : stored;
   const walkthroughs = Object.assign(dictionary<WalkthroughProgress>(), base?.walkthroughs);
+  const resets = Object.assign(dictionary<number>(), base?.resets);
   for (const [id, progress] of Object.entries(changes.set.walkthroughs)) {
     const kept = walkthroughs[id];
-    if (kept === undefined || kept.changedAt <= progress.changedAt) walkthroughs[id] = progress;
+    const reset = resets[id];
+    if ((kept !== undefined && kept.changedAt > progress.changedAt) || (reset !== undefined && reset > progress.changedAt)) continue;
+    walkthroughs[id] = progress;
+    delete resets[id];
+  }
+  const resetNow = changes.set.resets ?? {};
+  for (const [id, at] of Object.entries(resetNow)) {
+    const kept = walkthroughs[id];
+    if (kept !== undefined && kept.changedAt >= at) continue;
+    delete walkthroughs[id];
+    resets[id] = Math.max(at, resets[id] ?? at);
   }
   const tasks = Object.assign(copy(base?.tasks ?? {}), changes.set.tasks);
-  for (const id of changes.remove.walkthroughs) delete walkthroughs[id];
+  // A reset's removal is the reset's, decided above; it is in `remove` for an older server.
+  for (const id of changes.remove.walkthroughs) if (!Object.hasOwn(resetNow, id)) delete walkthroughs[id];
   for (const id of changes.remove.tasks) delete tasks[id];
-  const next = storedRecord(walkthroughs, tasks);
+  const next = storedRecord(walkthroughs, tasks, resets);
   return isEmptyRecord(next) ? null : next;
 };
 
@@ -287,6 +341,14 @@ export function readChanges(value: unknown): RecordChanges {
   if (!isRecord(walkthroughs) || !isRecord(tasks) || !isIds(remove["walkthroughs"]) || !isIds(remove["tasks"])) {
     throw new Error(NOT_CHANGES);
   }
+  const resets = dictionary<number>();
+  if (set["resets"] !== undefined) {
+    if (!isRecord(set["resets"])) throw new Error(NOT_CHANGES);
+    for (const [id, at] of Object.entries(set["resets"])) {
+      if (!isTime(at)) throw new Error(`${NOT_CHANGES} Walkthrough "${id}"'s reset cannot be read.`);
+      resets[id] = at;
+    }
+  }
   const read = { walkthroughs: dictionary<WalkthroughProgress>(), tasks: copy({}) };
   for (const [id, progress] of Object.entries(walkthroughs)) {
     if (!isProgress(progress)) throw new Error(`${NOT_CHANGES} Walkthrough "${id}"'s progress cannot be read.`);
@@ -298,7 +360,8 @@ export function readChanges(value: unknown): RecordChanges {
     read.tasks[id] = status;
   }
   const removed = { walkthroughs: [...remove["walkthroughs"]], tasks: [...remove["tasks"]] };
-  return replace === true ? { version, set: read, remove: removed, replace } : { version, set: read, remove: removed };
+  const setRead = withResets(read, resets);
+  return replace === true ? { version, set: setRead, remove: removed, replace } : { version, set: setRead, remove: removed };
 }
 
 /**
@@ -320,10 +383,15 @@ export function applyChanges(stored: unknown, changes: unknown): StoredRecord | 
   return merge(parsed.value, read);
 }
 
+/** `resets` is left out when there are none, so a record without one is shaped as before. */
 export const storedRecord = (
   walkthroughs: Readonly<Record<string, WalkthroughProgress>>,
   tasks: Stored,
-): StoredRecord => ({ version: VERSION, walkthroughs: { ...walkthroughs }, tasks: { ...tasks } });
+  resets: Resets = {},
+): StoredRecord =>
+  Object.keys(resets).length === 0
+    ? { version: VERSION, walkthroughs: { ...walkthroughs }, tasks: { ...tasks } }
+    : { version: VERSION, walkthroughs: { ...walkthroughs }, resets: { ...resets }, tasks: { ...tasks } };
 
 const isEmptyRecord = (record: StoredRecord): boolean =>
-  Object.keys(record.walkthroughs).length === 0 && Object.keys(record.tasks).length === 0;
+  Object.keys(record.walkthroughs).length === 0 && Object.keys(record.resets ?? {}).length === 0 && Object.keys(record.tasks).length === 0;

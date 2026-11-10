@@ -3,7 +3,7 @@ import type { AnyTask, ChecklistDefinition, ChecklistGroup, ChecklistSnapshot, D
 import type { WaymarkProblem } from "./problems";
 import type { ClickHit } from "./run/input";
 import type { Action, Beacon, Location, OpenWalkthrough, Rect, RunEvent, RunSnapshot, WaymarkEvent } from "./run/types";
-import type { Parsed, Read, RecordChanges, RecordUnreadableError, StoredRecord } from "./storage/records";
+import type { Parsed, Read, RecordChanges, RecordUnreadableError, Resets, StoredRecord } from "./storage/records";
 import type { Walkthrough, WalkthroughProgress } from "./walkthrough/types";
 
 type WalkthroughId = string;
@@ -15,8 +15,13 @@ export type WalkthroughsAndChecklistsInUse = Readonly<{
   checklistDefinitions: readonly ChecklistGroup[];
 }>;
 
+/** What storage holds for one walkthrough. */
+export type StoredWalkthrough = Readonly<{ entry: WalkthroughProgress | undefined; reset: number | undefined }>;
+
 export type UserRecord = Readonly<{
   walkthroughProgressById: Readonly<Record<WalkthroughId, WalkthroughProgress>>;
+  /** When each walkthrough with no entry was last reset, so a record heard without the entry can say why. */
+  walkthroughResetAt: Resets;
   taskStatusById: Stored;
   /**
    * Walkthrough progress storage gave that no definition has verified yet, as
@@ -95,8 +100,12 @@ export type Change = Readonly<{
   problems: WaymarkProblem[];
   credits: Map<TaskId, ChecklistName>;
   scrolls: Element[];
-  /** Each entry heard older than this tab's, which this tab kept: what storage holds, so the change saves this tab's again. */
-  storedOlder: Map<WalkthroughId, WalkthroughProgress>;
+  /**
+   * For each walkthrough a record heard holds older than this tab does, what
+   * it holds: an entry or a reset, or neither. The change saves this tab's
+   * again, or nothing would ever bring storage up to it.
+   */
+  storedOlder: Map<WalkthroughId, StoredWalkthrough>;
   verdicts: (tasks: readonly DefinedTask[], context: unknown) => ReadonlyMap<TaskId, boolean> | undefined;
 }>;
 

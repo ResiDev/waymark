@@ -59,11 +59,17 @@ const workOf = (command: Command): Work => {
 
 function saved({ savedFrom, after }: Ran): RecordChanges | undefined {
   const now = after.userRecord;
-  if (savedFrom === "whole") return replacing(storedRecord(now.walkthroughProgressById, now.taskStatusById));
-  if (savedFrom.walkthroughProgressById === now.walkthroughProgressById && savedFrom.taskStatusById === now.taskStatusById) return undefined;
+  if (savedFrom === "whole") return replacing(storedRecord(now.walkthroughProgressById, now.taskStatusById, now.walkthroughResetAt));
+  if (
+    savedFrom.walkthroughProgressById === now.walkthroughProgressById &&
+    savedFrom.walkthroughResetAt === now.walkthroughResetAt &&
+    savedFrom.taskStatusById === now.taskStatusById
+  ) {
+    return undefined;
+  }
   return changesBetween(
-    { progress: savedFrom.walkthroughProgressById, statuses: savedFrom.taskStatusById },
-    { progress: now.walkthroughProgressById, statuses: now.taskStatusById },
+    { progress: savedFrom.walkthroughProgressById, resets: savedFrom.walkthroughResetAt, statuses: savedFrom.taskStatusById },
+    { progress: now.walkthroughProgressById, resets: now.walkthroughResetAt, statuses: now.taskStatusById },
   );
 }
 
@@ -112,7 +118,7 @@ function effectsOf(ran: Ran, given: Given, was: Views, views: Views): readonly E
   if (changes !== undefined) {
     effects.push(
       { _tag: "save", changes },
-      { _tag: "saved", record: storedRecord(after.userRecord.walkthroughProgressById, after.userRecord.taskStatusById) },
+      { _tag: "saved", record: storedRecord(after.userRecord.walkthroughProgressById, after.userRecord.taskStatusById, after.userRecord.walkthroughResetAt) },
     );
   }
   if (ran.unreadable !== undefined) effects.push({ _tag: "recordUnreadable", error: ran.unreadable });

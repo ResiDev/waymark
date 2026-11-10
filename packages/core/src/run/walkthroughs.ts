@@ -2,7 +2,7 @@ import { recordDropped } from "../problems";
 import type { Candidates, StartRequests, Change, RunState, Live, Message, UserRecord, ShownRunState, WaymarkState, StepState, WaymarkRead, Work } from "../state";
 import { DEFAULT_MAX_AGE, staleness } from "../storage/records";
 import type { Walkthrough, WalkthroughProgress } from "../walkthrough/types";
-import { verified, isUnverified, place, put } from "./record";
+import { verified, isUnverified, place, put, resetIn } from "./record";
 import { apply, ended, enter, restartUnseen, running, seeWaymark, stepAt, unseenWaymark } from "./rules";
 import type { OnStep, Outcome } from "./rules";
 import type { Action, Snapshot } from "./types";
@@ -168,7 +168,7 @@ export const reset =
   (runState, change) =>
     openId(runState) === walkthrough.id
       ? obey({ type: "act", action: "reset" })(runState, change)
-      : putIn(runState, walkthrough.id, undefined);
+      : withUserRecord(runState, resetIn(runState.userRecord, walkthrough.id, change.now));
 
 export const act =
   (action: Action, walkthrough: Walkthrough | undefined): Work =>

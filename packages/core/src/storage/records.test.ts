@@ -104,3 +104,53 @@ describe("parseRecord", () => {
     expect(parsed.ok ? undefined : parsed.error.message).toMatch(/a save's changes, not a record/);
   });
 });
+
+// Thread 3: a reset is kept with its time, so whichever is newer, a walkthrough's entry or its reset, wins.
+describe("resets", () => {
+  const at = (changedAt: number): WalkthroughProgress => ({ ...progress, changedAt });
+  const resetting = (resets: Record<string, number>): RecordChanges => ({
+    version: 1,
+    set: { walkthroughs: {}, resets, tasks: {} },
+    remove: { walkthroughs: Object.keys(resets), tasks: [] },
+  });
+  const setting = (walkthroughs: Record<string, WalkthroughProgress>): RecordChanges => ({
+    version: 1,
+    set: { walkthroughs, tasks: {} },
+    remove: { walkthroughs: [], tasks: [] },
+  });
+  const record = (walkthroughs: Record<string, WalkthroughProgress>, resets?: Record<string, number>) => ({
+    version: 1,
+    walkthroughs,
+    ...(resets === undefined ? {} : { resets }),
+    tasks: { t: "done" },
+  });
+
+  it("reads a record written before resets, and leaves the field out of one with none", () => {
+    expect(parseRecord(record({ tour: at(1_000) }))).toMatchObject({ ok: true, value: { resets: {} } });
+    expect(applyChanges(record({ tour: at(1_000) }), changes({ u: "done" }))).not.toHaveProperty("resets");
+  });
+
+  it("stores a reset in place of an older entry, and keeps a newer entry over a reset", () => {
+    expect(applyChanges(record({ tour: at(1_000) }), resetting({ tour: 2_000 }))).toEqual(record({}, { tour: 2_000 }));
+    expect(applyChanges(record({ tour: at(3_000) }), resetting({ tour: 2_000 }))).toEqual(record({ tour: at(3_000) }));
+  });
+
+  it("keeps a reset over an older save landing after it, and gives way to a newer one", () => {
+    expect(applyChanges(record({}, { tour: 2_000 }), setting({ tour: at(1_000) }))).toEqual(record({}, { tour: 2_000 }));
+    expect(applyChanges(record({}, { tour: 2_000 }), setting({ tour: at(3_000) }))).toEqual(record({ tour: at(3_000) }));
+  });
+
+  it("lets an entry win a reset at the same time, whichever lands first", () => {
+    expect(applyChanges(record({}, { tour: 2_000 }), setting({ tour: at(2_000) }))).toEqual(record({ tour: at(2_000) }));
+    expect(applyChanges(record({ tour: at(2_000) }), resetting({ tour: 2_000 }))).toEqual(record({ tour: at(2_000) }));
+  });
+
+  it("drops a stored reset no newer than its walkthrough's entry", () => {
+    expect(parseRecord(record({ tour: at(3_000) }, { tour: 2_000 }))).toMatchObject({ ok: true, value: { walkthroughs: { tour: at(3_000) }, resets: {} } });
+    expect(parseRecord(record({ tour: at(2_000) }, { tour: 2_000 }))).toMatchObject({ ok: true, value: { walkthroughs: { tour: at(2_000) }, resets: {} } });
+  });
+
+  it("combines a reset and a later start into the start", () => {
+    expect(combine(resetting({ tour: 2_000 }), setting({ tour: at(3_000) }))).toEqual(setting({ tour: at(3_000) }));
+  });
+});

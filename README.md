@@ -134,7 +134,7 @@ The Run has two ways to start a walkthrough, and the difference is who asked. `r
 | Part way | Opens where it was, now. | Nothing. It stays as it was. |
 | Finished or exited | Starts again at step 1. | Nothing. |
 
-`run.reset(walkthrough)` starts a walkthrough again from step 1, whatever its progress. An open one goes back to its first step, and any other is forgotten, as if the user had never started it.
+`run.reset(walkthrough)` starts a walkthrough again from step 1, whatever its progress. An open one goes back to its first step, and any other is forgotten, as if the user had never started it. Other open tabs forget it too, once they hear the record.
 
 `run.act(action, walkthrough)` does what the user can: `advance`, `previous`, `collapse`, `resume`, `reset` or `exit`. Without a walkthrough, it acts on the open one. A walkthrough that isn't open takes only `resume`, `reset` and `exit`.
 

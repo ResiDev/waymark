@@ -158,21 +158,25 @@ function act(harness: Harness, before: World, action: string, to: ModelState): W
         const given = input.rec[id];
         if (given !== undefined && given.status !== "none") walkthroughs[id] = stored(harness, id, given, world.now - 1000);
       }
-      return send(world, { _tag: "loaded", read: { ok: true, value: { walkthroughs, tasks: {}, dropped: [] } } });
+      return send(world, { _tag: "loaded", read: { ok: true, value: { walkthroughs, resets: {}, tasks: {}, dropped: [] } } });
     }
     case "Heard": {
       // Another tab's record: ours, entry by entry, but for input.w's.
       const ours = world.model.userRecord.walkthroughProgressById;
       const walkthroughs: Record<string, WalkthroughProgress> = {};
+      // The model's heard "none" is another tab's reset, after anything this tab did.
+      const resets: Record<string, number> = {};
       for (const id of harness.ids) {
         const mine = ours[id];
         if (id !== input.w) {
           if (mine !== undefined) walkthroughs[id] = { ...mine };
         } else if (input.e.status !== "none") {
           walkthroughs[id] = stored(harness, id, input.e, input.newer || mine === undefined ? world.now : mine.changedAt - 1);
+        } else {
+          resets[id] = world.now;
         }
       }
-      const heard = send(world, { _tag: "heard", read: { ok: true, value: { walkthroughs, tasks: {}, dropped: [] } } });
+      const heard = send(world, { _tag: "heard", read: { ok: true, value: { walkthroughs, resets, tasks: {}, dropped: [] } } });
       if (heard.threw) return heard;
       const arrived = send(heard, { _tag: "arrived" });
       return arrived.threw ? { ...heard, threw: true } : arrived;

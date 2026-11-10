@@ -19,8 +19,9 @@ import type { Backend, Options } from "./backend";
 
 type Entry = Readonly<{ s: "none" | "running" | "finished"; c: boolean; at: number }>;
 /** A record, or one of the model's sentinels in its `task`: "unreadable" or "failed". */
-type Rec = Readonly<{ w: Entry; task: string }>;
-type Change = Readonly<{ w: Entry | "keep"; task: string; replace: boolean }>;
+/** `r`: when the hint was reset, while it has no entry since, or -1. */
+type Rec = Readonly<{ w: Entry; r: number; task: string }>;
+type Change = Readonly<{ w: Entry | "keep"; r: number; task: string; replace: boolean }>;
 type Tab = Readonly<{
   status: "loading" | "ready" | "error" | "unreadable";
   mem: Rec;
@@ -42,10 +43,15 @@ const entryOf = (value: Value): Entry => ({
   c: asBoolean(field(value, "c")),
   at: asNumber(field(value, "at")),
 });
-const recOf = (value: Value): Rec => ({ w: entryOf(field(value, "w")), task: asString(field(value, "task")) });
+const recOf = (value: Value): Rec => ({ w: entryOf(field(value, "w")), r: asNumber(field(value, "r")), task: asString(field(value, "task")) });
 const changeOf = (value: Value): Change => {
   const w = entryOf(field(value, "w"));
-  return { w: (w.s as string) === "keep" ? "keep" : w, task: asString(field(value, "task")), replace: asBoolean(field(value, "replace")) };
+  return {
+    w: (w.s as string) === "keep" ? "keep" : w,
+    r: asNumber(field(value, "r")),
+    task: asString(field(value, "task")),
+    replace: asBoolean(field(value, "replace")),
+  };
 };
 const tabOf = (value: Value): Tab => ({
   status: asOneOf(field(value, "status"), ["loading", "ready", "error", "unreadable"] as const),
@@ -71,20 +77,29 @@ const toState = (get: (name: string) => Value): State => ({
 // ---- The model's values as the real code holds them. ----
 
 const BASE = 1_000_000;
-const SECOND = 1_000;
+// A tick of the model's clock is a millisecond: a tab stamps a reset 1 ms after the entry it removes.
+const TICK = 1;
 const NEWER = { version: 2 };
 const hint = defineWalkthrough({ id: "hint", steps: [{}] });
 const checklist = defineChecklists({ tasks: { t: {} } }).checklists.main;
 
+const timeOf = (at: number) => BASE + at * TICK;
+
 const progressOf = (entry: Entry) =>
-  entry.s === "none" ? undefined : { status: entry.s, step: 0, stepCount: 1, collapsed: entry.c, changedAt: BASE + entry.at * SECOND };
+  entry.s === "none" ? undefined : { status: entry.s, step: 0, stepCount: 1, collapsed: entry.c, changedAt: timeOf(entry.at) };
 
 /** What the store holds for a record of the model: null when empty, a newer version's record when unreadable. */
+
 function storedOf(rec: Rec): unknown {
   if (rec.task === "unreadable") return NEWER;
   const progress = progressOf(rec.w);
-  if (progress === undefined && rec.task === "todo") return null;
-  return { version: 1, walkthroughs: progress === undefined ? {} : { hint: progress }, tasks: rec.task === "todo" ? {} : { t: rec.task } };
+  if (progress === undefined && rec.r < 0 && rec.task === "todo") return null;
+  return {
+    version: 1,
+    walkthroughs: progress === undefined ? {} : { hint: progress },
+    ...(rec.r < 0 ? {} : { resets: { hint: timeOf(rec.r) } }),
+    tasks: rec.task === "todo" ? {} : { t: rec.task },
+  };
 }
 
 /** A save's changes, as RecordChanges. */
@@ -98,7 +113,8 @@ function changesOf(change: Change): unknown {
   }
   if (change.task === "done" || change.task === "reopened") set.tasks["t"] = change.task;
   else if (change.task === "todo" && !change.replace) remove.tasks.push("t");
-  return change.replace ? { version: 1, set, remove, replace: true } : { version: 1, set, remove };
+  const sets = change.r < 0 ? set : { ...set, resets: { hint: timeOf(change.r) } };
+  return change.replace ? { version: 1, set: sets, remove, replace: true } : { version: 1, set: sets, remove };
 }
 
 /** Keys sorted, so two values that hold the same print the same. */
@@ -187,7 +203,7 @@ function apply(real: Real, { action, from, to }: Step) {
   const before = [...real.reports];
   switch (action) {
     case "Tick":
-      vi.setSystemTime(BASE + to.clock * SECOND);
+      vi.setSystemTime(timeOf(to.clock));
       break;
     case "Command": {
       const index = tabWhere(from, to, (a, b) => !sameJson(a.held, b.held) || !sameJson(a.mem, b.mem));

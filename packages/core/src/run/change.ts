@@ -15,11 +15,19 @@ export type Ran = Readonly<{
   told: Change;
 }>;
 
-/** What storage holds: the record heard, with the entries storage holds older than the ones this tab kept. */
-const asStored = (userRecord: UserRecord, storedOlder: Change["storedOlder"]): UserRecord =>
-  storedOlder.size === 0
-    ? userRecord
-    : { ...userRecord, walkthroughProgressById: Object.assign(dictionary<WalkthroughProgress>(), userRecord.walkthroughProgressById, Object.fromEntries(storedOlder)) };
+/** What storage holds: the record heard, with what storage holds older than this tab kept. */
+function asStored(userRecord: UserRecord, storedOlder: Change["storedOlder"]): UserRecord {
+  if (storedOlder.size === 0) return userRecord;
+  const progress = Object.assign(dictionary<WalkthroughProgress>(), userRecord.walkthroughProgressById);
+  const resets = Object.assign(dictionary<number>(), userRecord.walkthroughResetAt);
+  for (const [id, { entry, reset }] of storedOlder) {
+    if (entry === undefined) delete progress[id];
+    else progress[id] = entry;
+    if (reset === undefined) delete resets[id];
+    else resets[id] = reset;
+  }
+  return { ...userRecord, walkthroughProgressById: progress, walkthroughResetAt: resets };
+}
 
 const arrive: Work = (runState, change) => conditions(verifyAll(runState, change), change);
 

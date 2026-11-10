@@ -193,6 +193,7 @@ HeardEntry(R, D, w, theirs, mode, openHere) ==
       closed == IF theirs.status = "running" /\ ~theirs.collapsed THEN [theirs EXCEPT !.collapsed = TRUE] ELSE theirs
   IN
   IF w = openHere THEN keep
+  \* None heard is another tab's reset, newer than this tab's entry (record.ts heardWalkthroughProgress).
   ELSE IF theirs.status = "none" THEN (IF ours.status = "none" THEN keep ELSE gone)
   ELSE IF ours.status # "none" /\ mode = "older" THEN keep
   ELSE IF ours.status # "none" /\ mode = "same" /\ (theirs = ours \/ closed = ours) THEN keep

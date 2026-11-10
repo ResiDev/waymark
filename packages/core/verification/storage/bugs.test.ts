@@ -74,13 +74,13 @@ describe("a heard record without a walkthrough this tab just finished (NoReshowH
     return tabs;
   };
 
-  it.fails("a finished hint shows again after another tab saves", () => {
+  it("a finished hint stays finished after another tab saves", () => {
     const { a } = race();
     a.requestStart(hint);
     expect(open(a)).toBeUndefined();
   });
 
-  it.fails("a finished hint is stored as running again after another tab saves", () => {
+  it("a finished hint stays stored as finished after another tab saves", () => {
     const { net, a } = race();
     at(3_000);
     a.requestStart(hint);
@@ -88,18 +88,15 @@ describe("a heard record without a walkthrough this tab just finished (NoReshowH
     expect(storedHint(net)).toBe("finished");
   });
 
-  it("forgets the finish only in memory: storage keeps it, and the tab has it back once it hears its own save", () => {
+  it("keeps the finish on hearing a record without it, which has no reset of it either", () => {
     const { net, a } = race();
-    expect(hintOf(a)).toBeUndefined();
+    expect(hintOf(a)).toBe("finished");
     landAll(net);
     expect(storedHint(net)).toBe("finished");
-    net.hear(0);
-    net.hear(0);
-    expect(hintOf(a)).toBe("finished");
   });
 
   // One tab is enough: the echo of its own earlier save, from before it ran the hint, has no hint in it.
-  it.fails("a finished hint shows again when the tab hears its own earlier save", () => {
+  it("a finished hint stays finished when the tab hears its own earlier save", () => {
     at(1_000);
     const net = backend(null, remote);
     const a = tabOn(net);
@@ -113,6 +110,100 @@ describe("a heard record without a walkthrough this tab just finished (NoReshowH
     net.hear(0);
     a.requestStart(hint);
     expect(open(a)).toBeUndefined();
+  });
+});
+
+// Thread 3: a reset is stored with its time, so whichever is newer, a walkthrough's entry or its reset, wins.
+describe("a reset in one tab, as other tabs and storage take it", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const hearAll = (net: Backend) => {
+    for (const index of [0, 1]) while (net.side(index).toHear.length > 0) net.hear(index);
+  };
+
+  it("reaches another open tab: the hint can show there again", () => {
+    at(1_000);
+    const { net, a, b } = twoTabs(remote);
+    a.start(hint);
+    a.act("advance");
+    landAll(net);
+    hearAll(net);
+    expect(hintOf(b)).toBe("finished");
+
+    at(2_000);
+    b.reset(hint);
+    landAll(net);
+    hearAll(net);
+    expect(hintOf(a)).toBeUndefined();
+    a.requestStart(hint);
+    expect(open(a)).toBe("hint");
+  });
+
+  it("stays when an older save of the walkthrough lands after it", () => {
+    at(1_000);
+    const { net, a, b } = twoTabs(remote);
+    a.start(hint);
+    landAll(net);
+    hearAll(net);
+    at(2_000);
+    a.act("advance");
+    at(3_000);
+    b.reset(hint);
+    net.land(1);
+    net.land(0);
+    expect(storedHint(net)).toBeUndefined();
+    hearAll(net);
+    landAll(net);
+    expect([hintOf(a), hintOf(b), storedHint(net)]).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("gives way to the walkthrough started again after it", () => {
+    at(1_000);
+    const { net, a, b } = twoTabs(remote);
+    a.start(hint);
+    a.act("advance");
+    landAll(net);
+    hearAll(net);
+    at(2_000);
+    b.reset(hint);
+    landAll(net);
+    at(3_000);
+    a.start(hint);
+    landAll(net);
+    hearAll(net);
+    landAll(net);
+    expect([hintOf(a), hintOf(b), storedHint(net)]).toEqual(["running", "running", "running"]);
+  });
+
+  // A tab's own writes in one millisecond: each wins over the one before it, in storage and in the other tab.
+  it("loses to a start in the same millisecond, as a replay button does", () => {
+    at(1_000);
+    const { net, a, b } = twoTabs(remote);
+    a.start(hint);
+    a.act("advance");
+    landAll(net);
+    hearAll(net);
+    a.reset(hint);
+    a.start(hint);
+    landAll(net);
+    hearAll(net);
+    expect([hintOf(a), hintOf(b), storedHint(net)]).toEqual(["running", "running", "running"]);
+  });
+
+  it("wins over a finish in the same millisecond", () => {
+    at(1_000);
+    const { net, a, b } = twoTabs(remote);
+    a.start(hint);
+    a.act("advance");
+    a.reset(hint);
+    landAll(net);
+    hearAll(net);
+    expect([hintOf(a), hintOf(b), storedHint(net)]).toEqual([undefined, undefined, undefined]);
   });
 });
 

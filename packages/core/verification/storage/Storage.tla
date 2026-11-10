@@ -39,20 +39,28 @@ Device == 0
 \* Sentinels are records of the same shape as the values they stand beside: TLC compares only like with like.
 None == [s |-> "none", c |-> FALSE, at |-> 0]
 Keep == [s |-> "keep", c |-> FALSE, at |-> 0]
-Unreadable == [w |-> None, task |-> "unreadable"]
-Failed == [w |-> None, task |-> "failed"]
+Unreadable == [w |-> None, r |-> -1, task |-> "unreadable"]
+Failed == [w |-> None, r |-> -1, task |-> "failed"]
 
 Running(collapsed, time) == [s |-> "running", c |-> collapsed, at |-> time]
 Finished(time) == [s |-> "finished", c |-> FALSE, at |-> time]
-Entries == {None} \cup {Running(b, n) : b \in BOOLEAN, n \in 0..MaxClock} \cup {Finished(n) : n \in 0..MaxClock}
+\* A tab stamps a write after what it holds (record.ts put, resetIn), so a time can pass the clock by a tick a command.
+Times == 0..(MaxClock + MaxCmds)
+Entries == {None} \cup {Running(b, n) : b \in BOOLEAN, n \in Times} \cup {Finished(n) : n \in Times}
 \* A record Waymark can read. Empty stands for null too: parseRecord reads both as no entries.
 \* task "reopened" is a tick taken back (tasks.ts reopen): todo, and stored.
-Records == [w : Entries, task : {"todo", "done", "reopened"}]
-Empty == [w |-> None, task |-> "todo"]
+\* r is when the hint was reset, while it has no entry since (records.ts resets), or -1.
+Resets == {-1} \cup Times
+Records == [w : Entries, r : Resets, task : {"todo", "done", "reopened"}]
+Empty == [w |-> None, r |-> -1, task |-> "todo"]
 StoredValues == Records \cup {Unreadable}
-\* RecordChanges: None as w removes the entry; a task's "todo" removes its status.
-Changes == [w : Entries \cup {Keep}, task : {"keep", "todo", "done", "reopened"}, replace : BOOLEAN]
-NoChange == [w |-> Keep, task |-> "keep", replace |-> FALSE]
+\* RecordChanges: None as w removes the entry; r, unless -1, is a reset sent with it; a task's "todo" removes its status.
+Changes == [w : Entries \cup {Keep}, r : Resets, task : {"keep", "todo", "done", "reopened"}, replace : BOOLEAN]
+NoChange == [w |-> Keep, r |-> -1, task |-> "keep", replace |-> FALSE]
+
+\* When a record last changed the hint: its entry, or its reset, or -1 for neither.
+Time(w, r) == IF w # None THEN w.at ELSE r
+Max(a, b) == IF a > b THEN a ELSE b
 
 Statuses == {"loading", "ready", "error", "unreadable"}
 Loads == {"idle", "asked", "answered", "done"}
@@ -114,47 +122,67 @@ TypeOK ==
 \* merge: changes made to what is stored; a replace starts from nothing. The stored entry stays
 \* when it changed later than the one set, so an older save landing last does not undo a newer one;
 \* at the same time the set one wins. A removal has no time, and always goes through.
+\* A reset stored stays over an entry older than it, and a reset set takes the place of an entry older
+\* than it: at the same time the entry wins. A removal with no reset always goes through.
 Merge(base, c) ==
   LET b == IF c.replace THEN Empty ELSE base
-      newerStored == c.w # Keep /\ c.w # None /\ b.w # None /\ b.w.at > c.w.at
-  IN [w |-> IF c.w = Keep \/ newerStored THEN b.w ELSE c.w, task |-> IF c.task = "keep" THEN b.task ELSE c.task]
+      kept == c.w = Keep \/ c.w = None \/ (b.w # None /\ b.w.at > c.w.at) \/ (b.r >= 0 /\ b.r > c.w.at)
+      w1 == IF kept THEN b.w ELSE c.w
+      r1 == IF kept THEN b.r ELSE -1
+      reset == c.r >= 0 /\ ~(w1 # None /\ w1.at >= c.r)
+      w2 == IF reset \/ (c.w = None /\ c.r < 0) THEN None ELSE w1
+      r2 == IF reset THEN Max(c.r, r1) ELSE r1
+  IN [w |-> w2, r |-> r2, task |-> IF c.task = "keep" THEN b.task ELSE c.task]
 
 \* combine: two saves' changes as one, the later's over the earlier's.
 Combine(e, l) ==
   IF l.replace THEN l
-  ELSE [w |-> IF l.w = Keep THEN e.w ELSE l.w, task |-> IF l.task = "keep" THEN e.task ELSE l.task, replace |-> e.replace]
+  ELSE [w |-> IF l.w = Keep THEN e.w ELSE l.w,
+        r |-> IF l.r >= 0 THEN l.r ELSE IF l.w \notin {Keep, None} THEN -1 ELSE e.r,
+        task |-> IF l.task = "keep" THEN e.task ELSE l.task, replace |-> e.replace]
 
 \* The entries changes set or remove.
-Keys(c) == {k \in {"w", "task"} : c.replace \/ (k = "w" /\ c.w # Keep) \/ (k = "task" /\ c.task # "keep")}
+Keys(c) == {k \in {"w", "task"} : c.replace \/ (k = "w" /\ (c.w # Keep \/ c.r >= 0)) \/ (k = "task" /\ c.task # "keep")}
 
 \* records.ts without: changes but for the entries in ks. A replace stays whole.
 Without(c, ks) ==
   IF c.replace THEN c
-  ELSE [w |-> IF "w" \in ks THEN Keep ELSE c.w, task |-> IF "task" \in ks THEN "keep" ELSE c.task, replace |-> FALSE]
+  ELSE [w |-> IF "w" \in ks THEN Keep ELSE c.w, r |-> IF "w" \in ks THEN -1 ELSE c.r,
+        task |-> IF "task" \in ks THEN "keep" ELSE c.task, replace |-> FALSE]
 
 \* changesBetween, from the record before a change to the one after it.
-Diff(b, a) == [w |-> IF b.w = a.w THEN Keep ELSE a.w, task |-> IF b.task = a.task THEN "keep" ELSE a.task, replace |-> FALSE]
+\* A reset gone is not sent: the entry newer than it is.
+Diff(b, a) == [w |-> IF b.w = a.w THEN Keep ELSE a.w, r |-> IF a.r = b.r THEN -1 ELSE a.r,
+               task |-> IF b.task = a.task THEN "keep" ELSE a.task, replace |-> FALSE]
 
 (* The Run, as src/run/walkthroughs.ts, tasks.ts and record.ts work it. *)
 
 \* The hint is open here: running and not collapsed. A loaded entry like that opens on arrival.
 IsOpen(r) == r.w # None /\ r.w.s = "running" /\ ~r.w.c
 
-\* One command on the record, at time now.
+\* One command on the record, at time now. record.ts put: an entry is stamped no earlier than the
+\* entry or reset it takes the place of; resetIn: a reset is stamped after the entry it removes.
 Do(cmd, r, now) ==
-  CASE cmd = "start"   -> IF IsOpen(r) THEN r ELSE [r EXCEPT !.w = Running(FALSE, now)]
+  LET at == Max(now, Time(r.w, r.r))
+  IN
+  CASE cmd = "start"   -> IF IsOpen(r) THEN r ELSE [r EXCEPT !.w = Running(FALSE, at), !.r = -1]
     \* requestStart opens only a walkthrough with no progress (openRequest).
-    [] cmd = "request" -> IF r.w = None THEN [r EXCEPT !.w = Running(FALSE, now)] ELSE r
+    [] cmd = "request" -> IF r.w = None THEN [r EXCEPT !.w = Running(FALSE, at), !.r = -1] ELSE r
     \* act("advance") on the hint's one step.
-    [] cmd = "finish"  -> IF IsOpen(r) THEN [r EXCEPT !.w = Finished(now)] ELSE r
+    [] cmd = "finish"  -> IF IsOpen(r) THEN [r EXCEPT !.w = Finished(at)] ELSE r
     \* reset: back to step 0 when open, which for a one-step hint changes nothing; otherwise the entry goes.
-    [] cmd = "reset"   -> IF IsOpen(r) THEN r ELSE [r EXCEPT !.w = None]
+    \* record.ts resetIn: the reset is kept with its time, if there was an entry to reset.
+    [] cmd = "reset"   -> IF IsOpen(r) \/ r.w = None THEN r ELSE [r EXCEPT !.w = None, !.r = Max(now, r.w.at + 1)]
     [] cmd = "tick"    -> [r EXCEPT !.task = IF r.task = "done" THEN "reopened" ELSE "done"]
 
 \* heardWalkthroughProgress, record.ts:53-63.
-HeardW(ours, theirs, openHere) ==
-  IF openHere THEN ours
-  ELSE IF theirs = None THEN None
+\* record.ts heardWalkthroughProgress: the newer of an entry and a reset wins, the entry at the same
+\* time, but the one open here
+\* stays. A record with neither was written before this tab's entry reached it, and takes nothing away.
+HeardW(ours, ourR, theirs, theirR, openHere) ==
+  IF openHere THEN (IF ours.at >= Time(theirs, theirR) THEN ours ELSE [ours EXCEPT !.at = Time(theirs, theirR)])
+  ELSE IF theirs = None THEN (IF theirR >= 0 /\ (ours = None \/ theirR > ours.at) THEN None ELSE ours)
+  ELSE IF ours = None /\ ourR >= 0 /\ ourR > theirs.at THEN None
   ELSE IF ours # None /\ ours.at > theirs.at THEN ours
   ELSE IF theirs.s = "running" THEN [theirs EXCEPT !.c = TRUE] ELSE theirs
 
@@ -192,8 +220,8 @@ TabWrite(W, t, v, c) ==
       both == old \in Records /\ v \in Records
       h == [W.hist EXCEPT
               !.overwrote = W.hist.overwrote \/ (old = Unreadable /\ ~c.replace),
-              !.clobbered = W.hist.clobbered \/ (both /\ ~c.replace /\ ((c.w = Keep /\ v.w # old.w) \/ (c.task = "keep" /\ v.task # old.task))),
-              !.reverted  = W.hist.reverted \/ (both /\ ~c.replace /\ old.w # None /\ v.w # None /\ v.w.at < old.w.at)]
+              !.clobbered = W.hist.clobbered \/ (both /\ ~c.replace /\ ((c.w = Keep /\ c.r < 0 /\ (v.w # old.w \/ v.r # old.r)) \/ (c.task = "keep" /\ v.task # old.task))),
+              !.reverted  = W.hist.reverted \/ (both /\ ~c.replace /\ Time(v.w, v.r) < Time(old.w, old.r))]
   IN Write([W EXCEPT !.hist = h], t, v)
 
 \* The Run hears RecordUnreadableError: unreadable, reported on the change into it (turnedUnreadable).
@@ -253,15 +281,16 @@ Changed(W, t, before) ==
   LET c == Diff(before, W.tabs[t].mem) IN IF c = NoChange THEN {W} ELSE Save(W, t, c)
 
 \* History of a command, for NoReshowHere.
+\* A finish that a reset stamped later wins over is not this tab's to keep: the newer by time wins.
 Track(W, t, cmd, r) ==
-  LET finished == cmd = "finish" /\ IsOpen(r)
+  LET reset == cmd = "reset" /\ ~IsOpen(r) /\ r.w # None
+      finished == cmd = "finish" /\ IsOpen(r) /\ W.hist.lastReset <= W.tabs[t].mem.w.at
       reshow == cmd = "request" /\ r.w = None /\ W.tabs[t].finishedHere
-      reset == cmd = "reset" /\ ~IsOpen(r) /\ r.w # None
       after(other) ==
         [W.tabs[other] EXCEPT
            !.finishedHere = IF other = t THEN finished \/ (W.tabs[other].finishedHere /\ cmd # "start" /\ ~reset) ELSE W.tabs[other].finishedHere /\ ~reset,
            !.reshown = W.tabs[other].reshown \/ (other = t /\ reshow)]
-  IN [W EXCEPT !.tabs = EachTab(after)]
+  IN [W EXCEPT !.tabs = EachTab(after), !.hist.lastReset = IF reset THEN Max(W.hist.lastReset, W.tabs[t].mem.r) ELSE W.hist.lastReset]
 
 \* One command as one change in tab t.
 Run(W, t, cmd) ==
@@ -277,11 +306,17 @@ Subscribe(W, t) ==
 Heard(W, t, v, n) ==
   IF v = Unreadable THEN {[Refuse(W, t) EXCEPT !.tabs[t].seen = n]}
   ELSE LET rHeard == W.tabs[t].mem
-           WHeard == [W EXCEPT !.tabs[t].mem = [w |-> HeardW(rHeard.w, v.w, IsOpen(rHeard)), task |-> v.task],
+           w1 == HeardW(rHeard.w, rHeard.r, v.w, v.r, IsOpen(rHeard))
+           r1 == IF w1 # None THEN -1 ELSE Max(rHeard.r, v.r)
+           mem1 == [w |-> w1, r |-> r1, task |-> v.task]
+           WHeard == [W EXCEPT !.tabs[t].mem = mem1,
                                !.tabs[t].status = IF W.tabs[t].status = "unreadable" THEN "ready" ELSE W.tabs[t].status,
                                !.tabs[t].reported = FALSE, !.tabs[t].seen = n]
-       IN IF rHeard.w # None /\ v.w # None /\ rHeard.w.at > v.w.at
-          THEN Save(WHeard, t, [w |-> rHeard.w, task |-> "keep", replace |-> FALSE])
+           \* record.ts winsOver: newer, or an entry over only a reset at the same time.
+           wins == Time(w1, r1) > Time(v.w, v.r) \/ (Time(w1, r1) = Time(v.w, v.r) /\ w1 # None /\ v.w = None /\ v.r >= 0)
+       \* change.ts asStored: saved from what was heard, so what this tab keeps that wins goes again.
+       IN IF wins
+          THEN Save(WHeard, t, Diff([w |-> v.w, r |-> v.r, task |-> v.task], mem1))
           ELSE {WHeard}
 
 \* The load at connect arrives: loaded() in record.ts with the held commands, then the record heard meanwhile.
@@ -311,7 +346,7 @@ Init ==
   /\ writer = Device
   /\ version = 0
   /\ tabs = <<TabInit, TabInit>>
-  /\ hist = [overwrote |-> FALSE, clobbered |-> FALSE, reverted |-> FALSE, double |-> FALSE]
+  /\ hist = [overwrote |-> FALSE, clobbered |-> FALSE, reverted |-> FALSE, double |-> FALSE, lastReset |-> -1]
   /\ clock = 0
   /\ cmds = 0
   /\ device = 0
@@ -333,7 +368,7 @@ Replace(t) ==
   /\ tabs[t].status = "unreadable"
   /\ LET rReplace == tabs[t].mem
          WReplace == [World EXCEPT !.tabs[t].status = "ready", !.tabs[t].reported = FALSE]
-     IN \E W \in Save(WReplace, t, [w |-> rReplace.w, task |-> rReplace.task, replace |-> TRUE]) : Become(W)
+     IN \E W \in Save(WReplace, t, [w |-> rReplace.w, r |-> rReplace.r, task |-> rReplace.task, replace |-> TRUE]) : Become(W)
   /\ cmds' = cmds + 1
   /\ UNCHANGED <<clock, device>>
 
@@ -480,7 +515,9 @@ MostRecentStored == ~hist.reverted
 \* turnedUnreadable: reported again only after a readable record.
 UnreadableReportedOnce == ~hist.double
 
-\* A tab that finished the hint does not show it again, unless it was started or reset since.
+\* A tab that finished the hint does not show it again, unless it was started or reset since, or a
+\* reset stamped later than the finish wins over it: one made in another tab that had not heard of
+\* it, in the same millisecond, or on a device whose clock is ahead.
 NoReshowHere == \A t \in Tabs : ~tabs[t].reshown
 
 \* Thread 10, storage wins: once every save has landed and every tab has heard the latest
