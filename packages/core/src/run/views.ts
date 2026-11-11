@@ -115,14 +115,19 @@ export function viewChecklist(definition: ChecklistDefinition<AnyTask>, group: C
 export const checklistNow = (views: Views, given: Given, definition: ChecklistDefinition<AnyTask>): Snapshot | undefined =>
   views.checklists.get(definition) ?? given.checklistsAsked.get(definition)?.first;
 
-/** Every view, after a change. A checklist that showed nothing new keeps its object. */
+/**
+ * Every view, after a change. Kept whole while the Run's views read the same
+ * objects, as a checklist reads nothing else. A checklist that showed nothing
+ * new keeps its object.
+ */
 export function viewAll(views: Views, given: Given, runState: ShownRunState): Views {
   const run = viewRun(views.run, runState);
+  if (run === views.run) return views;
   let checklists: Map<ChecklistDefinition<AnyTask>, Snapshot> | undefined;
   for (const [definition, { group, first }] of given.checklistsAsked) {
     const last = views.checklists.get(definition);
     const shown = viewChecklist(definition, group, last ?? first, runState);
     if (shown !== last) (checklists ??= new Map(views.checklists)).set(definition, shown);
   }
-  return run === views.run && checklists === undefined ? views : { run, checklists: checklists ?? views.checklists };
+  return { run, checklists: checklists ?? views.checklists };
 }
