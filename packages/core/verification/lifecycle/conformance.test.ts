@@ -211,7 +211,7 @@ function differences(harness: Harness, world: World, state: ModelState): string[
   const runState = runStateOf(model, given);
   differ("open", openId(runState) ?? "none", state.open);
   differ("live.openStep", model.live.openStep?.walkthrough ?? "none", state.open);
-  differ("snapshot.open", model.views.run.snapshot.value.open?.walkthrough.id ?? "none", state.open);
+  differ("snapshot.open", model.views.run.snapshot.open?.walkthrough.id ?? "none", state.open);
   differ("waiting", model.startRequests.waitingToStart, state.waiting);
   differ("loading", userRecord.storageStatus.type === "loading", state.loading);
   differ(
@@ -226,7 +226,7 @@ function differences(harness: Harness, world: World, state: ModelState): string[
     const verified = state.defined[id] === true && !(state.unverified[id] === true && modelled?.status !== "none");
     return state.open === "none" && verified && modelled?.status === "running" && modelled.collapsed;
   });
-  const real = new Set(model.views.run.candidates.value.map(([walkthrough]) => walkthrough.id));
+  const real = new Set(model.views.run.candidates.map(([walkthrough]) => walkthrough.id));
   differ("beacon candidates", harness.ids.filter((id) => real.has(id)), candidates);
   return found;
 }

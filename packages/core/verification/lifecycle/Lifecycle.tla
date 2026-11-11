@@ -227,7 +227,7 @@ OpenRequest(R) ==
 
 Settle(R) == OpenRequest(DropClosed(R))
 
-\* views.ts beaconsShown calls stepAt, through waymarkStateOf, for every
+\* views.ts beaconsView calls stepAt, through waymarkStateOf, for every
 \* beacon candidate: running, collapsed, defined and verified, with nothing open.
 BeaconCrash(R, D) ==
   /\ OpenId(R) = "none"

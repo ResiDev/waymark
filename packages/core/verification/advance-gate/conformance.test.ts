@@ -260,7 +260,7 @@ function differences(harness: Harness, world: World, state: ModelState): string[
   differ("status", progress?.status, state.status);
   differ("step", progress?.step, state.step);
   differ("collapsed", progress?.collapsed, state.collapsed);
-  const open = world.model.views.run.snapshot.value.open;
+  const open = world.model.views.run.snapshot.open;
   differ("canAdvance", open?.snapshot.canAdvance ?? false, nextEnabled(state));
   const stepState = openIn(harness, world)?.stepState;
   differ("open", stepState !== undefined, isOpen(state));

@@ -10,7 +10,7 @@ import { play, type Session } from "./session";
 function atLastMsg(session: Session) {
   const turn = [...play(session)].at(-1);
   if (turn === undefined) throw new Error("The session sent nothing.");
-  return { was: turn.before.views.run.snapshot.value, now: turn.model.views.run.snapshot.value };
+  return { was: turn.before.views.run.snapshot, now: turn.model.views.run.snapshot };
 }
 
 // The app holds `replace` from a `recordUnreadable` problem and calls it a

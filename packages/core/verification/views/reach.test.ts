@@ -122,7 +122,7 @@ const reachedIn = ({ msg, model, effects, conditions }: Turn): Reached => {
   const problems = effects.flatMap((effect) => (effect._tag === "problem" ? [effect.problem] : []));
   const { openStep } = model.live;
   const moments: Readonly<Record<Moment, boolean>> = {
-    "a beacon shows": model.views.run.beacons.value.length > 0,
+    "a beacon shows": model.views.run.beacons.length > 0,
     "a command is held while the record loads": model.held.length > 0,
     "a start request waits": model.startRequests.waitingToStart.length > 0,
     "a walkthrough runs from a checklist's Start": model.startRequests.startedFromChecklist.size > 0,

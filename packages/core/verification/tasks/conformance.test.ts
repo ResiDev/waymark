@@ -266,7 +266,7 @@ function differences(harness: Harness, world: World, state: ModelState): string[
   if (!state.joined) return found;
   // What each checklist shows: its rows' statuses and walkthroughs, and whether it is complete.
   for (const definition of harness.lists) {
-    const shown = checklistNow(world.model.views, world.given, definition)?.value;
+    const shown = checklistNow(world.model.views, world.given, definition);
     const ids = LISTS[definition.name as keyof typeof LISTS];
     differ(
       `${definition.name} rows`,

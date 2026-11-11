@@ -12,7 +12,7 @@
 import * as fc from "fast-check";
 import { expect, it } from "vitest";
 import { viewChecklist, viewRun } from "../../src/run/views";
-import type { ChecklistShown, RunViews } from "../../src/state";
+import type { RunViews } from "../../src/state";
 import { play, sessions, shownOf, type Turn } from "./session";
 
 const numRuns = Number(process.env["FASTCHECK_RUNS"] ?? 100);
@@ -38,18 +38,18 @@ const toldRightly = (told: readonly unknown[], was: unknown, now: unknown): bool
 
 /** What each of the Run's views holds. A view added to `RunViews` and not listed here does not compile. */
 const valuesOf = ({ candidates, open, beacons, snapshot }: RunViews) =>
-  ({ candidates: candidates.value, open: open.value, beacons: beacons.value, snapshot: snapshot.value }) satisfies Record<Exclude<keyof RunViews, "from">, unknown>;
+  ({ candidates, open, beacons, snapshot }) satisfies Record<Exclude<keyof RunViews, "from">, unknown>;
 
 /** Each checklist the app has asked for, as it showed before the Msg and shows after it. */
 function* checklistsOf({ before, model, given }: Turn) {
   for (const [definition, { group, first }] of given.checklistsAsked) {
-    const was: ChecklistShown = before.views.checklists.get(definition) ?? first;
-    const now: ChecklistShown = model.views.checklists.get(definition) ?? first;
-    yield { definition, group, was: was.value, now: now.value };
+    const was = before.views.checklists.get(definition) ?? first;
+    const now = model.views.checklists.get(definition) ?? first;
+    yield { definition, group, was, now };
   }
 }
 
-// What goes wrong: a view that reads something its `from` does not list, or
+// What goes wrong: a view that reads something `RunViews.from` does not list, or
 // hands back its last value when it should not, shows the user a walkthrough,
 // a beacon or a tick that is no longer so, until some unrelated change
 // happens to work it out again.
@@ -60,7 +60,7 @@ it("holds what would be worked out from nothing, after every Msg", { timeout }, 
         const state = shownOf(turn.model, turn.given);
         expect(valuesOf(turn.model.views.run)).toEqual(valuesOf(viewRun(undefined, state)));
         for (const { definition, group, now } of checklistsOf(turn)) {
-          expect(now, `checklist "${definition.name}"`).toEqual(viewChecklist(definition, group, undefined, state).value);
+          expect(now, `checklist "${definition.name}"`).toEqual(viewChecklist(definition, group, undefined, state));
         }
       }
     }),
@@ -82,8 +82,8 @@ it("hands back the same snapshot until something in it changed", { timeout }, ()
     fc.property(sessions, (session) => {
       for (const turn of play(session)) {
         if (brokenToday(turn)) continue;
-        const was = turn.before.views.run.snapshot.value;
-        const now = turn.model.views.run.snapshot.value;
+        const was = turn.before.views.run.snapshot;
+        const now = turn.model.views.run.snapshot;
         expect(renewed(was, now), "the Run's snapshot is a new object holding the same things").toBe(false);
         const sameWalkthrough = was.open?.walkthrough === now.open?.walkthrough;
         expect(sameWalkthrough && renewed(was.open?.snapshot, now.open?.snapshot), "the open walkthrough's snapshot is a new object holding the same things").toBe(false);
@@ -104,7 +104,7 @@ it("tells a listener once when its snapshot is a new object, with that object, a
     fc.property(sessions, (session) => {
       for (const turn of play(session)) {
         const toldRun = turn.effects.flatMap((effect) => (effect._tag === "notifyRun" ? [effect.snapshot] : []));
-        expect(toldRightly(toldRun, turn.before.views.run.snapshot.value, turn.model.views.run.snapshot.value), "the Run's listeners").toBe(true);
+        expect(toldRightly(toldRun, turn.before.views.run.snapshot, turn.model.views.run.snapshot), "the Run's listeners").toBe(true);
         for (const shown of checklistsOf(turn)) {
           const told = turn.effects.flatMap((effect) => (effect._tag === "notifyChecklist" && effect.checklist === shown.definition ? [effect.snapshot] : []));
           expect(toldRightly(told, shown.was, shown.now), `checklist "${shown.definition.name}"'s listeners`).toBe(true);

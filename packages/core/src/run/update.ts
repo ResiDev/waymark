@@ -91,7 +91,7 @@ function checklistEvents(ran: Ran, given: Given, views: Views): readonly Effect[
   for (const definition of given.checklistsAsked.keys()) {
     if (isComplete(definition, announcedFrom.taskStatusById) || !isComplete(definition, now.taskStatusById)) continue;
     const shown = checklistNow(views, given, definition);
-    if (shown !== undefined) effects.push({ _tag: "event", event: { type: "checklistComplete", checklist: definition.name, snapshot: shown.value } });
+    if (shown !== undefined) effects.push({ _tag: "event", event: { type: "checklistComplete", checklist: definition.name, snapshot: shown } });
   }
   return effects;
 }
@@ -107,11 +107,11 @@ function effectsOf(ran: Ran, given: Given, was: Views, views: Views): readonly E
   const effects: Effect[] = [];
   for (const element of told.scrolls) effects.push({ _tag: "scroll", element });
   effects.push(SYNC_PAGE);
-  if (views.run.snapshot !== was.run.snapshot) effects.push({ _tag: "notifyRun", snapshot: views.run.snapshot.value });
+  if (views.run.snapshot !== was.run.snapshot) effects.push({ _tag: "notifyRun", snapshot: views.run.snapshot });
   for (const checklist of given.checklistsAsked.keys()) {
     const shown = checklistNow(views, given, checklist);
-    if (shown !== undefined && shown.value !== checklistNow(was, given, checklist)?.value) {
-      effects.push({ _tag: "notifyChecklist", checklist, snapshot: shown.value });
+    if (shown !== undefined && shown !== checklistNow(was, given, checklist)) {
+      effects.push({ _tag: "notifyChecklist", checklist, snapshot: shown });
     }
   }
   const changes = saved(ran);

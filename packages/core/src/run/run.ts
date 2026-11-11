@@ -50,7 +50,7 @@ export function createRun(options: RunOptions = {}): Run {
 
   const runState = () => runStateOf(model, given);
   const loading = () => model.userRecord.storageStatus.type === "loading";
-  const getSnapshot = () => model.views.run.snapshot.value;
+  const getSnapshot = () => model.views.run.snapshot;
 
   const verdicts: Change["verdicts"] = (tasks, context) => {
     try {
@@ -64,7 +64,7 @@ export function createRun(options: RunOptions = {}): Run {
   /** Through the queue, so a Msg sent from a callback waits until the change that called it has finished. */
   const send = (msg: Msg) => queue.run(() => step(msg));
 
-  const page = createPage({ root, queue, runState, candidates: () => model.views.run.candidates.value, send, sendNow: step });
+  const page = createPage({ root, queue, runState, candidates: () => model.views.run.candidates, send, sendNow: step });
 
   const link = createLink({
     adapter,
@@ -178,9 +178,9 @@ export function createRun(options: RunOptions = {}): Run {
     const { name } = definition;
     const group = groupOf(definition);
     const first = viewChecklist(definition, group, undefined, runState());
-    const serverShown = viewChecklist(definition, group, undefined, server).value;
+    const serverShown = viewChecklist(definition, group, undefined, server);
     given = { ...given, checklistsAsked: new Map(given.checklistsAsked).set(definition, { group, first }) };
-    const current = () => (model.views.checklists.get(definition) ?? first).value;
+    const current = () => model.views.checklists.get(definition) ?? first;
     const listening = new Set<(snapshot: ChecklistSnapshot<AnyTask>) => void>();
     const on = (command: (task: string) => Command) => (task: string) => {
       join(group);

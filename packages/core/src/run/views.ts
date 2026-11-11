@@ -1,25 +1,11 @@
 import { statusIn } from "../checklists/record";
 import type { AnyTask, ChecklistDefinition, ChecklistGroup, ChecklistSnapshot } from "../checklists/types";
-import type { Candidates, ChecklistShown, Given, Live, RunViews, Shown, ShownRunState, Views } from "../state";
+import type { Candidates, Given, Live, RunViews, ShownRunState, Views } from "../state";
 import type { Walkthrough } from "../walkthrough/types";
-import { running, stepAt } from "./rules";
+import { running, stepAt, type OnStep } from "./rules";
 import { taskIdFor } from "./tasks";
 import type { Beacon, OpenWalkthrough, Running, RunSnapshot } from "./types";
 import { beaconCandidates, openId, openOf, waymarkStateOf } from "./walkthroughs";
-
-const sameParts = (a: readonly unknown[], b: readonly unknown[]): boolean => {
-  for (let index = 0; index < a.length; index++) if (a[index] !== b[index]) return false;
-  return true;
-};
-
-/** `last` while `from` is the same, part by part. `compute` gets the last value, so it can hand it back when nothing shown moved. */
-function reuse<T, TFrom extends readonly unknown[]>(
-  last: Shown<T, TFrom> | undefined,
-  from: TFrom,
-  compute: (from: TFrom, last: T | undefined) => T,
-): Shown<T, TFrom> {
-  return last !== undefined && sameParts(from, last.from) ? last : { value: compute(from, last?.value), from };
-}
 
 const NO_BEACONS: readonly Beacon[] = Object.freeze([]);
 
@@ -34,18 +20,26 @@ const sameRunning = (a: Running, b: Running): boolean =>
 const sameList = <T>(a: readonly T[], b: readonly T[]): boolean =>
   a.length === b.length && a.every((item, index) => item === b[index]);
 
-function openShown(
-  [walkthrough, walkthroughProgress, stepState, groups]: RunViews["open"]["from"],
-  last: OpenWalkthrough | null | undefined,
-): OpenWalkthrough | null {
-  if (walkthrough === undefined || walkthroughProgress === undefined || stepState === undefined) return null;
-  const made = running({ walkthrough, walkthroughProgress, stepState });
+const sameCandidates = (a: Candidates, b: Candidates): boolean =>
+  a.length === b.length &&
+  a.every(([walkthrough, walkthroughProgress], index) => {
+    const other = b[index];
+    return other !== undefined && walkthrough === other[0] && walkthroughProgress === other[1];
+  });
+
+const sameRunSnapshot = (a: RunSnapshot, b: RunSnapshot): boolean =>
+  a.storageStatus === b.storageStatus && a.progress === b.progress && a.open === b.open && a.beacons === b.beacons;
+
+function openView(on: OnStep | undefined, groups: readonly ChecklistGroup[], last: OpenWalkthrough | null | undefined): OpenWalkthrough | null {
+  if (on === undefined) return null;
+  const { walkthrough } = on;
+  const made = running(on);
   const snapshot = last?.walkthrough === walkthrough && sameRunning(last.snapshot, made) ? last.snapshot : made;
   const task = taskIdFor(groups, walkthrough.id);
   return last?.snapshot === snapshot && last.task === task ? last : { walkthrough, snapshot, task };
 }
 
-function beaconsShown([candidates, beaconWaymarks]: readonly [Candidates, Live["beaconWaymarks"]], last: readonly Beacon[] | undefined): readonly Beacon[] {
+function beaconsView(candidates: Candidates, beaconWaymarks: Live["beaconWaymarks"], last: readonly Beacon[] | undefined): readonly Beacon[] {
   let latest: Walkthrough | undefined;
   let latestAt = -Infinity;
   for (const [walkthrough, walkthroughProgress] of candidates) {
@@ -70,28 +64,20 @@ function beaconsShown([candidates, beaconWaymarks]: readonly [Candidates, Live["
   return last !== undefined && sameList(shown, last) ? last : shown;
 }
 
-const runSnapshot = ([storageStatus, progress, open, beacons]: RunViews["snapshot"]["from"]): RunSnapshot => ({
-  storageStatus,
-  progress,
-  open,
-  beacons,
-});
-
-/** The Run's snapshot and the views it is made of, each worked out again only if what it reads moved. */
+/**
+ * The Run's snapshot and the views it is made of. Kept whole while it reads
+ * the same objects; otherwise each is worked out again, and kept as last
+ * change's object if it shows the same.
+ */
 export function viewRun(last: RunViews | undefined, runState: ShownRunState): RunViews {
   const { walkthroughsAndChecklistsInUse, userRecord, live } = runState;
   if (last?.from[0] === walkthroughsAndChecklistsInUse && last.from[1] === userRecord && last.from[2] === live) return last;
-  const on = openOf(runState);
-  const candidates = reuse(last?.candidates, [userRecord, walkthroughsAndChecklistsInUse.walkthroughsById, openId(runState)] as const, (from) =>
-    beaconCandidates(...from),
-  );
-  const open = reuse(
-    last?.open,
-    [on?.walkthrough, on?.walkthroughProgress, on?.stepState, walkthroughsAndChecklistsInUse.checklistDefinitions] as const,
-    openShown,
-  );
-  const beacons = reuse(last?.beacons, [candidates.value, live.beaconWaymarks] as const, beaconsShown);
-  const snapshot = reuse(last?.snapshot, [userRecord.storageStatus.type, userRecord.walkthroughProgressById, open.value, beacons.value] as const, runSnapshot);
+  const found = beaconCandidates(userRecord, walkthroughsAndChecklistsInUse.walkthroughsById, openId(runState));
+  const candidates = last !== undefined && sameCandidates(last.candidates, found) ? last.candidates : found;
+  const open = openView(openOf(runState), walkthroughsAndChecklistsInUse.checklistDefinitions, last?.open);
+  const beacons = beaconsView(candidates, live.beaconWaymarks, last?.beacons);
+  const made: RunSnapshot = { storageStatus: userRecord.storageStatus.type, progress: userRecord.walkthroughProgressById, open, beacons };
+  const snapshot = last !== undefined && sameRunSnapshot(last.snapshot, made) ? last.snapshot : made;
   return { from: [walkthroughsAndChecklistsInUse, userRecord, live], candidates, open, beacons, snapshot };
 }
 
@@ -102,12 +88,10 @@ const sameSnapshot = (a: Snapshot, b: Snapshot): boolean =>
   a.storageStatus === b.storageStatus &&
   a.tasks.every((row, index) => row.status === b.tasks[index]?.status && row.walkthrough === b.tasks[index].walkthrough);
 
-function checklistSnapshot(
-  definition: ChecklistDefinition<AnyTask>,
-  group: ChecklistGroup,
-  [taskStatusById, walkthroughProgressById, storage, opened]: ChecklistShown["from"],
-  last: Snapshot | undefined,
-): Snapshot {
+/** What a checklist shows, as `last` if that shows the same. */
+export function viewChecklist(definition: ChecklistDefinition<AnyTask>, group: ChecklistGroup, last: Snapshot | undefined, runState: ShownRunState): Snapshot {
+  const { taskStatusById, walkthroughProgressById, storageStatus } = runState.userRecord;
+  const opened = openId(runState);
   const walkthroughOf = new Map(group.tasks.map((task) => [task.id, task.walkthrough?.id]));
   const tasks = definition.tasks.map((task) => {
     const id = walkthroughOf.get(task.id);
@@ -122,31 +106,19 @@ function checklistSnapshot(
     taskCount: tasks.length,
     complete: finishedCount === tasks.length,
     open: opened === undefined ? null : (definition.tasks.find((task) => walkthroughOf.get(task.id) === opened) ?? null),
-    storageStatus: storage.type,
+    storageStatus: storageStatus.type,
   };
   return last !== undefined && sameSnapshot(last, next) ? last : next;
 }
 
-export function viewChecklist(
-  definition: ChecklistDefinition<AnyTask>,
-  group: ChecklistGroup,
-  last: ChecklistShown | undefined,
-  runState: ShownRunState,
-): ChecklistShown {
-  const { taskStatusById, walkthroughProgressById, storageStatus } = runState.userRecord;
-  return reuse(last, [taskStatusById, walkthroughProgressById, storageStatus, openId(runState)] as const, (from, lastSnapshot) =>
-    checklistSnapshot(definition, group, from, lastSnapshot),
-  );
-}
-
 /** What a checklist shows now: worked out in a change, or as first asked for. */
-export const checklistNow = (views: Views, given: Given, definition: ChecklistDefinition<AnyTask>): ChecklistShown | undefined =>
+export const checklistNow = (views: Views, given: Given, definition: ChecklistDefinition<AnyTask>): Snapshot | undefined =>
   views.checklists.get(definition) ?? given.checklistsAsked.get(definition)?.first;
 
 /** Every view, after a change. A checklist that showed nothing new keeps its object. */
 export function viewAll(views: Views, given: Given, runState: ShownRunState): Views {
   const run = viewRun(views.run, runState);
-  let checklists: Map<ChecklistDefinition<AnyTask>, ChecklistShown> | undefined;
+  let checklists: Map<ChecklistDefinition<AnyTask>, Snapshot> | undefined;
   for (const [definition, { group, first }] of given.checklistsAsked) {
     const last = views.checklists.get(definition);
     const shown = viewChecklist(definition, group, last ?? first, runState);

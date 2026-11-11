@@ -156,7 +156,7 @@ export type Given = Readonly<{
 export type ChecklistAsked = Readonly<{
   group: ChecklistGroup;
   /** What it showed when first asked for, until a change works it out again. */
-  first: ChecklistShown;
+  first: ChecklistSnapshot<AnyTask>;
 }>;
 
 /** Everything else the Run holds. Only `update` makes one. */
@@ -169,38 +169,27 @@ export type Model = Readonly<{
   views: Views;
 }>;
 
-// ─── Views: what the Run hands out, and what it was worked out from ─────────
-
-/**
- * A value and what it was worked out from. The same `from`, part by part,
- * gives back this same object, so React sees no change and nobody is
- * notified.
- */
-export type Shown<T, TFrom extends readonly unknown[]> = Readonly<{ value: T; from: TFrom }>;
+// ─── Views: what the Run hands out ──────────────────────────────────────────
+//
+// Each view is worked out again after a change, then kept as last change's
+// object if it shows the same, so React sees no change and nobody is notified.
 
 export type Candidates = readonly (readonly [Walkthrough, WalkthroughProgress])[];
 
 export type RunViews = Readonly<{
+  /** What every view below was worked out from. The same three objects again keep these views whole. */
   from: readonly [WalkthroughsAndChecklistsInUse, UserRecord, Live];
   /** The collapsed walkthroughs that may show a beacon. The page reads them to know which Waymarks to measure. */
-  candidates: Shown<Candidates, readonly [UserRecord, ReadonlyMap<WalkthroughId, Walkthrough>, WalkthroughId | undefined]>;
-  open: Shown<
-    OpenWalkthrough | null,
-    readonly [Walkthrough | undefined, WalkthroughProgress | undefined, StepState | undefined, readonly ChecklistGroup[]]
-  >;
-  beacons: Shown<readonly Beacon[], readonly [Candidates, Live["beaconWaymarks"]]>;
-  snapshot: Shown<RunSnapshot, readonly [StorageStatus, UserRecord["walkthroughProgressById"], OpenWalkthrough | null, readonly Beacon[]]>;
+  candidates: Candidates;
+  open: OpenWalkthrough | null;
+  beacons: readonly Beacon[];
+  snapshot: RunSnapshot;
 }>;
-
-export type ChecklistShown = Shown<
-  ChecklistSnapshot<AnyTask>,
-  readonly [UserRecord["taskStatusById"], UserRecord["walkthroughProgressById"], StorageState, WalkthroughId | undefined]
->;
 
 export type Views = Readonly<{
   run: RunViews;
   /** Each checklist worked out since it was asked for. One not here shows its `ChecklistAsked.first`. */
-  checklists: ReadonlyMap<ChecklistDefinition<AnyTask>, ChecklistShown>;
+  checklists: ReadonlyMap<ChecklistDefinition<AnyTask>, ChecklistSnapshot<AnyTask>>;
 }>;
 
 // ─── Msg: everything that happens to the Run ────────────────────────────────

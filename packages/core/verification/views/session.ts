@@ -404,7 +404,7 @@ export function* play(session: Session): Generator<Turn> {
         if (move.walkthrough !== undefined) return send({ _tag: "act", action: move.action, walkthrough: take(walkthroughs[move.walkthrough]) });
         if (loading) return send({ _tag: "act", action: move.action, walkthrough: undefined });
         // The one open at the call, as the caller saw it.
-        const open = model.views.run.snapshot.value.open?.walkthrough;
+        const open = model.views.run.snapshot.open?.walkthrough;
         if (open !== undefined) send({ _tag: "act", action: move.action, walkthrough: open });
         return;
       }
@@ -459,7 +459,7 @@ export function* play(session: Session): Generator<Turn> {
       case "beaconsRead": {
         if (!attached || model.live.openStep !== undefined) return;
         const reads = new Map<string, WaymarkRead>();
-        for (const [walkthrough, walkthroughProgress] of model.views.run.candidates.value) {
+        for (const [walkthrough, walkthroughProgress] of model.views.run.candidates) {
           const seenAt = move.reads.find(([id]) => id === walkthrough.id)?.[1];
           if (seenAt !== undefined && seenAt !== "unread" && hasWaymark(walkthrough.steps[walkthroughProgress.step])) reads.set(walkthrough.id, waymarkRead(seenAt));
         }
