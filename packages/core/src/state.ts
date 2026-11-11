@@ -173,6 +173,8 @@ export type Model = Readonly<{
 //
 // Each view is worked out again after a change, then kept as last change's
 // object if it shows the same, so React sees no change and nobody is notified.
+// The candidates and the checklists are not worked out again while the record
+// and the open walkthrough are the same, as a moving Waymark leaves them.
 
 export type Candidates = readonly (readonly [Walkthrough, WalkthroughProgress])[];
 

@@ -65,6 +65,21 @@ function beaconsView(candidates: Candidates, beaconWaymarks: Live["beaconWaymark
 }
 
 /**
+ * Whether the record and the open walkthrough are as `from` had them. They
+ * are all a checklist reads and, with the walkthroughs defined, all the
+ * candidates read, so a Waymark that moved works neither out again.
+ */
+const sameRecordAndOpen = ([walkthroughsAndChecklistsInUse, userRecord, live]: RunViews["from"], runState: ShownRunState): boolean =>
+  runState.userRecord === userRecord && openId(runState) === openId({ walkthroughsAndChecklistsInUse, userRecord, live });
+
+function candidatesView(runState: ShownRunState, last: RunViews | undefined): Candidates {
+  const { walkthroughsById } = runState.walkthroughsAndChecklistsInUse;
+  if (last !== undefined && last.from[0].walkthroughsById === walkthroughsById && sameRecordAndOpen(last.from, runState)) return last.candidates;
+  const found = beaconCandidates(runState.userRecord, walkthroughsById, openId(runState));
+  return last !== undefined && sameCandidates(last.candidates, found) ? last.candidates : found;
+}
+
+/**
  * The Run's snapshot and the views it is made of. Kept whole while it reads
  * the same objects; otherwise each is worked out again, and kept as last
  * change's object if it shows the same.
@@ -72,8 +87,7 @@ function beaconsView(candidates: Candidates, beaconWaymarks: Live["beaconWaymark
 export function viewRun(last: RunViews | undefined, runState: ShownRunState): RunViews {
   const { walkthroughsAndChecklistsInUse, userRecord, live } = runState;
   if (last?.from[0] === walkthroughsAndChecklistsInUse && last.from[1] === userRecord && last.from[2] === live) return last;
-  const found = beaconCandidates(userRecord, walkthroughsAndChecklistsInUse.walkthroughsById, openId(runState));
-  const candidates = last !== undefined && sameCandidates(last.candidates, found) ? last.candidates : found;
+  const candidates = candidatesView(runState, last);
   const open = openView(openOf(runState), walkthroughsAndChecklistsInUse.checklistDefinitions, last?.open);
   const beacons = beaconsView(candidates, live.beaconWaymarks, last?.beacons);
   const made: RunSnapshot = { storageStatus: userRecord.storageStatus.type, progress: userRecord.walkthroughProgressById, open, beacons };
@@ -117,12 +131,13 @@ export const checklistNow = (views: Views, given: Given, definition: ChecklistDe
 
 /**
  * Every view, after a change. Kept whole while the Run's views read the same
- * objects, as a checklist reads nothing else. A checklist that showed nothing
- * new keeps its object.
+ * objects, and the checklists kept while the record and the open walkthrough
+ * are the same. A checklist that showed nothing new keeps its object.
  */
 export function viewAll(views: Views, given: Given, runState: ShownRunState): Views {
   const run = viewRun(views.run, runState);
   if (run === views.run) return views;
+  if (sameRecordAndOpen(views.run.from, runState)) return { run, checklists: views.checklists };
   let checklists: Map<ChecklistDefinition<AnyTask>, Snapshot> | undefined;
   for (const [definition, { group, first }] of given.checklistsAsked) {
     const last = views.checklists.get(definition);
