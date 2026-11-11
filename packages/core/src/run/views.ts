@@ -30,12 +30,14 @@ const sameCandidates = (a: Candidates, b: Candidates): boolean =>
 const sameRunSnapshot = (a: RunSnapshot, b: RunSnapshot): boolean =>
   a.storageStatus === b.storageStatus && a.progress === b.progress && a.open === b.open && a.beacons === b.beacons;
 
-function openView(on: OnStep | undefined, groups: readonly ChecklistGroup[], last: OpenWalkthrough | null | undefined): OpenWalkthrough | null {
+function openView(on: OnStep | undefined, groups: readonly ChecklistGroup[], was: RunViews | undefined): OpenWalkthrough | null {
   if (on === undefined) return null;
   const { walkthrough } = on;
+  const last = was?.open;
   const made = running(on);
   const snapshot = last?.walkthrough === walkthrough && sameRunning(last.snapshot, made) ? last.snapshot : made;
-  const task = taskIdFor(groups, walkthrough.id);
+  // The same walkthrough among the same groups has the same Task, so a frame does not walk every Task.
+  const task = last?.walkthrough === walkthrough && was?.from[0].checklistDefinitions === groups ? last.task : taskIdFor(groups, walkthrough.id);
   return last?.snapshot === snapshot && last.task === task ? last : { walkthrough, snapshot, task };
 }
 
@@ -88,7 +90,7 @@ export function viewRun(last: RunViews | undefined, runState: ShownRunState): Ru
   const { walkthroughsAndChecklistsInUse, userRecord, live } = runState;
   if (last?.from[0] === walkthroughsAndChecklistsInUse && last.from[1] === userRecord && last.from[2] === live) return last;
   const candidates = candidatesView(runState, last);
-  const open = openView(openOf(runState), walkthroughsAndChecklistsInUse.checklistDefinitions, last?.open);
+  const open = openView(openOf(runState), walkthroughsAndChecklistsInUse.checklistDefinitions, last);
   const beacons = beaconsView(candidates, live.beaconWaymarks, last?.beacons);
   const made: RunSnapshot = { storageStatus: userRecord.storageStatus.type, progress: userRecord.walkthroughProgressById, open, beacons };
   const snapshot = last !== undefined && sameRunSnapshot(last.snapshot, made) ? last.snapshot : made;
