@@ -52,6 +52,7 @@ export function WaymarkRoot(props: WaymarkRootProps) {
     initial,
     context,
     waymarkPadding = 20,
+    view,
     renderPopover,
     renderBeacon,
     labels,
@@ -85,6 +86,7 @@ export function WaymarkRoot(props: WaymarkRootProps) {
       <RunView
         run={run}
         waymarkPadding={waymarkPadding}
+        view={view}
         renderPopover={renderPopover}
         renderBeacon={renderBeacon}
         labels={labels}

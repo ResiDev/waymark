@@ -9,6 +9,7 @@ import {
   localStorageAdapter,
   Walkthrough,
   WaymarkRoot,
+  defaultView,
   type BeaconRenderProps,
   type StoredRecord,
   type WalkthroughLabels,
@@ -128,7 +129,7 @@ describe("Walkthrough", () => {
     await act(async () =>
       root.render(
         <StrictMode>
-          <WaymarkRoot onEvent={(event) => events.push(event.type)}>
+          <WaymarkRoot view={defaultView} onEvent={(event) => events.push(event.type)}>
             <Walkthrough walkthrough={walkthrough} />
           </WaymarkRoot>
         </StrictMode>,
@@ -379,6 +380,24 @@ describe("WaymarkRoot", () => {
     expect(beaconAnchor()!.style).toMatchObject({ left: "120px", top: "20px" });
   });
 
+  it("says so when a walkthrough opens and the root was given nothing to draw it", async () => {
+    const { render } = mount();
+    addTarget("panel", "Panel");
+    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "panel", content: "Use this panel" }] });
+    // React logs the error, and jsdom reports it as uncaught: both are what the test asks for.
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handled = (event: ErrorEvent) => event.preventDefault();
+    window.addEventListener("error", handled);
+    onTestFinished(() => {
+      quiet.mockRestore();
+      window.removeEventListener("error", handled);
+    });
+
+    await expect(render(<Walkthrough walkthrough={walkthrough} />, {}, null)).rejects.toThrow(
+      'nothing draws the popover of walkthrough "tour"',
+    );
+  });
+
   it("draws a custom beacon in place of the default, and resumes from it", async () => {
     const { render } = mount();
     addTarget("panel", "Panel");
@@ -619,7 +638,7 @@ describe("WaymarkRoot with storage", () => {
       fakeFrames();
       localStorage.setItem(localKey("tour"), record({ status: "running", step: 1, collapsed: false }));
       const app = () => (
-        <WaymarkRoot storage="tour" portal={portal}>
+        <WaymarkRoot view={defaultView} storage="tour" portal={portal}>
           {view()}
         </WaymarkRoot>
       );
@@ -659,7 +678,7 @@ describe("WaymarkRoot with storage", () => {
 
   it("never touches storage in a server render", () => {
     const storage = watchedStorage();
-    renderToString(<WaymarkRoot storage={storage}>{view()}</WaymarkRoot>);
+    renderToString(<WaymarkRoot view={defaultView} storage={storage}>{view()}</WaymarkRoot>);
     expect(storage.load).not.toHaveBeenCalled();
     expect(storage.subscribe).not.toHaveBeenCalled();
   });
@@ -670,7 +689,7 @@ describe("WaymarkRoot with storage", () => {
     await act(async () =>
       root.render(
         <StrictMode>
-          <WaymarkRoot storage={storage}>{view()}</WaymarkRoot>
+          <WaymarkRoot view={defaultView} storage={storage}>{view()}</WaymarkRoot>
         </StrictMode>,
       ),
     );

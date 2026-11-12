@@ -4,11 +4,11 @@ import { Button, CloseIcon, LockIcon, PlayIcon, WarningIcon } from "./controls";
 import { vertical } from "./placement";
 import { color, focusRing, useInteraction, usePalette } from "./theme";
 import { useViewportSize } from "./useViewportSize";
-import type { BeaconRenderProps, DefaultView, Placement, WalkthroughRenderProps, WalkthroughStep } from "./types";
+import type { BeaconRenderProps, Placement, WalkthroughRenderProps, WalkthroughStep, WalkthroughView } from "./types";
 import { BeaconAnchor } from "./view";
 
-// The library's own popover and beacon. Reached only through `defineWalkthrough`, which hands them to each
-// walkthrough, so an app that defines none does not ship them.
+// The library's own popover and beacon. Nothing in the library imports this file: an app does, as `defaultView`,
+// and hands it to <WaymarkRoot>, so an app that draws its own ships none of it.
 
 const SHADOW = `inset 0 1px 0 ${color.glint}, 0 1px 3px rgb(2 6 23 / 0.1), 0 16px 40px -8px ${color.shadow}`;
 
@@ -435,4 +435,5 @@ function DefaultBeacon({
   );
 }
 
-export const defaultView: DefaultView = { popover: DefaultPopover, beacon: PlacedDefaultBeacon };
+/** The library's popover and beacon, for `<WaymarkRoot view={defaultView}>`. */
+export const defaultView: WalkthroughView = { popover: DefaultPopover, beacon: PlacedDefaultBeacon };

@@ -8,10 +8,19 @@ import type {
   Walkthrough,
   WalkthroughLabels,
   WalkthroughRenderProps,
+  WalkthroughView,
 } from "./types";
 import { BeaconAnchor, DEFAULT_LABELS, Dialog, WaymarkShade } from "./view";
 
 const subscribeNever = () => () => {};
+
+/** A walkthrough is on the page and nothing was given to draw it: better loud than a page left under a shade. */
+const nothingDraws = (what: "popover" | "beacon", id: string): never => {
+  const prop = what === "popover" ? "renderPopover" : "renderBeacon";
+  throw new Error(
+    `Waymark: nothing draws the ${what} of walkthrough "${id}". Give <WaymarkRoot> view={defaultView}, or a ${prop} of your own.`,
+  );
+};
 
 /**
  * False on the server and while React hydrates its HTML, true after. A server
@@ -28,6 +37,7 @@ const useDrawn = () =>
 type Drawing = Readonly<{
   run: Run;
   waymarkPadding: number;
+  view?: WalkthroughView | undefined;
   renderPopover?: ((props: WalkthroughRenderProps) => ReactNode) | undefined;
   renderBeacon?: ((props: BeaconRenderProps) => ReactNode) | undefined;
   labels: WalkthroughLabels;
@@ -37,6 +47,7 @@ type Drawing = Readonly<{
 export function RunView({
   run,
   waymarkPadding,
+  view,
   renderPopover,
   renderBeacon,
   labels,
@@ -49,8 +60,8 @@ export function RunView({
   useEffect(() => run.attach(ui, { waymarkPadding }), [run, ui, waymarkPadding]);
 
   if (!drawn) return null;
-  const drawing: Drawing = { run, waymarkPadding, renderPopover, renderBeacon, labels: withDefaults(DEFAULT_LABELS, labels) };
-  const view =
+  const drawing: Drawing = { run, waymarkPadding, view, renderPopover, renderBeacon, labels: withDefaults(DEFAULT_LABELS, labels) };
+  const content =
     snapshot.open === null ? (
       snapshot.beacons.length === 0 ? null : (
         <>
@@ -62,8 +73,8 @@ export function RunView({
     ) : (
       <OpenView open={snapshot.open} dialogRef={dialogRef} {...drawing} />
     );
-  if (view === null) return null;
-  return portal ? createPortal(view, document.body) : view;
+  if (content === null) return null;
+  return portal ? createPortal(content, document.body) : content;
 }
 
 function OpenView({
@@ -71,6 +82,7 @@ function OpenView({
   open: { walkthrough, snapshot, task },
   dialogRef,
   waymarkPadding,
+  view,
   renderPopover,
   labels,
 }: Drawing & Readonly<{ open: OpenWalkthrough<Walkthrough>; dialogRef: RefObject<HTMLDivElement> }>) {
@@ -78,7 +90,8 @@ function OpenView({
   const rect = snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
   // Named, so a popover drawn for a step just left acts on nothing else.
   const act = (action: Action) => () => run.act(action, walkthrough);
-  const DefaultPopover = walkthrough.defaultView.popover;
+  const draw = walkthrough.renderPopover ?? renderPopover;
+  if (draw === undefined && view === undefined) nothingDraws("popover", walkthrough.id);
   const render = (placement: WalkthroughRenderProps["placement"], arrow: number) => {
     const props: WalkthroughRenderProps = {
       snapshot,
@@ -93,7 +106,8 @@ function OpenView({
       ...(task === null ? {} : { skipTask: () => run.skipTask(task) }),
       labels,
     };
-    return (walkthrough.renderPopover ?? renderPopover)?.(props) ?? <DefaultPopover {...props} arrow={arrow} />;
+    // An app's popover that returns nothing for a step leaves that step to the view.
+    return draw?.(props) ?? (view && <view.popover {...props} arrow={arrow} />);
   };
   return (
     <>
@@ -118,6 +132,7 @@ function OpenView({
 function BeaconView({
   run,
   beacon: { walkthrough, step, waymark },
+  view,
   renderBeacon,
   labels,
 }: Drawing & Readonly<{ beacon: Beacon<Walkthrough> }>) {
@@ -129,11 +144,9 @@ function BeaconView({
     exit: () => run.act("exit", walkthrough),
     labels,
   };
-  const custom = (walkthrough.renderBeacon ?? renderBeacon)?.(props);
-  const DefaultBeacon = walkthrough.defaultView.beacon;
-  return custom === null || custom === undefined ? (
-    <DefaultBeacon {...props} rect={rect} />
-  ) : (
-    <BeaconAnchor rect={rect}>{custom}</BeaconAnchor>
-  );
+  const draw = walkthrough.renderBeacon ?? renderBeacon;
+  if (draw === undefined && view === undefined) nothingDraws("beacon", walkthrough.id);
+  const custom = draw?.(props);
+  if (custom !== null && custom !== undefined) return <BeaconAnchor rect={rect}>{custom}</BeaconAnchor>;
+  return view ? <view.beacon {...props} rect={rect} /> : null;
 }

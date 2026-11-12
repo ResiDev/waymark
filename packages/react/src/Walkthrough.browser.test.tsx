@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
-import { defineWalkthrough, Walkthrough, WaymarkRoot } from "./index";
+import { defaultView, defineWalkthrough, Walkthrough, WaymarkRoot } from "./index";
 import {
   addWaymark,
   allowMotion,
@@ -37,7 +37,7 @@ describe("popover", () => {
         { waymark: "target", scroll: "never", preferredPlacement: "right", content: "This instruction should stay beside the page element." },
       ],
     });
-    render(<WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView} waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     expect(pastEdges(await dialog())).toEqual(onScreen);
 
     await resize(320, 600);
@@ -66,7 +66,7 @@ describe("popover", () => {
 
   it("stays centred without a Waymark as the viewport resizes", async () => {
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "General guidance should follow the viewport." }] });
-    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     expect(centre(await dialog())).toEqual({ x: 450, y: 300 });
 
     await resize(320, 480);
@@ -77,7 +77,7 @@ describe("popover", () => {
   it("stays on its Waymark, and so does the beacon, when an ancestor of the Walkthrough is transformed", async () => {
     const waymark = addWaymark({ left: "20px", top: "20px" });
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }] });
-    const host = render(<WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    const host = render(<WaymarkRoot view={defaultView} waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     const before = (await dialog()).getBoundingClientRect();
     expect(before.top - waymark.getBoundingClientRect().bottom).toBe(14);
 
@@ -99,7 +99,7 @@ describe("popover", () => {
     render(
       <>
         <div style={{ height: 3000 }} />
-        <WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
+        <WaymarkRoot view={defaultView} waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
       </>,
     );
     const gap = async () => (await dialog()).getBoundingClientRect().top - waymark.getBoundingClientRect().bottom;
@@ -116,7 +116,7 @@ describe("popover", () => {
     render(
       <>
         <button type="button" style={{ position: "fixed", left: 600, top: 400 }}>Elsewhere</button>
-        <WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
+        <WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
       </>,
     );
     await dialog();
@@ -135,7 +135,7 @@ describe("popover", () => {
 describe("beacon", () => {
   it("follows the bottom centre of the screen as the viewport resizes", async () => {
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ content: "General guidance" }] });
-    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
     expect(centre(beacon().element())).toEqual({ x: 450, y: 568 });
@@ -152,7 +152,7 @@ describe("beacon", () => {
   it("keeps the default beacon, its pulse included, on screen for a Waymark in the screen's corner", async () => {
     addWaymark({ right: "0px", top: "0px" });
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Help lives here" }] });
-    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -165,6 +165,7 @@ describe("beacon", () => {
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Help lives here" }] });
     render(
       <WaymarkRoot
+        view={defaultView}
         renderBeacon={({ resume }) => (
           <button type="button" onClick={resume} style={{ padding: "8px 24px" }}>
             Carry on with help
@@ -190,7 +191,7 @@ describe("beacon", () => {
         { content: "Done" },
       ],
     });
-    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -203,7 +204,7 @@ describe("beacon", () => {
     await allowMotion();
     addWaymark({ left: "400px", top: "300px" });
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Somewhere quiet" }] });
-    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -213,7 +214,7 @@ describe("beacon", () => {
   it("stays still under reduced motion", async () => {
     addWaymark({ left: "400px", top: "300px" });
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Somewhere quiet" }] });
-    render(<WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
+    render(<WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     await dialog();
     await collapse();
 
@@ -236,7 +237,7 @@ describe("shade", () => {
     render(
       <>
         <button type="button" style={{ position: "fixed", left: 600, top: 400 }}>Elsewhere</button>
-        <WaymarkRoot><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
+        <WaymarkRoot view={defaultView}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>
       </>,
     );
     await dialog();

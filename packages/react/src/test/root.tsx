@@ -1,10 +1,10 @@
 import { act, useEffect, type ReactNode } from "react";
-import { useRun, WaymarkRoot, type Run, type WaymarkRootProps } from "../index";
+import { defaultView, useRun, WaymarkRoot, type Run, type WalkthroughView, type WaymarkRootProps } from "../index";
 import { addRoot } from "./dom";
 
 /**
  * A React root whose `render` draws the page inside a `<WaymarkRoot>` with the
- * props given, in act, and resolves to the Run that root made, for the test to
+ * props given and the default look unless told `null`, in act, and resolves to the Run that root made, for the test to
  * drive as the app's own code would. Unmounted when the test ends.
  */
 export const addWaymarkRoot = () => {
@@ -17,10 +17,14 @@ export const addWaymarkRoot = () => {
     }, [current]);
     return null;
   }
-  const render = async (page: ReactNode, props: Omit<WaymarkRootProps, "children"> = {}): Promise<Run> => {
+  const render = async (
+    page: ReactNode,
+    props: Omit<WaymarkRootProps, "children" | "view"> = {},
+    view: WalkthroughView | null = defaultView,
+  ): Promise<Run> => {
     await act(async () =>
       root.render(
-        <WaymarkRoot {...props}>
+        <WaymarkRoot {...(view === null ? {} : { view })} {...props}>
           <ReadRun />
           {page}
         </WaymarkRoot>,

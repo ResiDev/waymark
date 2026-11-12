@@ -30,7 +30,8 @@ const dist = { "waymark-core": `${packages}core/dist/index.js`, "react-waymark":
 /** Keys name the history's columns: add cases freely, but never rename one. */
 const cases = {
   "react/all": `export * from "react-waymark";`,
-  "react/walkthrough": `export { defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
+  "react/walkthrough": `export { defaultView, defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
+  "react/own-look": `export { defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
   "react/headless": `export { defineChecklists, localStorageAdapter, useChecklist, WaymarkRoot } from "react-waymark";`,
   "core/all": `export * from "waymark-core";`,
   "core/run": `export { createRun, defineWalkthrough } from "waymark-core";`,
@@ -41,6 +42,7 @@ const cases = {
 const budgets: Record<keyof typeof cases, number> = {
   "react/all": 23,
   "react/walkthrough": 19.75,
+  "react/own-look": 19.5,
   "react/headless": 19.75,
   "core/all": 16,
   "core/run": 15.25,

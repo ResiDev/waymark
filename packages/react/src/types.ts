@@ -75,10 +75,10 @@ export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
 type Render<TProps> = { render(this: void, props: TProps): ReactNode }["render"];
 
 /**
- * The library's own popover and beacon. Each takes one thing more than an
- * app's does: where the arrow points from, and the Waymark's box.
+ * A popover and a beacon for `<WaymarkRoot view>`. The library's own is
+ * `defaultView`; an app's own drawing goes in `renderPopover` and `renderBeacon`.
  */
-export type DefaultView = Readonly<{
+export type WalkthroughView = Readonly<{
   popover: (props: WalkthroughRenderProps & { arrow: number }) => ReactNode;
   beacon: (props: BeaconRenderProps & { rect: Rect | null }) => ReactNode;
 }>;
@@ -88,11 +88,6 @@ export type Walkthrough<TStep extends WalkthroughStep = WalkthroughStep> = CoreW
   Readonly<{
     renderPopover?: Render<WalkthroughRenderProps<TStep>>;
     renderBeacon?: Render<BeaconRenderProps<TStep>>;
-    /**
-     * What draws it when neither it nor `<WaymarkRoot>` says. `defineWalkthrough`
-     * puts it here, so an app that defines no walkthrough ships no popover or beacon.
-     */
-    defaultView: DefaultView;
   }>;
 
 /** What `defineWalkthrough` takes. Its render functions see this walkthrough's steps, with their exact types. */
@@ -126,6 +121,11 @@ export type WaymarkRootProps = Readonly<{
   context?: unknown;
   /** In px. Room the shade leaves around the Waymark; clicks this close count as clicks on it. Defaults to 20. */
   waymarkPadding?: number;
+  /**
+   * Draws every walkthrough that nothing else does: pass `defaultView` for the
+   * library's popover and beacon. Left out, an app that draws its own ships neither.
+   */
+  view?: WalkthroughView;
   /** For every walkthrough without one of its own. */
   renderPopover?: (props: WalkthroughRenderProps) => ReactNode;
   renderBeacon?: (props: BeaconRenderProps) => ReactNode;

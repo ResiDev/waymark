@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  defaultView,
   defineChecklists,
   defineWalkthrough,
   useChecklist,
@@ -148,7 +149,7 @@ export function Guided({ children }: { children: ReactNode }) {
   const app = useStore(data);
   const context = useMemo(() => contextOf(app), [app]);
   return (
-    <WaymarkRoot storage="plotline" context={context} onEvent={onEvent} labels={{ skipTask: "Skip" }}>
+    <WaymarkRoot view={defaultView} storage="plotline" context={context} onEvent={onEvent} labels={{ skipTask: "Skip" }}>
       {children}
     </WaymarkRoot>
   );

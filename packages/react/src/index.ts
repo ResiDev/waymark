@@ -1,5 +1,6 @@
 export { defineChecklists, defineWalkthrough, everyProblem } from "./definition";
 export { WaymarkRoot } from "./WaymarkRoot";
+export { defaultView } from "./defaultView";
 export { useRun } from "./useRun";
 export { Walkthrough } from "./Walkthrough";
 export { Checklist, useChecklist } from "./Checklist";
@@ -38,6 +39,7 @@ export type {
   WalkthroughProps,
   WalkthroughRenderProps,
   WalkthroughStep,
+  WalkthroughView,
   WaymarkProblem,
   WaymarkRootProps,
 } from "./types";

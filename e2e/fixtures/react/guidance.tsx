@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import {
+  defaultView,
   defineChecklists,
   defineWalkthrough,
   everyProblem,
@@ -373,6 +374,7 @@ export function Guidance({ children }: { children: ReactNode }) {
   return (
     <WaymarkRoot
       key={key}
+      view={defaultView}
       storage={storage === "server" ? serverRecord : localRecord}
       context={context}
       waymarkPadding={padding}
