@@ -25,7 +25,7 @@ export function HomeChecklist() {
   }
   if (list === "rows") return <Checklist checklist={home} renderRow={(row) => <CompactRow {...row} />} />;
   if (list === "headless") return <HeadlessChecklist checklist={home} />;
-  return <Checklist checklist={home} />;
+  return <Checklist checklist={home} title="Getting started" />;
 }
 
 function CompactRow<TTask extends AnyReactTask>({

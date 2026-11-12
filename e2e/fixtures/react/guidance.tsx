@@ -65,26 +65,30 @@ const tour = defineWalkthrough({
   id: "tour",
   steps: [
     {
+      title: "Welcome to Study",
       content: (
         <>
-          <b>Welcome to Study.</b> A quick look around. <kbd>→</kbd> moves on, <kbd>←</kbd> goes back,{" "}
-          <kbd>Esc</kbd> or a click elsewhere collapses this into a beacon.
+          A quick look around. <kbd>→</kbd> moves on, <kbd>←</kbd> goes back, and <kbd>Esc</kbd> or a click
+          elsewhere collapses this into a beacon.
         </>
       ),
     },
     {
       selector: ".brand",
       preferredPlacement: "below",
+      title: "Your home base",
       content: "Found by a CSS selector rather than data-waymark.",
     },
     {
       waymark: "search",
       advance: { event: "focus", then: "unlock" },
+      title: "Search your decks",
       content: "Click into search. Next unlocks once it has focus.",
     },
     {
       waymark: "help",
       preferredPlacement: "right",
+      title: "Help is always here",
       content: "Help sits at the right edge, so the popover flips to fit.",
     },
     {
@@ -95,6 +99,7 @@ const tour = defineWalkthrough({
     {
       waymark: "tip",
       preferredPlacement: "below",
+      title: "Daily tips",
       content: "A tip. Press its × to take this step's Waymark out of the page.",
     },
     { waymark: "guide", content: "Far down the page: the Run scrolled here." },
@@ -103,7 +108,7 @@ const tour = defineWalkthrough({
       preferredPlacement: "below",
       content: "Feedback, bottom right. There is no room below, so it opens above.",
     },
-    { content: "That's the tour.", popoverStyle: { background: "#f0fdf4", borderColor: "#bbf7d0" } },
+    { title: "You're all set", content: "That's the tour." },
   ],
 });
 

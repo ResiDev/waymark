@@ -295,12 +295,12 @@ describe("WaymarkRoot", () => {
     clock += 1000;
     await runFrames();
     expect(dialog()).toHaveTextContent("Save the document");
-    expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).not.toHaveTextContent("Can't find this part of the page");
     expect(buttonNamed("Next")).toBeDisabled();
 
     clock += 2000;
     await runFrames();
-    expect(dialog()).toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).toHaveTextContent("Can't find this part of the page");
 
     await act(async () => buttonNamed("Next")!.click());
     expect(dialog()).toHaveTextContent("The document is saved");
@@ -313,17 +313,17 @@ describe("WaymarkRoot", () => {
     const target = addTarget("save", "Save");
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "save", content: "Save the document" }] });
     await render(<Walkthrough walkthrough={walkthrough} />);
-    expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).not.toHaveTextContent("Can't find this part of the page");
 
     target.remove();
     await runFrames();
     clock += 199;
     await runFrames();
-    expect(dialog()).not.toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).not.toHaveTextContent("Can't find this part of the page");
 
     clock += 1;
     await runFrames();
-    expect(dialog()).toHaveTextContent("Can't find the part of the page");
+    expect(dialog()).toHaveTextContent("Can't find this part of the page");
   });
 
   it("shows nothing for a collapsed walkthrough still searching for its Waymark", async () => {
@@ -525,7 +525,9 @@ describe("WaymarkRoot", () => {
     expect(buttonNamed("Finish")).toBeDefined();
 
     await clickAway();
-    expect(document.querySelector('button[aria-label="Fortsetzen"]')).toHaveAttribute("title", "Fortsetzen");
+    // The beacon shows its name beside it as it appears, and again under a pointer or the keyboard's focus, where a `title` shows for neither a touch nor a key.
+    const resume = document.querySelector<HTMLElement>('button[aria-label="Fortsetzen"]')!;
+    expect(resume.parentElement).toHaveTextContent("Fortsetzen");
   });
 
   it("uses the default for a label passed as undefined", async () => {

@@ -19,6 +19,8 @@ export type Placement = "above" | "below" | "left" | "right";
 
 export type WalkthroughStep = Step &
   Readonly<{
+    /** A heading over `content` in the default popover. */
+    title?: ReactNode;
     content: ReactNode;
     preferredPlacement?: Placement;
     popoverStyle?: CSSProperties;
@@ -141,6 +143,8 @@ export type UseChecklistResult<TTask extends AnyReactTask> = TaskCommands<TTask[
 
 export type ChecklistLabels = Readonly<{
   start: ReactNode;
+  /** On a Task whose walkthrough was set aside part way. */
+  resume: ReactNode;
   replay: ReactNode;
   skip: ReactNode;
 }>;
@@ -154,6 +158,8 @@ export type ChecklistRowProps<TTask extends AnyReactTask> = TaskCommands<TTask["
 
 export type ChecklistProps<TTask extends AnyReactTask> = Readonly<{
   checklist: ChecklistDefinition<TTask>;
+  /** A heading beside the count. */
+  title?: ReactNode;
   style?: CSSProperties;
   rowStyle?: CSSProperties;
   labels?: Partial<ChecklistLabels>;

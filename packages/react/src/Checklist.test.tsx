@@ -127,7 +127,8 @@ describe("Checklist", () => {
     await click(row("Say hello"), "Skip");
     expect(row("Say hello")).toHaveTextContent("Skipped");
     expect(buttons(row("Say hello"))).toEqual(["Wave"]);
-    expect(host.querySelector('[role="group"]')).toHaveTextContent("2 of 5 done");
+    // A skipped Task moves the list on without being counted as done.
+    expect(host.querySelector('[role="group"]')).toHaveTextContent("1 of 5 done · 1 skipped");
   });
 
   it("toggles a task with its box, unless the task opts out", async () => {

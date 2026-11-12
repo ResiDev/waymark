@@ -11,11 +11,17 @@
         button { font: inherit; cursor: pointer; }
         button:disabled { cursor: default; }
       }
-      kbd { padding: 0 4px; border: 1px solid currentColor; border-radius: 3px; font-size: 12px; }
+      kbd { display: inline-block; min-width: 1em; padding: 0 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-bottom-width: 2px; border-radius: 5px; font: 500 12px/18px ui-sans-serif, system-ui, sans-serif; text-align: center; vertical-align: 1px; }
 
       /* ---- the app ---- */
       .app { display: grid; grid-template-columns: 170px minmax(0, 1fr); grid-template-rows: 52px 1fr; min-height: 100vh; margin-left: var(--lab-width, 0); }
       .app[data-theme="dark"] { color: #e2e8f0; background: #0f172a; }
+      /* Declared on the root, so the library's popover, which renders in the body, knows the page is dark. */
+      :root:has(.app[data-theme="dark"]) { color-scheme: dark; }
+      .app[data-theme="dark"] :is(.stat, .card) { border-color: #334155; background: #1e293b; color: #e2e8f0; }
+      .app[data-theme="dark"] .tip { background: #0c4a6e; color: #e0f2fe; }
+      .app[data-theme="dark"] .sidebar button[aria-current="page"] { background: #1e3a8a; color: #dbeafe; }
+      .app[data-theme="dark"] .avatar.big { background: #334155; }
       .app[data-theme="sepia"] { background: #f4ecd8; }
       .topbar {
         grid-column: 1 / -1; position: sticky; top: 0; z-index: 10;
@@ -23,7 +29,7 @@
         color: #fff; background: #1e293b;
       }
       .topbar > button { flex: none; padding: 5px 10px; border: 1px solid #475569; border-radius: 6px; color: #fff; background: #334155; white-space: nowrap; }
-      .brand { font-weight: 700; font-size: 16px; }
+      .brand { margin-right: 10px; font-weight: 700; font-size: 16px; }
       .search { flex: 0 1 220px; min-width: 60px; padding: 5px 8px; border: 0; border-radius: 6px; }
       .grow { flex: 1; }
       .avatar { width: 32px; height: 32px; padding: 0 !important; border-radius: 50% !important; }
@@ -33,6 +39,7 @@
       .sidebar button[aria-current="page"] { background: #dbeafe; color: #1e3a8a; }
       .view { padding: 20px 28px 80px; max-width: 720px; }
       .view h1 { margin: 0 0 16px; font-size: 22px; }
+      .view a { color: inherit; text-underline-offset: 2px; }
       .view > button, .deck-form button { padding: 6px 12px; }
       .stats { display: flex; gap: 12px; margin-bottom: 16px; }
       .stat { padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #0f172a; }
@@ -54,6 +61,12 @@
       .modal h2 { margin: 0; font-size: 16px; }
       .modal input { padding: 6px 8px; }
       .modal button { margin-right: 6px; padding: 5px 10px; }
+
+      @media (max-width: 640px) {
+        .app { grid-template-columns: minmax(0, 1fr); }
+        .sidebar, .search, .topbar .help, .feedback { display: none; }
+        .view { padding: 16px 16px 80px; }
+      }
 
       /* ---- checklist variants ---- */
       .compact-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }

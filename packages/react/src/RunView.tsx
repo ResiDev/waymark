@@ -9,7 +9,7 @@ import type {
   WalkthroughLabels,
   WalkthroughRenderProps,
 } from "./types";
-import { BeaconAnchor, DEFAULT_LABELS, DefaultBeacon, DefaultPopover, Dialog, WaymarkShade } from "./view";
+import { BeaconAnchor, DEFAULT_LABELS, DefaultPopover, Dialog, PlacedDefaultBeacon, WaymarkShade } from "./view";
 
 const subscribeNever = () => () => {};
 
@@ -128,9 +128,10 @@ function BeaconView({
     exit: () => run.act("exit", walkthrough),
     labels,
   };
-  return (
-    <BeaconAnchor rect={rect}>
-      {(walkthrough.renderBeacon ?? renderBeacon)?.(props) ?? <DefaultBeacon {...props} />}
-    </BeaconAnchor>
+  const custom = (walkthrough.renderBeacon ?? renderBeacon)?.(props);
+  return custom === null || custom === undefined ? (
+    <PlacedDefaultBeacon {...props} rect={rect} />
+  ) : (
+    <BeaconAnchor rect={rect}>{custom}</BeaconAnchor>
   );
 }
