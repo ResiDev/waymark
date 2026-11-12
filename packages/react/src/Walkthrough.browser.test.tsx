@@ -79,13 +79,13 @@ describe("popover", () => {
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", preferredPlacement: "below", content: "Below the page element." }] });
     const host = render(<WaymarkRoot waymarkPadding={0}><Walkthrough walkthrough={walkthrough} /></WaymarkRoot>);
     const before = (await dialog()).getBoundingClientRect();
-    expect(before.top - waymark.getBoundingClientRect().bottom).toBe(8);
+    expect(before.top - waymark.getBoundingClientRect().bottom).toBe(14);
 
     host.style.transform = "translate(100px, 100px)";
     await settle();
     const target = waymark.getBoundingClientRect();
     const after = (await dialog()).getBoundingClientRect();
-    expect(after.top - target.bottom).toBe(8);
+    expect(after.top - target.bottom).toBe(14);
     expect(after.left).toBe(before.left);
     const shade = document.querySelector("[data-waymark-shade]")!.getBoundingClientRect();
     expect({ top: shade.top, left: shade.left }).toEqual({ top: target.top, left: target.left });
@@ -103,11 +103,11 @@ describe("popover", () => {
       </>,
     );
     const gap = async () => (await dialog()).getBoundingClientRect().top - waymark.getBoundingClientRect().bottom;
-    expect(await gap()).toBe(8);
+    expect(await gap()).toBe(14);
 
     await scrollPage(100);
     expect(waymark.getBoundingClientRect().top).toBe(100);
-    expect(await gap()).toBe(8);
+    expect(await gap()).toBe(14);
   });
 
   it("keeps Tab and Shift+Tab among its own controls and its Waymark", async () => {

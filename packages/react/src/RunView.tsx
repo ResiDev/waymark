@@ -9,7 +9,7 @@ import type {
   WalkthroughLabels,
   WalkthroughRenderProps,
 } from "./types";
-import { BeaconAnchor, DEFAULT_LABELS, DefaultPopover, Dialog, PlacedDefaultBeacon, WaymarkShade } from "./view";
+import { BeaconAnchor, DEFAULT_LABELS, Dialog, WaymarkShade } from "./view";
 
 const subscribeNever = () => () => {};
 
@@ -78,6 +78,7 @@ function OpenView({
   const rect = snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
   // Named, so a popover drawn for a step just left acts on nothing else.
   const act = (action: Action) => () => run.act(action, walkthrough);
+  const DefaultPopover = walkthrough.defaultView.popover;
   const render = (placement: WalkthroughRenderProps["placement"], arrow: number) => {
     const props: WalkthroughRenderProps = {
       snapshot,
@@ -129,8 +130,9 @@ function BeaconView({
     labels,
   };
   const custom = (walkthrough.renderBeacon ?? renderBeacon)?.(props);
+  const DefaultBeacon = walkthrough.defaultView.beacon;
   return custom === null || custom === undefined ? (
-    <PlacedDefaultBeacon {...props} rect={rect} />
+    <DefaultBeacon {...props} rect={rect} />
   ) : (
     <BeaconAnchor rect={rect}>{custom}</BeaconAnchor>
   );

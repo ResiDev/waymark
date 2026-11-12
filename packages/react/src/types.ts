@@ -3,6 +3,7 @@ import type {
   ChecklistDefinition,
   ChecklistRow,
   ChecklistSnapshot,
+  Rect,
   Running,
   Step,
   StorageAdapter,
@@ -73,11 +74,25 @@ export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
 /** A method, so a walkthrough of particular steps still fits where any walkthrough does. */
 type Render<TProps> = { render(this: void, props: TProps): ReactNode }["render"];
 
+/**
+ * The library's own popover and beacon. Each takes one thing more than an
+ * app's does: where the arrow points from, and the Waymark's box.
+ */
+export type DefaultView = Readonly<{
+  popover: (props: WalkthroughRenderProps & { arrow: number }) => ReactNode;
+  beacon: (props: BeaconRenderProps & { rect: Rect | null }) => ReactNode;
+}>;
+
 /** A walkthrough whose steps React can draw. It may carry its own drawing, which wins over `<WaymarkRoot>`'s. */
 export type Walkthrough<TStep extends WalkthroughStep = WalkthroughStep> = CoreWalkthrough<TStep> &
   Readonly<{
     renderPopover?: Render<WalkthroughRenderProps<TStep>>;
     renderBeacon?: Render<BeaconRenderProps<TStep>>;
+    /**
+     * What draws it when neither it nor `<WaymarkRoot>` says. `defineWalkthrough`
+     * puts it here, so an app that defines no walkthrough ships no popover or beacon.
+     */
+    defaultView: DefaultView;
   }>;
 
 /** What `defineWalkthrough` takes. Its render functions see this walkthrough's steps, with their exact types. */

@@ -9,6 +9,7 @@ import type {
   ChecklistsDefinition,
   DefaultChecklists,
 } from "waymark-core";
+import { defaultView } from "./defaultView";
 import type {
   ProblemHandlers,
   ReactTask,
@@ -25,6 +26,7 @@ export function defineWalkthrough<const TStep extends WalkthroughStep>(
   const { renderPopover, renderBeacon, ...rest } = definition;
   return {
     ...defineCoreWalkthrough<TStep, WalkthroughStep>(rest),
+    defaultView,
     ...(renderPopover === undefined ? {} : { renderPopover }),
     ...(renderBeacon === undefined ? {} : { renderBeacon }),
   };
