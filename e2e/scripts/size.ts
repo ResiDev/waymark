@@ -14,6 +14,9 @@ import { build } from "esbuild";
  * tree-shaking checks: checklist code leaking into a walkthrough-only import
  * shows as a jump in that row.
  *
+ * A case over its budget fails the run: the table says by how much, and the
+ * exit code is 1. Raise a budget only on purpose, in the commit that needs it.
+ *
  * A run is appended to size-history.jsonl, one JSON object per line, unless
  * nothing differs from the last line. `dirty` means packages/ had uncommitted
  * changes, so the sizes are not those of `commit` alone.
@@ -25,13 +28,23 @@ const historyFile = new URL("size-history.jsonl", repo);
 const dist = { "waymark-core": `${packages}core/dist/index.js`, "react-waymark": `${packages}react/dist/index.js` };
 
 /** Keys name the history's columns: add cases freely, but never rename one. */
-const cases: Record<string, string> = {
+const cases = {
   "react/all": `export * from "react-waymark";`,
   "react/walkthrough": `export { defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
   "react/headless": `export { defineChecklists, localStorageAdapter, useChecklist, WaymarkRoot } from "react-waymark";`,
   "core/all": `export * from "waymark-core";`,
   "core/run": `export { createRun, defineWalkthrough } from "waymark-core";`,
   "core/checklists": `export { createRun, defineChecklists } from "waymark-core";`,
+} satisfies Record<string, string>;
+
+/** The most each case may weigh gzipped, in kB (1024 bytes). */
+const budgets: Record<keyof typeof cases, number> = {
+  "react/all": 23,
+  "react/walkthrough": 19.75,
+  "react/headless": 19.75,
+  "core/all": 16,
+  "core/run": 15.25,
+  "core/checklists": 15.5,
 };
 
 /** Bytes. */
@@ -84,9 +97,12 @@ for (const [name, file] of Object.entries(dist)) {
   if (!existsSync(file)) throw new Error(`No build of ${name} at ${file}. Run pnpm size from the repo root, which builds first.`);
 }
 
-const sizes: Record<string, Size> = Object.fromEntries(
-  await Promise.all(Object.entries(cases).map(async ([name, contents]) => [name, await measure(contents)] as const)),
-);
+type Case = keyof typeof cases;
+const names = Object.keys(cases) as Case[];
+const sizes = Object.fromEntries(
+  await Promise.all(names.map(async (name) => [name, await measure(cases[name])] as const)),
+) as Record<Case, Size>;
+const over = (name: Case) => sizes[name].gzip - budgets[name] * 1024;
 
 const entry: Entry = {
   date: new Date().toISOString(),
@@ -98,13 +114,15 @@ const previous = lastEntry();
 
 console.table(
   Object.fromEntries(
-    Object.entries(sizes).map(([name, size]) => [
+    names.map((name) => [
       name,
       {
-        min: kB(size.min),
-        gzip: kB(size.gzip),
-        brotli: kB(size.brotli),
-        "gzip vs last": delta(size.gzip, previous?.sizes[name]?.gzip),
+        min: kB(sizes[name].min),
+        gzip: kB(sizes[name].gzip),
+        brotli: kB(sizes[name].brotli),
+        "gzip vs last": delta(sizes[name].gzip, previous?.sizes[name]?.gzip),
+        budget: `${budgets[name]} kB`,
+        room: over(name) > 0 ? `OVER by ${Math.ceil(over(name))} B` : `${Math.floor(-over(name))} B`,
       },
     ]),
   ),
@@ -121,4 +139,10 @@ if (unchanged) {
 } else {
   appendFileSync(historyFile, `${JSON.stringify(entry)}\n`);
   console.log(`Recorded in size-history.jsonl as ${entry.commit}${entry.dirty ? " (with uncommitted changes)" : ""}.`);
+}
+
+const tooBig = names.filter((name) => over(name) > 0);
+if (tooBig.length > 0) {
+  console.error(`Over budget (gzip): ${tooBig.map((name) => `${name} by ${Math.ceil(over(name))} B`).join(", ")}.`);
+  process.exitCode = 1;
 }
