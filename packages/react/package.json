@@ -22,9 +22,9 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
-    "test": "vitest run --project unit",
+    "test": "vitest run --project unit --project unit-react19",
     "test:watch": "vitest --project unit",
-    "test:e2e": "vitest run --project browser",
+    "test:e2e": "vitest run --project browser --project browser-react19",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm run typecheck && pnpm run test && pnpm run test:e2e && pnpm run build"
   },
