@@ -73,7 +73,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
         ...currentStep.popoverStyle,
       }}
     >
-      {waymarkFound && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
+      {waymarkFound && <div style={arrowStyle(placement, arrow)} />}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
         {stepCount > 1 && labels.stepOf(stepIndex + 1, stepCount)}
         {/* Pulled past its padding and the room round its strokes, so the cross, not its hover square, lines up with the content's edge. */}
@@ -171,6 +171,8 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
         font: "inherit",
         cursor: "pointer",
         outlineColor: color.accent,
+        // Drawn in, to where the halo was, so the ring fits the chip's end.
+        outlineOffset: -3,
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />
@@ -181,6 +183,8 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
             // Beside the button on a Waymark, so the disc stays on its corner. With no Waymark it is part of the
             // button's row, so the two are centred and held on screen as one.
             position: waymarkFound ? "absolute" : "static",
+            // Behind the button's focus ring, so the whole ring shows.
+            zIndex: -1,
             // As tall as the halo, whose place it takes.
             padding: "6px 12px",
             // Out from under the disc, as one chip with it, towards the side of the screen with more room.

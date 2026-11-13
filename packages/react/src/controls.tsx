@@ -35,9 +35,9 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
     quiet: [{ color: color.muted }, { color: color.text, background: color.hover }],
   };
   const [rest, hovering] = looks[variant];
-  // One that cannot be pressed keeps a faint tint of the accent, so it still reads as the way on. Faded on its
-  // fill instead, a filled button's label would be hard to read.
-  const locked: CSSProperties = { color: color.accent, background: color.tint, borderColor: "transparent", cursor: "not-allowed" };
+  // One that cannot be pressed keeps a faint tint of the accent, so it still reads as the way on, under a grey
+  // label. Faded on its fill instead, a filled button's label would be hard to read.
+  const locked: CSSProperties = { color: color.muted, background: color.tint, borderColor: "transparent", cursor: "not-allowed" };
   return (
     <button
       type="button"
