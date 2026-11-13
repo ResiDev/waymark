@@ -48,11 +48,11 @@ const classes = {
     "focus-visible:[outline:2px_solid_currentColor] focus-visible:outline-offset-2",
   ].join(" "),
   triggerCount: "opacity-70",
-  ring: "h-[18px] w-[18px] fill-none",
+  ring: "h-5 w-5 fill-none",
   ringTrack: "stroke-[1.5] stroke-[color:color-mix(in_srgb,currentColor_45%,transparent)]",
   // The panel's accent, taken towards the text around the trigger so it shows on a dark header and a light one.
   ringDone: [
-    "stroke-[5.5] stroke-[color:color-mix(in_srgb,var(--accent)_65%,currentColor)]",
+    "stroke-[6] stroke-[color:color-mix(in_srgb,var(--accent)_65%,currentColor)]",
     "motion-safe:transition-[stroke-dasharray] motion-safe:duration-300",
   ].join(" "),
   panel: [
@@ -67,12 +67,12 @@ const classes = {
     "motion-safe:transition-[opacity,scale] motion-safe:duration-150 starting:scale-95 starting:opacity-0",
   ].join(" "),
   header: "flex flex-none flex-wrap items-baseline gap-x-3 border-0 border-b border-solid border-[color:var(--line)] px-5 py-4",
-  heading: "m-0 flex-1 text-base font-semibold",
+  heading: "m-0 flex-1 text-[17px] font-semibold leading-6",
   count: "text-[13px] text-[color:var(--muted)]",
   track: "mt-2.5 flex h-1.5 w-full flex-none overflow-hidden rounded-full bg-[var(--line)]",
   done: "bg-[var(--accent)] motion-safe:transition-[width] motion-safe:duration-300",
   // Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done.
-  skipped: "bg-[var(--accent)] opacity-[0.35]",
+  skipped: "bg-[var(--accent)] opacity-50",
   list: "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
   task: [
     "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-3 [&+&]:border-t",
@@ -175,7 +175,7 @@ function Contents<TTask extends AnyReactTask>({
         {/* A pie in a ring, like a started task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. */}
         <svg className={classes.ring} viewBox="0 0 18 18" aria-hidden="true">
           <circle className={classes.ringTrack} cx="9" cy="9" r="8" />
-          <circle className={classes.ringDone} cx="9" cy="9" r="2.75" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
+          <circle className={classes.ringDone} cx="9" cy="9" r="3" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
         </svg>
         {title}
         <span className={classes.triggerCount}>

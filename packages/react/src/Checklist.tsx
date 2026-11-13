@@ -215,7 +215,7 @@ export function Checklist<TTask extends AnyReactTask>({
     >
       <div style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0 12px" }}>
-          {title !== undefined && <div style={{ flex: 1, fontSize: 16, fontWeight: 600, lineHeight: "24px" }}>{title}</div>}
+          {title !== undefined && <div style={{ flex: 1, fontSize: 17, fontWeight: 600, lineHeight: "24px" }}>{title}</div>}
           <div style={{ color: color.muted, fontSize: 13 }}>
             {done} of {taskCount} done
             {skipped > 0 && <> · {skipped} skipped</>}
@@ -224,7 +224,7 @@ export function Checklist<TTask extends AnyReactTask>({
         <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}>
           <div style={{ width: share(done), background: color.accent, transition: "width 300ms" }} />
           {/* Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped Task done. */}
-          <div style={{ width: share(skipped), background: color.accent, opacity: 0.35 }} />
+          <div style={{ width: share(skipped), background: color.accent, opacity: 0.5 }} />
         </div>
       </div>
       <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>

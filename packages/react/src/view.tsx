@@ -48,7 +48,7 @@ export function WaymarkShade({ rect, padding }: { rect: Rect | null; padding: nu
 }
 
 /** From the cut-out to the popover: the arrow's reach, and a little air past its tip. */
-const GAP = 14;
+const GAP = 16;
 
 /** Placed against `rect`, or in the middle of the screen without one. */
 export function Dialog({

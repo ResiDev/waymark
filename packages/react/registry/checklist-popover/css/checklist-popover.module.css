@@ -49,8 +49,8 @@
 }
 
 .ring {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   fill: none;
 }
 
@@ -62,7 +62,7 @@
 /* The panel's accent, taken towards the text around the trigger so it shows on a dark header and a light one. */
 .ringDone {
   stroke: color-mix(in srgb, var(--accent) 65%, currentColor);
-  stroke-width: 5.5;
+  stroke-width: 6;
   transition: stroke-dasharray 300ms;
 }
 
@@ -124,7 +124,7 @@
 .heading {
   flex: 1;
   margin: 0;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
   line-height: 24px;
 }
@@ -152,7 +152,7 @@
 
 .skipped {
   background: var(--accent);
-  opacity: 0.35;
+  opacity: 0.5;
 }
 
 .list {

@@ -35,7 +35,8 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
     secondary: [{ color: color.text, borderColor: color.line }, { background: color.hover }],
     quiet: [{ color: color.muted }, { color: color.text, background: color.hover }],
   };
-  const [rest, hovering] = looks[variant];
+  // Faded on its fill, a filled button's label is hard to read, so one that cannot be pressed is drawn as the outlined one.
+  const [rest, hovering] = looks[props.disabled === true ? "secondary" : variant];
   return (
     <button
       type="button"

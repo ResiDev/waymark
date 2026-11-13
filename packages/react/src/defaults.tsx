@@ -118,8 +118,8 @@ const PULSE_TIMING: KeyframeAnimationOptions = { duration: 3000, easing: "ease-o
 /** What a finger gets to press, and what is held on screen. */
 const PRESS = 40;
 const DISC = 24;
-/** How far the beacon's name reaches in under the disc: to its middle, half of PRESS. A number of its own, as a constant worked out from another is kept by an app's bundler, used or not. */
-const TUCK = 20;
+/** How far the beacon's name reaches back under the disc: all the way, to the halo's far edge, so the two are one chip. */
+const TUCK = 37;
 
 /** A play arrow on a disc, so it reads as a way back in and not as a notification's dot. */
 function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, rect }: BeaconRenderProps) {
@@ -180,11 +180,12 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
             // Beside the button on a Waymark, so the disc stays on its corner. With no Waymark it is part of the
             // button's row, so the two are centred and held on screen as one.
             position: waymarkFound ? "absolute" : "static",
-            padding: "4px 12px",
+            // As tall as the halo.
+            padding: "6px 12px",
             // Out from under the disc, as one chip with it, towards the side of the screen with more room.
             ...(rect !== null && rect.right > viewport.width / 2
-              ? { right: "100%", marginRight: -TUCK, paddingRight: TUCK + 6 }
-              : { left: "100%", marginLeft: -TUCK, paddingLeft: TUCK + 6 }),
+              ? { right: "100%", marginRight: -TUCK, paddingRight: TUCK + 4 }
+              : { left: "100%", marginLeft: -TUCK, paddingLeft: TUCK + 4 }),
             border: `1px solid ${color.line}`,
             borderRadius: 999,
             color: color.text,
@@ -200,9 +201,9 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
           {title !== undefined && <> · {title}</>}
         </span>
       )}
-      {/* Positioned, to paint over the ripple and its name. A ring in the surface colour parts it from the page; the halo is what is left where motion is turned off. */}
-      <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.surface}, 0 0 0 5px ${color.halo}` }}>
-        <Icon d={PLAY} size={20} />
+      {/* Positioned, to paint over the ripple and its name. A ring in the arrow's colour parts it from the page; the halo is what is left where motion is turned off. */}
+      <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.onAccent}, 0 0 0 5px ${color.halo}` }}>
+        <Icon d={PLAY} size={DISC} />
       </span>
     </button>
   );
