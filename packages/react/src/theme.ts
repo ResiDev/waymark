@@ -22,9 +22,7 @@ export const color = {
   line: /* @__PURE__ */ mix(TEXT, 16, SURFACE),
   // See-through, so they tint whatever they are laid over.
   hover: /* @__PURE__ */ mix(TEXT, 7, "transparent"),
-  halo: /* @__PURE__ */ mix(ACCENT, 30, "transparent"),
-  // Amber, taken towards the text colour so it reads on a light surface and a dark one.
-  warn: /* @__PURE__ */ mix("#f59e0b", 60, TEXT),
+  halo: /* @__PURE__ */ mix(ACCENT, 40, "transparent"),
 } as const;
 
 /** Inline styles have no `:hover`, so a control tracks the pointer itself. Focus is left to the browser's own ring. */

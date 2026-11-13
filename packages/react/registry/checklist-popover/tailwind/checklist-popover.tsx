@@ -32,7 +32,10 @@ const focus = "focus-visible:[outline:2px_solid_var(--accent)] focus-visible:out
 
 const button = [
   "m-0 min-h-8 cursor-pointer whitespace-nowrap rounded-lg border border-solid px-3 py-[5px]",
-  "[font-family:inherit] text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50",
+  "[font-family:inherit] text-sm font-medium",
+  // One that cannot be pressed keeps a tint of the accent, so it still reads as the way on.
+  "disabled:cursor-not-allowed disabled:border-transparent disabled:text-[color:var(--accent)]",
+  "disabled:bg-[color:color-mix(in_srgb,var(--accent)_40%,transparent)]",
   focus,
 ].join(" ");
 
@@ -44,7 +47,9 @@ const classes = {
     "border border-solid border-[color:color-mix(in_srgb,currentColor_30%,transparent)] bg-transparent",
     "py-0 pl-2 pr-3 [font-family:inherit] text-[13px] font-medium text-inherit",
     "hover:bg-[color:color-mix(in_srgb,currentColor_12%,transparent)]",
-    "data-[state=open]:bg-[color:color-mix(in_srgb,currentColor_12%,transparent)]",
+    // Held down while its panel is open, so the two read as one.
+    "data-[state=open]:border-[color:color-mix(in_srgb,currentColor_55%,transparent)]",
+    "data-[state=open]:bg-[color:color-mix(in_srgb,currentColor_20%,transparent)]",
     "focus-visible:[outline:2px_solid_currentColor] focus-visible:outline-offset-2",
   ].join(" "),
   triggerCount: "opacity-70",
@@ -72,7 +77,7 @@ const classes = {
   track: "mt-2.5 flex h-1.5 w-full flex-none overflow-hidden rounded-full bg-[var(--line)]",
   done: "bg-[var(--accent)] motion-safe:transition-[width] motion-safe:duration-300",
   // Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done.
-  skipped: "bg-[var(--accent)] opacity-50",
+  skipped: "bg-[var(--accent)] opacity-60",
   list: "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
   task: [
     "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-3 [&+&]:border-t",
@@ -84,7 +89,8 @@ const classes = {
   // One drawn circle for every state, so a task's status is read from its shape: `mark` picks which.
   checkbox: [
     "relative m-0 box-border grid h-5 w-5 flex-none place-items-center rounded-full border-[1.5px] border-solid",
-    "[&>svg]:h-3 [&>svg]:w-3",
+    // Dashed where the app ticks it, so it does not look like something to press.
+    "[&>svg]:h-3 [&>svg]:w-3 [&:not(button)]:border-dashed",
     // Larger than the circle, for a finger.
     "enabled:cursor-pointer enabled:after:absolute enabled:after:-inset-[5px] enabled:after:content-['']",
     focus,
@@ -99,8 +105,8 @@ const classes = {
   // Its own arrow, at the end of the line, in place of the browser's at the start.
   summary: [
     "cursor-pointer list-none [&::-webkit-details-marker]:hidden",
-    "after:mb-[3px] after:ml-auto after:mr-0.5 after:h-1.5 after:w-1.5 after:flex-none after:rotate-45",
-    "after:border-0 after:border-b-[1.5px] after:border-r-[1.5px] after:border-solid after:border-[color:var(--muted)]",
+    "after:mb-[3px] after:ml-auto after:mr-0.5 after:h-[7px] after:w-[7px] after:flex-none after:rotate-45",
+    "after:border-0 after:border-b-2 after:border-r-2 after:border-solid after:border-[color:var(--muted)]",
     "after:content-[''] group-open:after:-mb-[3px] group-open:after:rotate-[225deg]",
     focus,
   ].join(" "),

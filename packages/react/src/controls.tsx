@@ -25,8 +25,6 @@ const base: CSSProperties = {
   cursor: "pointer",
 };
 
-const disabled: CSSProperties = { opacity: 0.5, cursor: "not-allowed" };
-
 /** One button for the popover and the checklist, so the two read as one design. */
 export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"button"> & { variant: Variant }) {
   const [hovered, hover] = useHover();
@@ -35,8 +33,10 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
     secondary: [{ color: color.text, borderColor: color.line }, { background: color.hover }],
     quiet: [{ color: color.muted }, { color: color.text, background: color.hover }],
   };
-  // Faded on its fill, a filled button's label is hard to read, so one that cannot be pressed is drawn as the outlined one.
-  const [rest, hovering] = looks[props.disabled === true ? "secondary" : variant];
+  const [rest, hovering] = looks[variant];
+  // One that cannot be pressed keeps a tint of the accent, so it still reads as the way on. Faded on its fill
+  // instead, a filled button's label would be hard to read.
+  const locked: CSSProperties = { color: color.accent, background: color.halo, borderColor: "transparent", cursor: "not-allowed" };
   return (
     <button
       type="button"
@@ -47,7 +47,7 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
         // Tints the ring the browser draws round a control the keyboard is on.
         outlineColor: color.accent,
         ...rest,
-        ...(props.disabled === true ? disabled : hovered ? hovering : null),
+        ...(props.disabled === true ? locked : hovered ? hovering : null),
         ...style,
       }}
     />

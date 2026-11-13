@@ -74,7 +74,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       }}
     >
       {waymarkFound && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 8, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
         {stepCount > 1 && labels.stepOf(stepIndex + 1, stepCount)}
         {/* Pulled past the padding, so the cross, not its hover square, lines up with the content's edge. */}
         <Button variant="quiet" aria-label={labels.close} onClick={exit} style={{ minHeight: 28, margin: "-4px -7px -4px auto", padding: 6 }}>
@@ -82,11 +82,11 @@ function DefaultPopover<TStep extends WalkthroughStep>({
         </Button>
       </div>
       {currentStep.title !== undefined && (
-        <div style={{ marginBottom: 4, fontSize: 17, fontWeight: 600, lineHeight: "22px" }}>{currentStep.title}</div>
+        <div style={{ marginBottom: 6, fontSize: 17, fontWeight: 600, lineHeight: "22px" }}>{currentStep.title}</div>
       )}
       <div>{currentStep.content}</div>
       {(waymark.status === "lost" || waymark.status === "missing") && (
-        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.warn, background: "color-mix(in srgb, currentColor 10%, transparent)", fontSize: 13, lineHeight: "18px" }}>
+        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.muted, background: color.hover, fontSize: 13, lineHeight: "18px" }}>
           {labels.missing}
         </div>
       )}
@@ -126,6 +126,8 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
   const viewport = useViewportSize();
   // Under the pointer or the keyboard's focus.
   const [active, hover, setActive] = useHover();
+  // Its name shows while it is asked for. With no Waymark to sit on, a dot alone at the bottom of the screen says nothing, so there it always shows.
+  const named = active || !waymarkFound;
   const rippleRef = useRef<HTMLSpanElement>(null);
   // Inline styles can't hold keyframes, and a stylesheet would be one more thing for an app to import.
   useEffect(() => {
@@ -172,15 +174,14 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />
-      {/* Its name, while it is asked for. With no Waymark to sit on, a dot alone at the bottom of the screen says nothing, so there it always shows. */}
-      {(active || !waymarkFound) && (
+      {named && (
         <span
           aria-hidden="true"
           style={{
             // Beside the button on a Waymark, so the disc stays on its corner. With no Waymark it is part of the
             // button's row, so the two are centred and held on screen as one.
             position: waymarkFound ? "absolute" : "static",
-            // As tall as the halo.
+            // As tall as the halo, whose place it takes.
             padding: "6px 12px",
             // Out from under the disc, as one chip with it, towards the side of the screen with more room.
             ...(rect !== null && rect.right > viewport.width / 2
@@ -202,7 +203,7 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
         </span>
       )}
       {/* Positioned, to paint over the ripple and its name. A ring in the arrow's colour parts it from the page; the halo is what is left where motion is turned off. */}
-      <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.onAccent}, 0 0 0 5px ${color.halo}` }}>
+      <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.onAccent}, 0 0 0 5px ${named ? "transparent" : color.halo}` }}>
         <Icon d={PLAY} size={DISC} />
       </span>
     </button>

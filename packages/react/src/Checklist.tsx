@@ -56,7 +56,7 @@ export const visuallyHidden: CSSProperties = {
 const MARK = 20;
 
 /** One drawn circle for every state, so a Task's status is read from its shape and not from a character of the page's font. */
-function Mark({ status, underWay }: { status: TaskStatus; underWay: boolean }) {
+function Mark({ status, underWay, byHand }: { status: TaskStatus; underWay: boolean; byHand: boolean }) {
   const look: CSSProperties | null =
     status === "done"
       ? { borderColor: color.accent, color: color.onAccent, background: color.accent }
@@ -73,7 +73,8 @@ function Mark({ status, underWay }: { status: TaskStatus; underWay: boolean }) {
         placeItems: "center",
         width: MARK,
         height: MARK,
-        border: `1.5px solid ${color.muted}`,
+        // Dashed where the app ticks it, so it does not look like something to press.
+        border: `1.5px ${byHand ? "solid" : "dashed"} ${color.muted}`,
         borderRadius: "50%",
         color: color.muted,
         ...look,
@@ -97,7 +98,7 @@ function DefaultRow<TTask extends AnyReactTask>({
   const titleId = useId();
   const statusId = useId();
   const finished = status !== "todo";
-  const mark = <Mark status={status} underWay={walkthrough !== "none"} />;
+  const mark = <Mark status={status} underWay={walkthrough !== "none"} byHand={task.toggleable !== false} />;
 
   // The app's own action, or else the Task's walkthrough.
   const onSelect = task.action?.onSelect ?? (task.walkthrough && (() => start(task.id)));
@@ -224,7 +225,7 @@ export function Checklist<TTask extends AnyReactTask>({
         <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}>
           <div style={{ width: share(done), background: color.accent, transition: "width 300ms" }} />
           {/* Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped Task done. */}
-          <div style={{ width: share(skipped), background: color.accent, opacity: 0.5 }} />
+          <div style={{ width: share(skipped), background: color.accent, opacity: 0.6 }} />
         </div>
       </div>
       <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>

@@ -39,9 +39,14 @@
   cursor: pointer;
 }
 
-.trigger:hover,
-.trigger[data-state="open"] {
+.trigger:hover {
   background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* Held down while its panel is open, so the two read as one. */
+.trigger[data-state="open"] {
+  border-color: color-mix(in srgb, currentColor 55%, transparent);
+  background: color-mix(in srgb, currentColor 20%, transparent);
 }
 
 .triggerCount {
@@ -152,7 +157,7 @@
 
 .skipped {
   background: var(--accent);
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .list {
@@ -211,6 +216,11 @@ button.checkbox {
   cursor: pointer;
 }
 
+/* Dashed where the app ticks it, so it does not look like something to press. */
+span.checkbox {
+  border-style: dashed;
+}
+
 /* Larger than the circle, for a finger. */
 button.checkbox::after {
   content: "";
@@ -256,11 +266,11 @@ summary.summary::-webkit-details-marker {
 summary.summary::after {
   content: "";
   flex: none;
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   margin: 0 2px 3px auto;
   border: solid var(--muted);
-  border-width: 0 1.5px 1.5px 0;
+  border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
 
@@ -346,8 +356,11 @@ summary.summary::after {
   margin-left: -12px;
 }
 
+/* One that cannot be pressed keeps a tint of the accent, so it still reads as the way on. */
 .actions button:disabled {
-  opacity: 0.5;
+  border-color: transparent;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
   filter: none;
   cursor: not-allowed;
 }
