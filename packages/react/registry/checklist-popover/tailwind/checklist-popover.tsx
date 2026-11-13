@@ -33,9 +33,9 @@ const focus = "focus-visible:[outline:2px_solid_var(--accent)] focus-visible:out
 const button = [
   "m-0 min-h-8 cursor-pointer whitespace-nowrap rounded-lg border border-solid px-3 py-[5px]",
   "[font-family:inherit] text-sm font-medium",
-  // One that cannot be pressed keeps a tint of the accent, so it still reads as the way on.
+  // One that cannot be pressed keeps a faint tint of the accent, so it still reads as the way on.
   "disabled:cursor-not-allowed disabled:border-transparent disabled:text-[color:var(--accent)]",
-  "disabled:bg-[color:color-mix(in_srgb,var(--accent)_25%,transparent)]",
+  "disabled:bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)]",
   focus,
 ].join(" ");
 
@@ -77,12 +77,12 @@ const classes = {
   track: "mt-2.5 flex h-1.5 w-full flex-none overflow-hidden rounded-full bg-[var(--line)]",
   done: "bg-[var(--accent)] motion-safe:transition-[width] motion-safe:duration-300",
   // Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done.
-  skipped: "bg-[var(--accent)] opacity-60",
+  skipped: "bg-[var(--accent)] opacity-70",
   list: [
     "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
     // A shadow along the bottom edge while there is more below. It stays put; the cover over it is at the end of
     // the list and scrolls with it, so it hides the shadow only once the end is reached.
-    "[background:linear-gradient(transparent,var(--surface)_70%)_bottom/100%_24px_no-repeat_local,linear-gradient(transparent,var(--line))_bottom/100%_10px_no-repeat_scroll]",
+    "[background:linear-gradient(transparent,var(--surface)_70%)_bottom/100%_24px_no-repeat_local,linear-gradient(transparent,var(--hover))_bottom/100%_16px_no-repeat_scroll]",
   ].join(" "),
   task: [
     "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-2.5 [&+&]:border-t",

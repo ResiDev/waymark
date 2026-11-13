@@ -156,12 +156,10 @@ function DefaultRow<TTask extends AnyReactTask>({
         */}
         <div style={{ display: "flex", gap: 8, margin: `-6px -12px -6px ${finished || !onSelect ? -12 : 0}px` }}>
           {onSelect && (
-            // One filled button in the list, on what to do next; a finished Task's button steps back to its words, in
-            // the text's colour so it still reads as something to press. Nothing starts while the Task's walkthrough
-            // is on screen.
+            // One filled button in the list, on what to do next; a finished Task's button steps back. Nothing starts
+            // while the Task's walkthrough is on screen.
             <Button
               variant={finished ? "quiet" : next ? "primary" : "secondary"}
-              style={finished ? { color: color.text } : undefined}
               onClick={onSelect}
               disabled={task.action === undefined && walkthrough === "open"}
             >
@@ -227,7 +225,7 @@ export function Checklist<TTask extends AnyReactTask>({
         <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}>
           <div style={{ width: share(done), background: color.accent, transition: "width 300ms" }} />
           {/* Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped Task done. */}
-          <div style={{ width: share(skipped), background: color.accent, opacity: 0.6 }} />
+          <div style={{ width: share(skipped), background: color.accent, opacity: 0.7 }} />
         </div>
       </div>
       <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>

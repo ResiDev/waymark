@@ -157,7 +157,7 @@
 
 .skipped {
   background: var(--accent);
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .list {
@@ -174,7 +174,7 @@
    */
   background:
     linear-gradient(transparent, var(--surface) 70%) bottom / 100% 24px no-repeat local,
-    linear-gradient(transparent, var(--line)) bottom / 100% 10px no-repeat scroll;
+    linear-gradient(transparent, var(--hover)) bottom / 100% 16px no-repeat scroll;
 }
 
 .task {
@@ -365,11 +365,11 @@ summary.summary::after {
   margin-left: -12px;
 }
 
-/* One that cannot be pressed keeps a tint of the accent, so it still reads as the way on. */
+/* One that cannot be pressed keeps a faint tint of the accent, so it still reads as the way on. */
 .actions button:disabled {
   border-color: transparent;
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   filter: none;
   cursor: not-allowed;
 }
