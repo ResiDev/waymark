@@ -86,7 +86,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       )}
       <div>{currentStep.content}</div>
       {(waymark.status === "lost" || waymark.status === "missing") && (
-        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.muted, background: color.hover, fontSize: 13, lineHeight: "18px" }}>
+        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 10, background: color.hover, fontSize: 13, lineHeight: "18px" }}>
           {labels.missing}
         </div>
       )}
@@ -132,12 +132,12 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
   // Inline styles can't hold keyframes, and a stylesheet would be one more thing for an app to import.
   useEffect(() => {
     const ripple = rippleRef.current;
-    // Still while it is asked for, and where motion is turned off. jsdom has no Web Animations.
-    if (active || ripple === null || !("animate" in ripple)) return;
+    // Still under its name, and where motion is turned off. jsdom has no Web Animations.
+    if (named || ripple === null || !("animate" in ripple)) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const animation = ripple.animate(PULSE, PULSE_TIMING);
     return () => animation.cancel();
-  }, [active]);
+  }, [named]);
   const disc: CSSProperties = {
     display: "grid",
     gridArea: "1 / 1",
@@ -171,6 +171,8 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
         font: "inherit",
         cursor: "pointer",
         outlineColor: color.accent,
+        // Drawn in, to where the halo was: round the chip's end, not across it.
+        outlineOffset: -3,
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />

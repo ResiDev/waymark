@@ -28,14 +28,14 @@ const colours = [
   "[--hover:color-mix(in_srgb,var(--text)_7%,transparent)]",
 ].join(" ");
 
-const focus = "focus-visible:[outline:2px_solid_var(--accent)] focus-visible:outline-offset-2";
+const focus = "focus-visible:[outline:2px_solid_var(--accent)] focus-visible:outline-offset-1";
 
 const button = [
   "m-0 min-h-8 cursor-pointer whitespace-nowrap rounded-lg border border-solid px-3 py-[5px]",
   "[font-family:inherit] text-sm font-medium",
   // One that cannot be pressed keeps a tint of the accent, so it still reads as the way on.
   "disabled:cursor-not-allowed disabled:border-transparent disabled:text-[color:var(--accent)]",
-  "disabled:bg-[color:color-mix(in_srgb,var(--accent)_40%,transparent)]",
+  "disabled:bg-[color:color-mix(in_srgb,var(--accent)_25%,transparent)]",
   focus,
 ].join(" ");
 
@@ -80,7 +80,7 @@ const classes = {
   skipped: "bg-[var(--accent)] opacity-60",
   list: "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
   task: [
-    "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-3 [&+&]:border-t",
+    "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-2.5 [&+&]:border-t",
     // A bar down the side, so the task to do next is found without reading, and not by its button's colour alone.
     "data-[next]:shadow-[inset_3px_0_var(--accent)] data-[open]:shadow-[inset_3px_0_var(--accent)]",
     // Tinted while its walkthrough is on screen.
@@ -106,7 +106,7 @@ const classes = {
   summary: [
     "cursor-pointer list-none [&::-webkit-details-marker]:hidden",
     "after:mb-[3px] after:ml-auto after:mr-0.5 after:h-[7px] after:w-[7px] after:flex-none after:rotate-45",
-    "after:border-0 after:border-b-2 after:border-r-2 after:border-solid after:border-[color:var(--muted)]",
+    "after:border-0 after:border-b-[1.5px] after:border-r-[1.5px] after:border-solid after:border-[color:var(--muted)]",
     "after:content-[''] group-open:after:-mb-[3px] group-open:after:rotate-[225deg]",
     focus,
   ].join(" "),
