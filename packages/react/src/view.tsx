@@ -7,7 +7,7 @@ import { useViewportSize } from "./useViewportSize";
 import type { Placement, WalkthroughLabels } from "./types";
 
 // What <WaymarkRoot> draws round any popover and beacon, the app's or the library's: the labels, the shade, and
-// where things go. The library's own popover and beacon are in defaultView.tsx, which nothing here imports.
+// where things go. The library's own popover and beacon are in defaults.tsx, which nothing here imports.
 
 export const DEFAULT_LABELS: WalkthroughLabels = {
   next: "Next",
@@ -157,28 +157,23 @@ export function Dialog({
   );
 }
 
+/** Nearer the top of the screen than this, a beacon has no room above its Waymark. */
+const FLIP = 16;
+
 /**
- * Pins the beacon's centre to the Waymark's top-right corner, or the bottom of
- * the screen without one, kept far enough from the edges that the beacon is
+ * Pins the beacon's centre to the Waymark's top-right corner, its bottom-right
+ * one where the Waymark is at the top of the screen, or the bottom of the
+ * screen without a Waymark, kept far enough from the edges that the beacon is
  * never cut off.
  */
-export function BeaconAnchor({
-  rect,
-  below = false,
-  children,
-}: {
-  rect: Rect | null;
-  /** The bottom-right corner in place of the top-right. */
-  below?: boolean;
-  children: ReactNode;
-}) {
+export function BeaconAnchor({ rect, children }: { rect: Rect | null; children: ReactNode }) {
   const beaconRef = useRef<HTMLDivElement>(null);
   const size = useMeasuredSize(beaconRef, true);
   const viewport = useViewportSize();
   const reachX = size.width / 2;
   const reachY = size.height / 2;
   const x = rect ? rect.right : viewport.width / 2;
-  const y = rect ? (below ? rect.bottom : rect.top) : viewport.height - 32;
+  const y = rect ? (rect.top < FLIP ? rect.bottom : rect.top) : viewport.height - 32;
   return (
     <div
       ref={beaconRef}

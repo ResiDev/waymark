@@ -9,7 +9,8 @@ import {
   localStorageAdapter,
   Walkthrough,
   WaymarkRoot,
-  defaultView,
+  defaultBeacon,
+  defaultPopover,
   type BeaconRenderProps,
   type StoredRecord,
   type WalkthroughLabels,
@@ -129,7 +130,7 @@ describe("Walkthrough", () => {
     await act(async () =>
       root.render(
         <StrictMode>
-          <WaymarkRoot view={defaultView} onEvent={(event) => events.push(event.type)}>
+          <WaymarkRoot renderPopover={defaultPopover} renderBeacon={defaultBeacon} onEvent={(event) => events.push(event.type)}>
             <Walkthrough walkthrough={walkthrough} />
           </WaymarkRoot>
         </StrictMode>,
@@ -393,7 +394,7 @@ describe("WaymarkRoot", () => {
       window.removeEventListener("error", handled);
     });
 
-    await expect(render(<Walkthrough walkthrough={walkthrough} />, {}, null)).rejects.toThrow(
+    await expect(render(<Walkthrough walkthrough={walkthrough} />, {}, true)).rejects.toThrow(
       'nothing draws the popover of walkthrough "tour"',
     );
   });
@@ -638,7 +639,7 @@ describe("WaymarkRoot with storage", () => {
       fakeFrames();
       localStorage.setItem(localKey("tour"), record({ status: "running", step: 1, collapsed: false }));
       const app = () => (
-        <WaymarkRoot view={defaultView} storage="tour" portal={portal}>
+        <WaymarkRoot renderPopover={defaultPopover} renderBeacon={defaultBeacon} storage="tour" portal={portal}>
           {view()}
         </WaymarkRoot>
       );
@@ -678,7 +679,7 @@ describe("WaymarkRoot with storage", () => {
 
   it("never touches storage in a server render", () => {
     const storage = watchedStorage();
-    renderToString(<WaymarkRoot view={defaultView} storage={storage}>{view()}</WaymarkRoot>);
+    renderToString(<WaymarkRoot renderPopover={defaultPopover} renderBeacon={defaultBeacon} storage={storage}>{view()}</WaymarkRoot>);
     expect(storage.load).not.toHaveBeenCalled();
     expect(storage.subscribe).not.toHaveBeenCalled();
   });
@@ -689,7 +690,7 @@ describe("WaymarkRoot with storage", () => {
     await act(async () =>
       root.render(
         <StrictMode>
-          <WaymarkRoot view={defaultView} storage={storage}>{view()}</WaymarkRoot>
+          <WaymarkRoot renderPopover={defaultPopover} renderBeacon={defaultBeacon} storage={storage}>{view()}</WaymarkRoot>
         </StrictMode>,
       ),
     );

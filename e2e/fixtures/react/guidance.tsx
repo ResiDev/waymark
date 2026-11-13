@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import {
-  defaultView,
+  defaultBeacon,
+  defaultPopover,
   defineChecklists,
   defineWalkthrough,
   everyProblem,
@@ -374,13 +375,12 @@ export function Guidance({ children }: { children: ReactNode }) {
   return (
     <WaymarkRoot
       key={key}
-      view={defaultView}
       storage={storage === "server" ? serverRecord : localRecord}
       context={context}
       waymarkPadding={padding}
       problemHandlers={problemHandlers}
       onEvent={onEvent}
-      {...(popover === "custom" ? customPopover : {})}
+      {...(popover === "custom" ? customPopover : { renderPopover: defaultPopover, renderBeacon: defaultBeacon })}
     >
       <ShareRun />
       {children}

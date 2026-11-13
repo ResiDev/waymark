@@ -30,7 +30,7 @@ const dist = { "waymark-core": `${packages}core/dist/index.js`, "react-waymark":
 /** Keys name the history's columns: add cases freely, but never rename one. */
 const cases = {
   "react/all": `export * from "react-waymark";`,
-  "react/walkthrough": `export { defaultView, defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
+  "react/walkthrough": `export { defaultBeacon, defaultPopover, defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
   "react/own-look": `export { defineWalkthrough, Walkthrough, WaymarkRoot } from "react-waymark";`,
   "react/headless": `export { defineChecklists, localStorageAdapter, useChecklist, WaymarkRoot } from "react-waymark";`,
   "core/all": `export * from "waymark-core";`,

@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import type { Rect } from "waymark-core";
 import { Button, CloseIcon, LockIcon, PlayIcon, WarningIcon } from "./controls";
 import { vertical } from "./placement";
 import { color, focusRing, useInteraction, usePalette } from "./theme";
 import { useViewportSize } from "./useViewportSize";
-import type { BeaconRenderProps, Placement, WalkthroughRenderProps, WalkthroughStep, WalkthroughView } from "./types";
-import { BeaconAnchor } from "./view";
+import type { BeaconRenderProps, Placement, WalkthroughRenderProps, WalkthroughStep } from "./types";
 
-// The library's own popover and beacon. Nothing in the library imports this file: an app does, as `defaultView`,
-// and hands it to <WaymarkRoot>, so an app that draws its own ships none of it.
+// The library's own popover and beacon. Nothing in the library imports this file: an app does, as `defaultPopover`
+// and `defaultBeacon`, and hands them to <WaymarkRoot>, so an app that draws its own ships neither.
 
 const SHADOW = `inset 0 1px 0 ${color.glint}, 0 1px 3px rgb(2 6 23 / 0.1), 0 16px 40px -8px ${color.shadow}`;
 
@@ -121,7 +119,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
   exit,
   skipTask,
   labels,
-}: WalkthroughRenderProps<TStep> & { arrow: number }) {
+}: WalkthroughRenderProps<TStep>) {
   const palette = usePalette();
   const popoverRef = useRef<HTMLDivElement>(null);
   useAnimation(popoverRef, APPEAR, APPEAR_TIMING);
@@ -247,8 +245,6 @@ const SMALL_PULSE = pulse(1.5);
 const PULSE_TIMING: KeyframeAnimationOptions = { duration: 4000, iterations: Infinity };
 const ECHO_TIMING: KeyframeAnimationOptions = { ...PULSE_TIMING, delay: 450 };
 
-/** Nearer the top of the screen than this, there is no room above the Waymark, and the default beacon takes the corner below. */
-const FLIP = 16;
 const DISC = 24;
 /** What a finger gets to press, and what is held on screen. */
 const PRESS = 40;
@@ -330,19 +326,6 @@ function BeaconLabel({ onLeft, children }: { onLeft: boolean; children: ReactNod
   );
 }
 
-/** The default beacon where it belongs: on the corner above the Waymark, or the one below when the Waymark is at the top of the screen. */
-function PlacedDefaultBeacon({ rect, ...props }: BeaconRenderProps & { rect: Rect | null }) {
-  const viewport = useViewportSize();
-  const below = rect !== null && rect.top < FLIP;
-  // Its label opens towards the side of the screen with more room.
-  const labelOnLeft = rect !== null && rect.right > viewport.width / 2;
-  return (
-    <BeaconAnchor rect={rect} below={below}>
-      <DefaultBeacon {...props} labelOnLeft={labelOnLeft} />
-    </BeaconAnchor>
-  );
-}
-
 /** Long enough to read the label once. */
 const INTRODUCTION = 2500;
 
@@ -351,9 +334,12 @@ function DefaultBeacon({
   resume,
   labels,
   waymarkFound,
-  labelOnLeft,
-}: BeaconRenderProps & { labelOnLeft: boolean }) {
+  rect,
+}: BeaconRenderProps) {
   const palette = usePalette();
+  const viewport = useViewportSize();
+  // Its label opens towards the side of the screen with more room.
+  const labelOnLeft = rect !== null && rect.right > viewport.width / 2;
   // A beacon new to the page says what it is, once, and then only under the pointer or the keyboard's focus.
   const [introducing, setIntroducing] = useState(true);
   useEffect(() => {
@@ -435,5 +421,8 @@ function DefaultBeacon({
   );
 }
 
-/** The library's popover and beacon, for `<WaymarkRoot view={defaultView}>`. */
-export const defaultView: WalkthroughView = { popover: DefaultPopover, beacon: PlacedDefaultBeacon };
+/** The library's popover, for `renderPopover`. */
+export const defaultPopover = (props: WalkthroughRenderProps): ReactNode => <DefaultPopover {...props} />;
+
+/** The library's beacon, for `renderBeacon`. */
+export const defaultBeacon = (props: BeaconRenderProps): ReactNode => <DefaultBeacon {...props} />;

@@ -1,10 +1,10 @@
 import { act, useEffect, type ReactNode } from "react";
-import { defaultView, useRun, WaymarkRoot, type Run, type WalkthroughView, type WaymarkRootProps } from "../index";
+import { defaultBeacon, defaultPopover, useRun, WaymarkRoot, type Run, type WaymarkRootProps } from "../index";
 import { addRoot } from "./dom";
 
 /**
  * A React root whose `render` draws the page inside a `<WaymarkRoot>` with the
- * props given and the default look unless told `null`, in act, and resolves to the Run that root made, for the test to
+ * props given, and the library's popover and beacon unless `bare`, in act, and resolves to the Run that root made, for the test to
  * drive as the app's own code would. Unmounted when the test ends.
  */
 export const addWaymarkRoot = () => {
@@ -19,12 +19,12 @@ export const addWaymarkRoot = () => {
   }
   const render = async (
     page: ReactNode,
-    props: Omit<WaymarkRootProps, "children" | "view"> = {},
-    view: WalkthroughView | null = defaultView,
+    props: Omit<WaymarkRootProps, "children"> = {},
+    bare = false,
   ): Promise<Run> => {
     await act(async () =>
       root.render(
-        <WaymarkRoot {...(view === null ? {} : { view })} {...props}>
+        <WaymarkRoot {...(bare ? {} : { renderPopover: defaultPopover, renderBeacon: defaultBeacon })} {...props}>
           <ReadRun />
           {page}
         </WaymarkRoot>,

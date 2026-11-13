@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  defaultView,
+  defaultBeacon,
+  defaultPopover,
   defineChecklists,
   defineWalkthrough,
   useChecklist,
@@ -149,7 +150,14 @@ export function Guided({ children }: { children: ReactNode }) {
   const app = useStore(data);
   const context = useMemo(() => contextOf(app), [app]);
   return (
-    <WaymarkRoot view={defaultView} storage="plotline" context={context} onEvent={onEvent} labels={{ skipTask: "Skip" }}>
+    <WaymarkRoot
+      renderPopover={defaultPopover}
+      renderBeacon={defaultBeacon}
+      storage="plotline"
+      context={context}
+      onEvent={onEvent}
+      labels={{ skipTask: "Skip" }}
+    >
       {children}
     </WaymarkRoot>
   );

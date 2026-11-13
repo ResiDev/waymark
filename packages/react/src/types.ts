@@ -46,6 +46,8 @@ export type WalkthroughRenderProps<
   snapshot: Running<TStep>;
   currentStep: TStep;
   placement: Placement;
+  /** In px, along the popover's edge on the Waymark's side, to where the Waymark's centre is: where an arrow goes. */
+  arrow: number;
   /** False while the popover is centred: the step has no Waymark, or it is not found yet, lost or missing. */
   waymarkFound: boolean;
   advance: () => void;
@@ -59,12 +61,18 @@ export type WalkthroughRenderProps<
   labels: WalkthroughLabels;
 }>;
 
-/** What a collapsed walkthrough's beacon is drawn with. It is placed for you: on the Waymark's top-right corner, or the bottom of the screen. */
+/**
+ * What a collapsed walkthrough's beacon is drawn with. It is placed for you: on
+ * the Waymark's top-right corner, its bottom-right one where the Waymark is at
+ * the top of the screen, or the bottom of the screen without a Waymark.
+ */
 export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
   Readonly<{
     currentStep: TStep;
     /** False while the beacon sits at the bottom of the screen: the step has no Waymark, or it is lost or missing. */
     waymarkFound: boolean;
+    /** The Waymark's box on the screen, or null as `waymarkFound` is false. */
+    rect: Rect | null;
     resume: () => void;
     exit: () => void;
     /** The app's labels over the defaults; `resume` names the beacon. */
@@ -73,15 +81,6 @@ export type BeaconRenderProps<TStep extends WalkthroughStep = WalkthroughStep> =
 
 /** A method, so a walkthrough of particular steps still fits where any walkthrough does. */
 type Render<TProps> = { render(this: void, props: TProps): ReactNode }["render"];
-
-/**
- * A popover and a beacon for `<WaymarkRoot view>`. The library's own is
- * `defaultView`; an app's own drawing goes in `renderPopover` and `renderBeacon`.
- */
-export type WalkthroughView = Readonly<{
-  popover: (props: WalkthroughRenderProps & { arrow: number }) => ReactNode;
-  beacon: (props: BeaconRenderProps & { rect: Rect | null }) => ReactNode;
-}>;
 
 /** A walkthrough whose steps React can draw. It may carry its own drawing, which wins over `<WaymarkRoot>`'s. */
 export type Walkthrough<TStep extends WalkthroughStep = WalkthroughStep> = CoreWalkthrough<TStep> &
@@ -122,11 +121,9 @@ export type WaymarkRootProps = Readonly<{
   /** In px. Room the shade leaves around the Waymark; clicks this close count as clicks on it. Defaults to 20. */
   waymarkPadding?: number;
   /**
-   * Draws every walkthrough that nothing else does: pass `defaultView` for the
-   * library's popover and beacon. Left out, an app that draws its own ships neither.
+   * What draws every walkthrough without drawing of its own. The library's are
+   * `defaultPopover` and `defaultBeacon`; an app that passes its own ships neither.
    */
-  view?: WalkthroughView;
-  /** For every walkthrough without one of its own. */
   renderPopover?: (props: WalkthroughRenderProps) => ReactNode;
   renderBeacon?: (props: BeaconRenderProps) => ReactNode;
   labels?: Partial<WalkthroughLabels>;

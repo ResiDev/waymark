@@ -20,7 +20,7 @@ Wrap your app in `<WaymarkRoot>`. Then mark the elements a walkthrough points at
 
 ```tsx
 import { useState } from "react";
-import { Walkthrough, WaymarkRoot, defaultView, defineWalkthrough } from "react-waymark";
+import { Walkthrough, WaymarkRoot, defaultBeacon, defaultPopover, defineWalkthrough } from "react-waymark";
 
 const isEmail = (input: Element | null) =>
   input instanceof HTMLInputElement && /^\S+@\S+\.\S{2,}$/.test(input.value);
@@ -36,7 +36,12 @@ export const inviteWalkthrough = defineWalkthrough({
 
 export function App({ userId }: { userId: string }) {
   return (
-    <WaymarkRoot key={userId} view={defaultView} storage={`waymark:${userId}`}>
+    <WaymarkRoot
+      key={userId}
+      storage={`waymark:${userId}`}
+      renderPopover={defaultPopover}
+      renderBeacon={defaultBeacon}
+    >
       <Header />
     </WaymarkRoot>
   );
@@ -97,8 +102,8 @@ A click within 20px of the waymark counts as a click on it. The same distance se
 | `context` | Your app's facts, read by checklists' completion conditions. See [Checklists](#checklists). |
 | `onEvent` | Hears what every walkthrough and checklist does. See [Events and analytics](#events-and-analytics). |
 | `problemHandlers` | One set for every walkthrough and checklist. See [Problem handlers](#problem-handlers). |
-| `view` | What draws the popover and the beacon. `defaultView` is the library's own. |
-| `labels`, `renderPopover`, `renderBeacon` | See [Changing the look](#changing-the-look). |
+| `renderPopover`, `renderBeacon` | What draws the popover and the beacon. `defaultPopover` and `defaultBeacon` are the library's own. See [Changing the look](#changing-the-look). |
+| `labels` | See [Changing the look](#changing-the-look). |
 | `waymarkPadding` | In px. Defaults to 20. |
 | `portal` | `false` renders the popover and beacons inside `<WaymarkRoot>`, after its children, not in `document.body`. Defaults to `true`. |
 
@@ -214,7 +219,7 @@ Waymark looks for a step's waymark every frame. If it hasn't appeared after half
 A checklist is a list of tasks for a user to get through, such as "Invite a teammate" or "Create a project". A task can carry a short walkthrough the user starts from the checklist, and a completion condition that ticks it off when the user does the task on their own.
 
 ```tsx
-import { Checklist, WaymarkRoot, defaultView, defineChecklists } from "react-waymark";
+import { Checklist, WaymarkRoot, defaultBeacon, defaultPopover, defineChecklists } from "react-waymark";
 
 type AppContext = { invited: boolean; hasProject: boolean };
 
@@ -238,7 +243,13 @@ export const onboarding = defineChecklists({
 
 export function App({ userId, context }: { userId: string; context: AppContext }) {
   return (
-    <WaymarkRoot key={userId} view={defaultView} storage={`waymark:${userId}`} context={context}>
+    <WaymarkRoot
+      key={userId}
+      storage={`waymark:${userId}`}
+      context={context}
+      renderPopover={defaultPopover}
+      renderBeacon={defaultBeacon}
+    >
       <Checklist checklist={onboarding.checklists.main} />
     </WaymarkRoot>
   );
@@ -354,7 +365,7 @@ A finished popover built from them is in [`packages/react/registry/checklist-pop
 
 ## Changing the look
 
-The default popover and beacon are `defaultView`, which you import and pass to `<WaymarkRoot view>`. They are styled inline, with no stylesheet to import. They sit at `z-index` 51, over a shade at 50, and render in `document.body`, so no transform, overflow or stacking context in your layout can clip them.
+The default popover and beacon are `defaultPopover` and `defaultBeacon`, which you import and pass to `<WaymarkRoot>` as `renderPopover` and `renderBeacon`. They are styled inline, with no stylesheet to import. They sit at `z-index` 51, over a shade at 50, and render in `document.body`, so no transform, overflow or stacking context in your layout can clip them.
 
 ### Labels
 
@@ -383,21 +394,24 @@ Translate or reword the default text with `labels` on `<WaymarkRoot>`:
 
 ### Your own popover and beacon
 
-To draw the popover yourself, pass `renderPopover` to `<WaymarkRoot>`, and it draws every walkthrough's popover. Waymark still places it and handles the keyboard. It gets:
+To draw the popover yourself, pass your own `renderPopover` to `<WaymarkRoot>`, and it draws every walkthrough's popover. Waymark still places it and handles the keyboard. It gets:
 
 | Prop | What it is |
 | --- | --- |
 | `currentStep` | The step, with your own fields such as `content` and `meta`. |
 | `snapshot` | The walkthrough, with `stepIndex`, `stepCount` and `canAdvance`. |
 | `placement` | The side of the waymark Waymark put it on. |
+| `arrow` | In px, how far along the popover's edge the waymark's centre is: where to draw an arrow. |
 | `waymarkFound` | `false` while the popover is centred because the step has no waymark, or it isn't on the page. |
 | `labels` | Your labels over the defaults. |
 | `advance`, `previous`, `collapse`, `reset`, `exit` | What the user can do. |
 | `skipTask` | Only in a task's walkthrough. |
 
-`renderBeacon` works the same way for the beacon, with `currentStep`, `waymarkFound`, `labels`, `resume` and `exit`. A render function that returns `null` gets the root's `view` instead, where it has one.
+`renderBeacon` works the same way for the beacon, with `currentStep`, `waymarkFound`, `rect` (the waymark's box), `labels`, `resume` and `exit`. Waymark places it on the waymark's top-right corner, or its bottom-right one when the waymark is at the top of the screen.
 
-An app that draws both itself has no need of `defaultView`. Leave it out, and the default popover and beacon are not in your bundle. A walkthrough that opens with nothing to draw it throws an error that says so.
+The defaults are render functions like your own, so yours can hand a step back to one: `renderPopover={(props) => (props.currentStep.meta ? <Mine {...props} /> : defaultPopover(props))}`.
+
+An app that never imports `defaultPopover` or `defaultBeacon` does not have it in its bundle. A walkthrough that opens with nothing to draw it throws an error that says so.
 
 ```tsx
 <WaymarkRoot

@@ -7,7 +7,8 @@ import {
   defineChecklists,
   defineWalkthrough,
   WaymarkRoot,
-  defaultView,
+  defaultBeacon,
+  defaultPopover,
 } from "./index";
 import { addRoot } from "./test/dom";
 import { fakeTimers } from "./test/time";
@@ -29,7 +30,7 @@ it("closes when a task starts from inside the panel, under StrictMode and a Waym
   await act(async () =>
     root.render(
       <StrictMode>
-        <WaymarkRoot view={defaultView}>
+        <WaymarkRoot renderPopover={defaultPopover} renderBeacon={defaultBeacon}>
           <ChecklistRoot checklist={checklists.home}>
             {({ start }) => (
               <>
