@@ -135,7 +135,7 @@ function DefaultRow<TTask extends AnyReactTask>({
       {/* On a narrow row the buttons wrap under the text. */}
       <div style={{ display: "flex", flex: 1, flexWrap: "wrap", alignItems: "flex-start", gap: "12px 16px", minWidth: 0 }}>
         {/* A finished Task is one line, short enough to keep its button beside it on a phone. */}
-        <div style={{ flex: finished ? "1 1 140px" : "1 1 240px", minWidth: 0 }}>
+        <div style={{ flex: finished ? "1 1 140px" : "1 1 200px", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             {/* Heavier on the one Task to do next, so a list of titles is not all one weight. */}
             <div id={titleId} style={{ color: finished ? color.muted : color.text, fontSize: 15, fontWeight: next ? 600 : 500 }}>
