@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { Button, CLOSE, Icon, PLAY, WARNING } from "./controls";
+import { Button, CLOSE, Icon, PLAY } from "./controls";
 import { vertical } from "./placement";
 import { color, useHover } from "./theme";
 import { useViewportSize } from "./useViewportSize";
@@ -92,7 +92,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       }}
     >
       {waymarkFound && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
-      <div style={{ display: "flex", alignItems: "center", minHeight: 20, marginBottom: 6, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 6, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
         {stepCount > 1 && labels.stepOf(stepIndex + 1, stepCount)}
         {/* Pulled past the padding, so the cross, not its hover square, lines up with the content's edge. */}
         <Button variant="quiet" aria-label={labels.close} onClick={exit} style={{ minHeight: 28, margin: "-4px -7px -4px auto", padding: 6 }}>
@@ -104,9 +104,8 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       )}
       <div>{currentStep.content}</div>
       {(waymark.status === "lost" || waymark.status === "missing") && (
-        <div style={{ display: "flex", gap: 10, marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.warn, background: "color-mix(in srgb, currentColor 10%, transparent)", fontSize: 13, lineHeight: "18px" }}>
-          <Icon d={WARNING} size={16} />
-          <span>{labels.missing}</span>
+        <div style={{ marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.warn, background: "color-mix(in srgb, currentColor 10%, transparent)", fontSize: 13, lineHeight: "18px" }}>
+          {labels.missing}
         </div>
       )}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginTop: 20 }}>
@@ -129,12 +128,9 @@ function DefaultPopover<TStep extends WalkthroughStep>({
   );
 }
 
-// One ripple, then a rest: enough to catch the eye, not a light that never stops flashing.
-const PULSE: Keyframe[] = [
-  { transform: "none", opacity: 0.6 },
-  { transform: "scale(2)", opacity: 0, offset: 0.4 },
-  { transform: "scale(2)", opacity: 0 },
-];
+// One ripple, then a rest: enough to catch the eye, not a light that never stops flashing. The rest is the time
+// after the last frame, which the browser fills with the ripple as it is styled: unseen.
+const PULSE: Keyframe[] = [{ opacity: 0.6 }, { transform: "scale(2)", opacity: 0, offset: 0.4 }];
 const PULSE_TIMING: KeyframeAnimationOptions = { duration: 3000, easing: "ease-out", iterations: Infinity };
 
 /** What a finger gets to press, and what is held on screen. */
@@ -179,12 +175,13 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
         background: "none",
         font: "inherit",
         cursor: "pointer",
+        outlineColor: color.accent,
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />
       {/* Positioned, to paint over the ripple. A ring in the surface colour parts it from the page; the halo is what is left where motion is turned off. */}
       <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.surface}, 0 0 0 5px ${color.halo}` }}>
-        <Icon d={PLAY} filled />
+        <Icon d={PLAY} size={16} />
       </span>
       {/* Its name, while it is asked for. With no Waymark to sit on, a dot alone at the bottom of the screen says nothing, so there it always shows. */}
       {(active || !waymarkFound) && (

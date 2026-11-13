@@ -15,7 +15,7 @@ const subscribeNever = () => () => {};
 
 /** A walkthrough is on the page and nothing was given to draw it: better loud than a page left under a shade. */
 const nothingDraws = (prop: string, id: string): never => {
-  throw new Error(`Waymark: walkthrough "${id}" has no ${prop}. Give <WaymarkRoot> one: the library's own are defaultPopover and defaultBeacon.`);
+  throw new Error(`Waymark: walkthrough "${id}" has no ${prop}. Give <WaymarkRoot> one.`);
 };
 
 /**

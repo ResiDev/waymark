@@ -10,7 +10,7 @@ A walkthrough is what other tools call a product tour or an onboarding tour. Way
 npm install react-waymark
 ```
 
-React 18 or 19. `react-waymark` brings `waymark-core` with it. A walkthrough adds about 14 kB gzipped to your bundle, and everything, checklists included, about 17 kB.
+React 18 or 19. `react-waymark` brings `waymark-core` with it. A walkthrough with the default popover and beacon adds about 19 kB gzipped to your bundle, one you draw yourself about 17 kB, and everything, checklists included, 23 kB. `pnpm size` measures these and fails over its limits.
 
 Waymark hasn't reached 1.0, so its API may still change.
 
@@ -383,14 +383,29 @@ Translate or reword the default text with `labels` on `<WaymarkRoot>`:
 | `previous` | Previous |
 | `finish` | Finish |
 | `skipTask` | Skip task |
-| `missing` | Can't find the part of the page this step points to. You can carry on, but the next steps may not match what you see. |
+| `missing` | Can't find this part of the page. You can carry on, but later steps may not match what you see. |
 | `close` | Close |
 | `resume` | Resume walkthrough |
 | `stepOf` | `` (step, count) => `Step ${step} of ${count}` `` |
 
 `close`, `resume` and `stepOf` become accessible names, so they take strings. The rest take any React node.
 
-`<Checklist>` has labels of its own. `start` defaults to "Show me", `replay` to "Show me again" on a done task, and `skip` to "Skip".
+`<Checklist>` has labels of its own. `start` defaults to "Show me", `resume` to "Continue" on a task whose walkthrough is collapsed, `replay` to "Show me again" on a done task, and `skip` to "Skip".
+
+### Colours
+
+The default popover, beacon and checklist take four colours from CSS variables, set anywhere above them, such as on `:root`:
+
+```css
+:root {
+  --waymark-accent: #7c3aed;
+  --waymark-on-accent: #fff;
+  --waymark-surface: #fff;
+  --waymark-text: #1c1917;
+}
+```
+
+Every other colour is mixed from those four. Left unset, the accent is blue, and the surface and text are the browser's own for the page's `color-scheme`, so a page with `color-scheme: dark` gets a dark popover. A browser without `color-mix()` draws the same components without their lines and tints.
 
 ### Your own popover and beacon
 

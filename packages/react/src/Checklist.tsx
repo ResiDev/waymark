@@ -125,6 +125,7 @@ function DefaultRow<TTask extends AnyReactTask>({
             borderRadius: "50%",
             background: "none",
             cursor: "pointer",
+            outlineColor: color.accent,
           }}
         >
           {mark}

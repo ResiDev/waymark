@@ -4,7 +4,6 @@ import { color, useHover } from "./theme";
 type Variant = "primary" | "secondary" | "quiet";
 
 const base: CSSProperties = {
-  boxSizing: "border-box",
   display: "inline-flex",
   flex: "none",
   alignItems: "center",
@@ -24,7 +23,6 @@ const base: CSSProperties = {
   lineHeight: "20px",
   whiteSpace: "nowrap",
   cursor: "pointer",
-  transition: "background-color 150ms, color 150ms, filter 150ms",
 };
 
 const disabled: CSSProperties = { opacity: 0.5, cursor: "not-allowed" };
@@ -45,6 +43,8 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
       {...hover}
       style={{
         ...base,
+        // Tints the ring the browser draws round a control the keyboard is on.
+        outlineColor: color.accent,
         ...rest,
         ...(props.disabled === true ? disabled : hovered ? hovering : null),
         ...style,
@@ -57,21 +57,20 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
 export const CHECK = "M2.5 6.5 5 9l4.5-5.5";
 export const DASH = "M3 6h6";
 export const CLOSE = "M3 3l6 6M9 3l-6 6";
-export const WARNING = "M6 1.75 10.75 10h-9.5ZM6 5v2.25M6 8.4v.1";
-export const PLAY = "M4.25 3v6L9.5 6Z";
+// Small enough that its stroke fills it: a solid triangle with soft corners.
+export const PLAY = "M5.2 4.4v3.2L8 6Z";
 
-export const Icon = ({ d, size = 12, filled = false }: { d: string; size?: number; filled?: boolean }) => (
+export const Icon = ({ d, size = 12 }: { d: string; size?: number }) => (
   <svg
     width={size}
     height={size}
     viewBox="0 0 12 12"
-    fill={filled ? "currentColor" : "none"}
+    fill="none"
     stroke="currentColor"
     strokeWidth={1.5}
     strokeLinecap="round"
     strokeLinejoin="round"
     aria-hidden="true"
-    style={{ flex: "none" }}
   >
     <path d={d} />
   </svg>

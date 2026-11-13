@@ -27,8 +27,6 @@ const opposite: Record<Placement, Placement> = {
   right: "left",
 };
 
-const unique = <T,>(values: readonly T[]): T[] => [...new Set(values)];
-
 export const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), Math.max(min, max));
 
@@ -99,7 +97,7 @@ export function placePopover({
   const sides: Placement[] = ["below", "above", "right", "left"];
   const placement = hasRoom(preferred)
     ? preferred
-    : (unique<Placement>([opposite[preferred], ...sides]).find(centred) ??
+    : ([opposite[preferred], ...sides].find(centred) ??
       sides.find(hasRoom) ??
       preferred);
 
