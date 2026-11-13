@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import { Button, CLOSE, Icon, PLAY } from "./controls";
 import { vertical } from "./placement";
 import { color, useHover } from "./theme";
@@ -9,21 +9,6 @@ import type { BeaconRenderProps, Placement, WalkthroughRenderProps, WalkthroughS
 // and `defaultBeacon`, and hands them to <WaymarkRoot>, so an app that draws its own ships neither.
 
 const SHADOW = "0 1px 3px rgb(2 6 23 / 0.1), 0 12px 32px -8px rgb(2 6 23 / 0.3)";
-
-/** Inline styles can't hold keyframes, and a stylesheet would be one more thing for an app to import. */
-function useAnimation(ref: RefObject<HTMLElement>, keyframes: Keyframe[], options: KeyframeAnimationOptions, running = true) {
-  useEffect(() => {
-    const element = ref.current;
-    // jsdom has no Web Animations or `matchMedia`.
-    if (!running || element === null || !("animate" in element)) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const animation = element.animate(keyframes, options);
-    return () => animation.cancel();
-  }, [ref, keyframes, options, running]);
-}
-
-const APPEAR: Keyframe[] = [{ opacity: 0, transform: "scale(0.96)" }, { opacity: 1 }];
-const APPEAR_TIMING: KeyframeAnimationOptions = { duration: 140, easing: "ease-out" };
 
 const ARROW = 16;
 
@@ -67,13 +52,10 @@ function DefaultPopover<TStep extends WalkthroughStep>({
   skipTask,
   labels,
 }: WalkthroughRenderProps<TStep>) {
-  const popoverRef = useRef<HTMLDivElement>(null);
-  useAnimation(popoverRef, APPEAR, APPEAR_TIMING);
   const { stepIndex, stepCount, canAdvance, waymark } = snapshot;
 
   return (
     <div
-      ref={popoverRef}
       style={{
         position: "relative",
         boxSizing: "border-box",
@@ -92,7 +74,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       }}
     >
       {waymarkFound && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 6, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 8, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
         {stepCount > 1 && labels.stepOf(stepIndex + 1, stepCount)}
         {/* Pulled past the padding, so the cross, not its hover square, lines up with the content's edge. */}
         <Button variant="quiet" aria-label={labels.close} onClick={exit} style={{ minHeight: 28, margin: "-4px -7px -4px auto", padding: 6 }}>
@@ -100,7 +82,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
         </Button>
       </div>
       {currentStep.title !== undefined && (
-        <div style={{ marginBottom: 6, fontSize: 17, fontWeight: 600, lineHeight: "22px" }}>{currentStep.title}</div>
+        <div style={{ marginBottom: 4, fontSize: 17, fontWeight: 600, lineHeight: "22px" }}>{currentStep.title}</div>
       )}
       <div>{currentStep.content}</div>
       {(waymark.status === "lost" || waymark.status === "missing") && (
@@ -136,6 +118,8 @@ const PULSE_TIMING: KeyframeAnimationOptions = { duration: 3000, easing: "ease-o
 /** What a finger gets to press, and what is held on screen. */
 const PRESS = 40;
 const DISC = 24;
+/** How far the beacon's name reaches in under the disc: to its middle, half of PRESS. A number of its own, as a constant worked out from another is kept by an app's bundler, used or not. */
+const TUCK = 20;
 
 /** A play arrow on a disc, so it reads as a way back in and not as a notification's dot. */
 function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, rect }: BeaconRenderProps) {
@@ -143,7 +127,15 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
   // Under the pointer or the keyboard's focus.
   const [active, hover, setActive] = useHover();
   const rippleRef = useRef<HTMLSpanElement>(null);
-  useAnimation(rippleRef, PULSE, PULSE_TIMING, !active);
+  // Inline styles can't hold keyframes, and a stylesheet would be one more thing for an app to import.
+  useEffect(() => {
+    const ripple = rippleRef.current;
+    // Still while it is asked for, and where motion is turned off. jsdom has no Web Animations.
+    if (active || ripple === null || !("animate" in ripple)) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const animation = ripple.animate(PULSE, PULSE_TIMING);
+    return () => animation.cancel();
+  }, [active]);
   const disc: CSSProperties = {
     display: "grid",
     gridArea: "1 / 1",
@@ -166,12 +158,13 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
       style={{
         position: "relative",
         display: "grid",
+        gridTemplateColumns: PRESS,
+        gridAutoFlow: "column",
         placeItems: "center",
-        width: PRESS,
         height: PRESS,
         padding: 0,
         border: 0,
-        borderRadius: "50%",
+        borderRadius: PRESS,
         background: "none",
         font: "inherit",
         cursor: "pointer",
@@ -179,24 +172,24 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />
-      {/* Positioned, to paint over the ripple. A ring in the surface colour parts it from the page; the halo is what is left where motion is turned off. */}
-      <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.surface}, 0 0 0 5px ${color.halo}` }}>
-        <Icon d={PLAY} size={16} />
-      </span>
       {/* Its name, while it is asked for. With no Waymark to sit on, a dot alone at the bottom of the screen says nothing, so there it always shows. */}
       {(active || !waymarkFound) && (
         <span
           aria-hidden="true"
           style={{
-            position: "absolute",
-            // Towards the side of the screen with more room.
-            [rect !== null && rect.right > viewport.width / 2 ? "right" : "left"]: "100%",
+            // Beside the button on a Waymark, so the disc stays on its corner. With no Waymark it is part of the
+            // button's row, so the two are centred and held on screen as one.
+            position: waymarkFound ? "absolute" : "static",
             padding: "4px 12px",
+            // Out from under the disc, as one chip with it, towards the side of the screen with more room.
+            ...(rect !== null && rect.right > viewport.width / 2
+              ? { right: "100%", marginRight: -TUCK, paddingRight: TUCK + 6 }
+              : { left: "100%", marginLeft: -TUCK, paddingLeft: TUCK + 6 }),
             border: `1px solid ${color.line}`,
             borderRadius: 999,
             color: color.text,
             background: color.surface,
-            boxShadow: SHADOW,
+            boxShadow: "0 1px 3px rgb(2 6 23 / 0.1)",
             fontSize: 13,
             fontWeight: 500,
             lineHeight: "20px",
@@ -207,6 +200,10 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
           {title !== undefined && <> · {title}</>}
         </span>
       )}
+      {/* Positioned, to paint over the ripple and its name. A ring in the surface colour parts it from the page; the halo is what is left where motion is turned off. */}
+      <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.surface}, 0 0 0 5px ${color.halo}` }}>
+        <Icon d={PLAY} size={20} />
+      </span>
     </button>
   );
 }

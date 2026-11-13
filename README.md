@@ -383,7 +383,7 @@ Translate or reword the default text with `labels` on `<WaymarkRoot>`:
 | `previous` | Previous |
 | `finish` | Finish |
 | `skipTask` | Skip task |
-| `missing` | Can't find this part of the page. You can carry on, but later steps may not match what you see. |
+| `missing` | Can't find this part of the page. You can still carry on. |
 | `close` | Close |
 | `resume` | Resume walkthrough |
 | `stepOf` | `` (step, count) => `Step ${step} of ${count}` `` |

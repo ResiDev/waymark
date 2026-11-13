@@ -64,9 +64,10 @@ function Contents<TTask extends AnyReactTask>({
   return (
     <>
       <ChecklistTrigger className={styles.trigger} aria-label={`${title}, ${progress}`}>
+        {/* A pie in a ring, like a started task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. */}
         <svg className={styles.ring} viewBox="0 0 18 18" aria-hidden="true">
-          <circle className={styles.ringTrack} cx="9" cy="9" r="7" />
-          <circle className={styles.ringDone} cx="9" cy="9" r="7" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
+          <circle className={styles.ringTrack} cx="9" cy="9" r="8" />
+          <circle className={styles.ringDone} cx="9" cy="9" r="2.75" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
         </svg>
         {title}
         <span className={styles.triggerCount}>
@@ -79,7 +80,7 @@ function Contents<TTask extends AnyReactTask>({
           <span className={styles.count}>{progress}</span>
           <div className={styles.track} aria-hidden="true">
             <div className={styles.done} style={{ width: share(done) }} />
-            {/* Skipped moves the bar on, in grey, so the list can be finished without calling a skipped task done. */}
+            {/* Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done. */}
             <div className={styles.skipped} style={{ width: share(skipped) }} />
           </div>
         </div>

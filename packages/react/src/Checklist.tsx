@@ -137,7 +137,7 @@ function DefaultRow<TTask extends AnyReactTask>({
         <div style={{ flex: finished ? "1 1 140px" : "1 1 240px", minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
             {/* Heavier on the one Task to do next, so a list of titles is not all one weight. */}
-            <div id={titleId} style={{ color: finished ? color.muted : color.text, fontWeight: next ? 600 : 500 }}>
+            <div id={titleId} style={{ color: finished ? color.muted : color.text, fontSize: 15, fontWeight: next ? 600 : 500 }}>
               {task.title}
             </div>
             {/* Skipped is the one status the mark alone does not make plain. */}
@@ -148,15 +148,17 @@ function DefaultRow<TTask extends AnyReactTask>({
           {/* Said while the Task is to be done; a finished Task steps back to its title. */}
           {task.description !== undefined && !finished && <div style={{ color: color.muted }}>{task.description}</div>}
         </div>
-        {/* Pulled up and down, so a button sits on the title's line, and right, so the last one's text ends where the header's does. */}
-        <div style={{ display: "flex", gap: 8, margin: "-6px -12px -6px 0" }}>
+        {/*
+          Pulled up and down, so a button sits on the title's line, and right, so the last one's text ends where the
+          header's does. Left too where the first button has no box, so its text lines up with the title when the
+          buttons wrap under it.
+        */}
+        <div style={{ display: "flex", gap: 8, margin: `-6px -12px -6px ${finished || !onSelect ? -12 : 0}px` }}>
           {onSelect && (
-            // One filled button in the list, on what to do next; a finished Task's button steps back, and is pulled
-            // left by its padding, so its text lines up with the title when the buttons wrap under it. Nothing starts
+            // One filled button in the list, on what to do next; a finished Task's button steps back. Nothing starts
             // while the Task's walkthrough is on screen.
             <Button
               variant={finished ? "quiet" : next ? "primary" : "secondary"}
-              style={finished ? { marginLeft: -12 } : undefined}
               onClick={onSelect}
               disabled={task.action === undefined && walkthrough === "open"}
             >
@@ -221,8 +223,8 @@ export function Checklist<TTask extends AnyReactTask>({
         </div>
         <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}>
           <div style={{ width: share(done), background: color.accent, transition: "width 300ms" }} />
-          {/* Skipped moves the bar on, in grey, so the list can be finished without calling a skipped Task done. */}
-          <div style={{ width: share(skipped), background: color.muted, opacity: 0.5 }} />
+          {/* Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped Task done. */}
+          <div style={{ width: share(skipped), background: color.accent, opacity: 0.35 }} />
         </div>
       </div>
       <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>

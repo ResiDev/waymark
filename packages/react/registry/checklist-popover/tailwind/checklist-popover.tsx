@@ -48,18 +48,19 @@ const classes = {
     "focus-visible:[outline:2px_solid_currentColor] focus-visible:outline-offset-2",
   ].join(" "),
   triggerCount: "opacity-70",
-  ring: "h-[18px] w-[18px] fill-none stroke-[2.5]",
-  ringTrack: "stroke-[color:color-mix(in_srgb,currentColor_22%,transparent)]",
+  ring: "h-[18px] w-[18px] fill-none",
+  ringTrack: "stroke-[1.5] stroke-[color:color-mix(in_srgb,currentColor_45%,transparent)]",
   // The panel's accent, taken towards the text around the trigger so it shows on a dark header and a light one.
   ringDone: [
-    "stroke-[color:color-mix(in_srgb,var(--accent)_65%,currentColor)]",
+    "stroke-[5.5] stroke-[color:color-mix(in_srgb,var(--accent)_65%,currentColor)]",
     "motion-safe:transition-[stroke-dasharray] motion-safe:duration-300",
   ].join(" "),
   panel: [
     colours,
     // react-waymark's shade sits at 50 and its popover at 51. Level with the shade but later in the
     // page, the panel opens above a running walkthrough's shade and still under its popover.
-    "z-50 box-border flex w-[340px] max-w-[calc(100vw-16px)] max-h-[min(560px,var(--waymark-available-height))] flex-col",
+    // All of a phone's width, so it is not left hanging off one side of the trigger.
+    "z-50 box-border flex w-[340px] max-w-[calc(100vw-16px)] max-[420px]:w-[calc(100vw-16px)] max-h-[min(560px,var(--waymark-available-height))] flex-col",
     "overflow-hidden rounded-[14px] border border-solid border-[color:var(--line)] bg-[var(--surface)]",
     "text-start text-sm text-[color:var(--text)] outline-none",
     "shadow-[0_1px_3px_rgb(2_6_23/0.1),0_12px_32px_-8px_rgb(2_6_23/0.3)]",
@@ -70,8 +71,8 @@ const classes = {
   count: "text-[13px] text-[color:var(--muted)]",
   track: "mt-2.5 flex h-1.5 w-full flex-none overflow-hidden rounded-full bg-[var(--line)]",
   done: "bg-[var(--accent)] motion-safe:transition-[width] motion-safe:duration-300",
-  // Skipped moves the bar on, in grey, so the list can be finished without calling a skipped task done.
-  skipped: "bg-[var(--muted)] opacity-50",
+  // Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done.
+  skipped: "bg-[var(--accent)] opacity-[0.35]",
   list: "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
   task: [
     "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-3 [&+&]:border-t",
@@ -105,7 +106,7 @@ const classes = {
   ].join(" "),
   // Heavier on the one task to do next; a finished task steps back to grey, with its mark left to say how it ended.
   title: [
-    "min-w-0 font-medium group-data-[next]/task:font-semibold",
+    "min-w-0 text-[15px] font-medium group-data-[next]/task:font-semibold",
     "data-[status=done]:text-[color:var(--muted)] data-[status=skipped]:text-[color:var(--muted)]",
   ].join(" "),
   // Skipped is the one status the mark alone does not make plain.
@@ -171,9 +172,10 @@ function Contents<TTask extends AnyReactTask>({
   return (
     <>
       <ChecklistTrigger className={classes.trigger} aria-label={`${title}, ${progress}`}>
+        {/* A pie in a ring, like a started task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. */}
         <svg className={classes.ring} viewBox="0 0 18 18" aria-hidden="true">
-          <circle className={classes.ringTrack} cx="9" cy="9" r="7" />
-          <circle className={classes.ringDone} cx="9" cy="9" r="7" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
+          <circle className={classes.ringTrack} cx="9" cy="9" r="8" />
+          <circle className={classes.ringDone} cx="9" cy="9" r="2.75" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
         </svg>
         {title}
         <span className={classes.triggerCount}>

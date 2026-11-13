@@ -52,16 +52,17 @@
   width: 18px;
   height: 18px;
   fill: none;
-  stroke-width: 2.5;
 }
 
 .ringTrack {
-  stroke: color-mix(in srgb, currentColor 22%, transparent);
+  stroke: color-mix(in srgb, currentColor 45%, transparent);
+  stroke-width: 1.5;
 }
 
 /* The panel's accent, taken towards the text around the trigger so it shows on a dark header and a light one. */
 .ringDone {
   stroke: color-mix(in srgb, var(--accent) 65%, currentColor);
+  stroke-width: 5.5;
   transition: stroke-dasharray 300ms;
 }
 
@@ -93,6 +94,13 @@
   transition:
     opacity 140ms,
     scale 140ms;
+}
+
+/* All of a phone's width, so it is not left hanging off one side of the trigger. */
+@media (max-width: 420px) {
+  .panel {
+    width: calc(100vw - 16px);
+  }
 }
 
 /* Where it opens from. */
@@ -143,8 +151,8 @@
 }
 
 .skipped {
-  background: var(--muted);
-  opacity: 0.5;
+  background: var(--accent);
+  opacity: 0.35;
 }
 
 .list {
@@ -263,6 +271,7 @@ summary.summary::after {
 
 .title {
   min-width: 0;
+  font-size: 15px;
   font-weight: 500;
 }
 
