@@ -34,7 +34,7 @@ const button = [
   "m-0 min-h-8 cursor-pointer whitespace-nowrap rounded-lg border border-solid px-3 py-[5px]",
   "[font-family:inherit] text-sm font-medium",
   // One that cannot be pressed keeps a faint tint of the accent, so it still reads as the way on.
-  "disabled:cursor-not-allowed disabled:border-transparent disabled:text-[color:var(--accent)]",
+  "disabled:cursor-not-allowed disabled:border-transparent disabled:text-[color:var(--muted)]",
   "disabled:bg-[color:color-mix(in_srgb,var(--accent)_12%,transparent)]",
   focus,
 ].join(" ");

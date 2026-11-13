@@ -368,7 +368,7 @@ summary.summary::after {
 /* One that cannot be pressed keeps a faint tint of the accent, so it still reads as the way on. */
 .actions button:disabled {
   border-color: transparent;
-  color: var(--accent);
+  color: var(--muted);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   filter: none;
   cursor: not-allowed;
