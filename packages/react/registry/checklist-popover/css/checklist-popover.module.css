@@ -65,10 +65,15 @@
 }
 
 /* The panel's accent, taken towards the text around the trigger so it shows on a dark header and a light one. */
-.ringDone {
+.ringDone,
+.ringSkipped {
   stroke: color-mix(in srgb, var(--accent) 65%, currentColor);
   stroke-width: 6;
   transition: stroke-dasharray 300ms;
+}
+
+.ringSkipped {
+  opacity: 0.5;
 }
 
 .panel {
@@ -389,6 +394,7 @@ summary.summary::after {
 @media (prefers-reduced-motion: reduce) {
   .panel,
   .ringDone,
+  .ringSkipped,
   .done {
     transition: none;
   }

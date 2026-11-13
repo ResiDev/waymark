@@ -60,18 +60,22 @@ function Contents<TTask extends AnyReactTask>({
   const share = (count: number) => `${(count / taskCount) * 100}%`;
   // The walkthrough under way, or else the first task still to do: the one row that starts open.
   const next = tasks.find((row) => row.walkthrough !== "none") ?? tasks.find((row) => row.status === "todo");
+  // A pie is a circle's stroke, as wide as the circle, drawn part of the way round.
+  const pie = (count: number, className?: string) => (
+    <circle className={className} cx="9" cy="9" r="3" pathLength={1} strokeDasharray={`${count / taskCount} 1`} transform="rotate(-90 9 9)" />
+  );
 
   return (
     <>
       <ChecklistTrigger className={styles.trigger} aria-label={`${title}, ${progress}`}>
         {/*
-          How far through the list, skipped tasks too, as the panel's bar shows it: a pie in a ring, like a started
-          task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. The number
-          beside it is the tasks done, as the panel's text says it.
+          How far through the list, as the panel's bar shows it: a pie in a ring, like a started task's mark, with
+          the skipped tasks in a tint after the done ones. The number beside it is the tasks done.
         */}
         <svg className={styles.ring} viewBox="0 0 18 18" aria-hidden="true">
           <circle className={styles.ringTrack} cx="9" cy="9" r="8" />
-          <circle className={styles.ringDone} cx="9" cy="9" r="3" pathLength={1} strokeDasharray={`${finishedCount / taskCount} 1`} transform="rotate(-90 9 9)" />
+          {pie(finishedCount, styles.ringSkipped)}
+          {pie(done, styles.ringDone)}
         </svg>
         {title}
         <span className={styles.triggerCount}>
