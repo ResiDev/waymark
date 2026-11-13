@@ -1,7 +1,6 @@
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import type { Rect } from "waymark-core";
 import { centerPopover, clamp, placePopover } from "./placement";
-import { useShadeColours } from "./theme";
 import { useMeasuredSize } from "./useMeasuredSize";
 import { useViewportSize } from "./useViewportSize";
 import type { Placement, WalkthroughLabels } from "./types";
@@ -14,100 +13,35 @@ export const DEFAULT_LABELS: WalkthroughLabels = {
   finish: "Finish",
   previous: "Previous",
   skipTask: "Skip task",
-  missing: (
-    <>
-      <strong style={{ display: "block", fontSize: 14, fontWeight: 600, lineHeight: "20px" }}>
-        Can't find this part of the page
-      </strong>
-      <span style={{ opacity: 0.85 }}>You can carry on, but later steps may not match what you see.</span>
-    </>
-  ),
+  missing: "Can't find this part of the page. You can carry on, but later steps may not match what you see.",
   close: "Close",
   resume: "Resume walkthrough",
   stepOf: (step, count) => `Step ${step} of ${count}`,
 };
 
-/** How far the ring reaches past the cut-out. */
-const RING = 5;
-const MIN_RADIUS = 6;
+const SCRIM = "rgb(0 0 0 / 0.5)";
 
-const px = (value: string, side: number): number => {
-  const length = Number.parseFloat(value);
-  if (Number.isNaN(length)) return 0;
-  return Math.min(value.trim().endsWith("%") ? (side * length) / 100 : length, side / 2);
-};
-
-/**
- * How round the Waymark's own corners are, so the ring follows a pill as it
- * does a card. The Run says only where the Waymark is, but it marks the open
- * step's Waymark as this dialog's, which is how the element is found here.
- */
-const waymarkRadius = (rect: Rect): number => {
-  for (const element of document.querySelectorAll('[aria-haspopup="dialog"][aria-expanded]')) {
-    const box = element.getBoundingClientRect();
-    if (Math.abs(box.left - rect.left) > 1 || Math.abs(box.top - rect.top) > 1 || Math.abs(box.width - rect.width) > 1) continue;
-    return px(getComputedStyle(element).borderTopLeftRadius, Math.min(box.width, box.height));
-  }
-  return 0;
-};
-
-export function WaymarkShade({
-  rect,
-  padding,
-}: {
-  rect: Rect | null;
-  padding: number;
-}) {
-  const colours = useShadeColours();
-  const viewport = useViewportSize();
-  const shadeRef = useRef<HTMLDivElement>(null);
-  // The padding gives way at the edge of the screen, down to none, so the ring round a Waymark there is not cut off.
-  const cutOut = rect && {
-    top: Math.min(rect.top, Math.max(rect.top - padding, RING)),
-    left: Math.min(rect.left, Math.max(rect.left - padding, RING)),
-    bottom: Math.max(rect.top + rect.height, Math.min(rect.top + rect.height + padding, viewport.height - RING)),
-    right: Math.max(rect.left + rect.width, Math.min(rect.left + rect.width + padding, viewport.width - RING)),
-  };
-  const room = rect && cutOut ? Math.min(rect.top - cutOut.top, rect.left - cutOut.left) : 0;
-
-  // Set on the element, not through state: the Waymark's corners are read from the page once the cut-out is on it.
-  useLayoutEffect(() => {
-    const shade = shadeRef.current;
-    if (rect === null || shade === null) return;
-    shade.style.borderRadius = `${Math.max(MIN_RADIUS, waymarkRadius(rect) + room)}px`;
-  }, [rect, room]);
-
-  if (!rect || !cutOut) {
-    return (
-      <div
-        aria-hidden="true"
-        data-waymark-shade=""
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 50,
-          pointerEvents: "none",
-          background: colours.scrim,
-        }}
-      />
-    );
-  }
-
+/** Dims the page round the Waymark, or all of it without one. */
+export function WaymarkShade({ rect, padding }: { rect: Rect | null; padding: number }) {
   return (
     <div
-      ref={shadeRef}
       aria-hidden="true"
       data-waymark-shade=""
       style={{
         position: "fixed",
         zIndex: 50,
         pointerEvents: "none",
-        top: cutOut.top,
-        left: cutOut.left,
-        width: cutOut.right - cutOut.left,
-        height: cutOut.bottom - cutOut.top,
-        // A ring, so the cut-out still reads on a surface too dark for the shade to change.
-        boxShadow: `0 0 0 2px ${colours.accent}, 0 0 0 ${RING}px ${colours.ring}, 0 0 0 9999px ${colours.scrim}`,
+        ...(rect
+          ? {
+              top: rect.top - padding,
+              left: rect.left - padding,
+              width: rect.width + padding * 2,
+              height: rect.height + padding * 2,
+              borderRadius: 8,
+              // A ring in the accent, so the cut-out still reads on a page too dark for the shade to change.
+              boxShadow: `0 0 0 2px var(--waymark-accent, #2563eb), 0 0 0 9999px ${SCRIM}`,
+            }
+          : { inset: 0, background: SCRIM }),
       }}
     />
   );

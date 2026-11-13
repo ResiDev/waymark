@@ -1,13 +1,6 @@
-import {
-  useId,
-  useMemo,
-  useSyncExternalStore,
-  type ComponentPropsWithoutRef,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useId, useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
 import type { ChecklistDefinition, TaskStatus } from "waymark-core";
-import { Button, CheckIcon, DashIcon, LockIcon, UndoIcon } from "./controls";
+import { Button, CHECK, DASH, Icon } from "./controls";
 import { color, focusRing, useInteraction, usePalette } from "./theme";
 import type {
   AnyReactTask,
@@ -48,38 +41,6 @@ const DEFAULT_LABELS: ChecklistLabels = {
 
 export const STATUS_TEXT = { todo: "To do", done: "Done", skipped: "Skipped" } as const;
 
-const panelStyle: CSSProperties = {
-  boxSizing: "border-box",
-  display: "flex",
-  flexDirection: "column",
-  overflow: "hidden",
-  color: color.text,
-  background: color.surface,
-  border: `1px solid ${color.lineStrong}`,
-  borderRadius: 14,
-  fontSize: 14,
-  lineHeight: "22px",
-  textAlign: "start",
-};
-
-const listStyle: CSSProperties = {
-  margin: 0,
-  padding: 0,
-  listStyle: "none",
-};
-
-const rowStyleFor = (open: boolean, next: boolean): CSSProperties => ({
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 12,
-  padding: "14px 20px",
-  borderTop: `1px solid ${color.line}`,
-  // Tinted while its walkthrough is on screen.
-  background: open ? color.accentSoft : "transparent",
-  // A bar down the side, so the Task to do next is found without reading, and not by its button's colour alone.
-  boxShadow: open || next ? `inset 3px 0 ${color.accent}` : "none",
-});
-
 export const visuallyHidden: CSSProperties = {
   position: "absolute",
   width: 1,
@@ -92,121 +53,34 @@ export const visuallyHidden: CSSProperties = {
   border: 0,
 };
 
-const tagStyle: CSSProperties = {
-  flex: "none",
-  padding: "0 8px",
-  border: `1px solid ${color.line}`,
-  borderRadius: 999,
-  color: color.muted,
-  background: color.hover,
-  fontSize: 12,
-  fontWeight: 500,
-  lineHeight: "18px",
-};
-
 const MARK = 20;
 
-const markBase: CSSProperties = {
-  boxSizing: "border-box",
-  display: "grid",
-  flex: "none",
-  placeItems: "center",
-  width: MARK,
-  height: MARK,
-  // Longhands, so React dropping one state's `borderColor` leaves this one standing.
-  borderWidth: 1.5,
-  borderStyle: "solid",
-  borderColor: color.edge,
-  borderRadius: "50%",
-  color: color.muted,
-  background: color.surface,
-  transition: "background-color 120ms, border-color 120ms",
-};
-
 /** One drawn circle for every state, so a Task's status is read from its shape and not from a character of the page's font. */
-function Mark({
-  status,
-  inProgress,
-  inert,
-  hovered,
-}: {
-  status: TaskStatus;
-  inProgress: boolean;
-  inert: boolean;
-  hovered: boolean;
-}) {
-  if (status === "done") {
-    return (
-      <span style={{ ...markBase, borderColor: color.accent, color: color.onAccent, background: color.accent }}>
-        <CheckIcon />
-      </span>
-    );
-  }
-  if (status === "skipped") {
-    return (
-      // Under the pointer it shows what a press does: brings the Task back.
-      <span style={{ ...markBase, ...(hovered ? { borderColor: color.muted } : { borderStyle: "dashed" }) }}>
-        {hovered ? <UndoIcon /> : <DashIcon />}
-      </span>
-    );
-  }
-  if (inProgress) {
-    return (
-      <span
-        style={{
-          ...markBase,
-          padding: 3,
-          borderColor: color.accent,
-          // Half a pie: started, not finished.
-          background: `conic-gradient(${color.accent} 50%, transparent 0) content-box`,
-        }}
-      />
-    );
-  }
-  // A box that cannot be ticked is locked and faint, so it does not invite a press.
-  if (inert) {
-    return (
-      <span style={{ ...markBase, borderColor: color.lineStrong, color: color.muted, background: color.hover }}>
-        <LockIcon size={11} />
-      </span>
-    );
-  }
+function Mark({ status, underWay }: { status: TaskStatus; underWay: boolean }) {
+  const look: CSSProperties | null =
+    status === "done"
+      ? { borderColor: color.accent, color: color.onAccent, background: color.accent }
+      : status === "todo" && underWay
+        ? // Half a pie: started, not finished.
+          { padding: 3, borderColor: color.accent, background: `conic-gradient(${color.accent} 50%, transparent 0) content-box` }
+        : null;
   return (
-    <span style={{ ...markBase, color: color.accent, ...(hovered ? { borderColor: color.accent, background: color.accentSoft } : null) }}>
-      {hovered && <CheckIcon />}
-    </span>
-  );
-}
-
-function Checkbox({
-  mark,
-  ...props
-}: ComponentPropsWithoutRef<"button"> & { mark: Omit<Parameters<typeof Mark>[0], "hovered" | "inert"> }) {
-  const [{ hovered, focused }, interaction] = useInteraction();
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      {...props}
-      {...interaction}
+    <span
       style={{
+        boxSizing: "border-box",
         display: "grid",
         flex: "none",
         placeItems: "center",
-        // Larger than the circle it shows, for a finger; pulled back so the circle keeps its place in the row.
-        width: MARK + 8,
-        height: MARK + 8,
-        margin: "-3px -4px",
-        padding: 0,
-        border: 0,
+        width: MARK,
+        height: MARK,
+        border: `1.5px solid ${color.muted}`,
         borderRadius: "50%",
-        background: "transparent",
-        cursor: "pointer",
-        ...(focused ? { ...focusRing, outlineOffset: -2 } : null),
+        color: color.muted,
+        ...look,
       }}
     >
-      <Mark {...mark} inert={false} hovered={hovered} />
-    </button>
+      {status === "done" ? <Icon d={CHECK} /> : status === "skipped" && <Icon d={DASH} />}
+    </span>
   );
 }
 
@@ -220,119 +94,90 @@ function DefaultRow<TTask extends AnyReactTask>({
   labels,
   next,
 }: ChecklistRowProps<TTask> & { labels: ChecklistLabels; next: boolean }) {
-  const open = walkthrough === "open";
-  const underWay = walkthrough !== "none";
   const titleId = useId();
   const statusId = useId();
+  const [{ focused }, interaction] = useInteraction();
   const finished = status !== "todo";
-  // One filled button in the list, on what to do next; the others show their box only under the pointer, and a finished Task's button steps back.
-  const variant = finished ? "quiet" : next ? "primary" : "plain";
-  // A quiet button's text, not its hover square, lines up with the text above when the buttons wrap under it.
-  const flush = { marginLeft: -10 };
-  // The same for a plain button, which is padded a little more.
-  const plain = { marginLeft: -12 };
-  // A done Task's button reads a shade stronger than Skip, which gives a Task up; a skipped Task's stays as quiet as the Task.
-  const again = status === "done" ? { ...flush, color: color.body } : flush;
+  // One filled button in the list, on what to do next; a finished Task's button steps back.
+  // A quiet button is pulled left by its padding, so its text lines up with the title when the buttons wrap under it.
+  const look = { variant: finished ? "quiet" : next ? "primary" : "secondary", style: finished ? { marginLeft: -12 } : undefined } as const;
+  const mark = <Mark status={status} underWay={walkthrough !== "none"} />;
 
   let primary: ReactNode = null;
   if (task.action !== undefined) {
     primary = (
-      <Button variant={variant} onClick={task.action.onSelect} style={finished ? again : next ? undefined : plain}>
+      <Button {...look} onClick={task.action.onSelect}>
         {task.action.label}
-      </Button>
-    );
-  } else if (open) {
-    // Its walkthrough is on screen, so the button has nothing to start: it says so, and does not look broken.
-    primary = (
-      <Button variant="quiet" disabled style={{ color: color.accent, fontSize: 13, opacity: 1, cursor: "default" }}>
-        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "currentColor" }} />
-        In progress
       </Button>
     );
   } else if (task.walkthrough !== undefined) {
     primary = (
-      <Button variant={variant} onClick={() => start(task.id)} style={finished ? again : next ? undefined : plain}>
+      // Nothing to start while its walkthrough is on screen.
+      <Button {...look} onClick={() => start(task.id)} disabled={walkthrough === "open"}>
         {status === "done" ? labels.replay : walkthrough === "collapsed" ? labels.resume : labels.start}
       </Button>
     );
   }
 
-  const lone = primary === null && status === "todo";
-  const heading = (
-    <div style={{ display: "flex", flex: 1, alignItems: "center", gap: 8, minWidth: 0 }}>
-      <div
-        id={titleId}
-        style={{
-          minWidth: 0,
-          color: finished ? color.muted : color.text,
-          // Heavier on the one Task to do next, so a list of titles is not all one weight.
-          fontWeight: next ? 600 : 500,
-        }}
-      >
-        {task.title}
-      </div>
-      {/* Skipped is the one status the mark alone does not make plain. */}
-      <span id={statusId} style={status === "skipped" ? tagStyle : visuallyHidden}>
-        {STATUS_TEXT[status]}
-      </span>
-    </div>
-  );
-  // Said once the Task is to be done; a finished Task steps back to its title.
-  const description = task.description !== undefined && !finished && (
-    <div style={{ color: color.muted, textWrap: "pretty" }}>{task.description}</div>
-  );
-  // Pulled up, so a button sits on the title's line whatever the row's height, and right, so a quiet button's text ends where the header's does.
-  const actions = (
-    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, margin: "-5px -10px -5px 0" }}>
-      {primary}
-      {status === "todo" && (
-        <Button variant="quiet" onClick={() => skip(task.id)}>
-          {labels.skip}
-        </Button>
-      )}
-    </div>
-  );
-
   return (
     <>
       {task.toggleable === false ? (
-        <span aria-hidden="true" style={{ display: "grid", flex: "none", height: 22, placeItems: "center" }}>
-          <Mark status={status} inProgress={underWay} inert hovered={false} />
-        </span>
+        mark
       ) : (
-        <Checkbox
+        <button
+          type="button"
+          role="checkbox"
           aria-checked={status === "done"}
           aria-labelledby={titleId}
           aria-describedby={statusId}
           onClick={() => toggle(task.id)}
-          mark={{ status, inProgress: underWay }}
-        />
+          {...interaction}
+          style={{
+            // Larger than the circle it shows, for a finger; pulled back so the circle keeps its place in the row.
+            display: "grid",
+            flex: "none",
+            margin: -4,
+            padding: 4,
+            border: 0,
+            borderRadius: "50%",
+            background: "none",
+            cursor: "pointer",
+            ...(focused ? { ...focusRing, outlineOffset: -2 } : null),
+          }}
+        >
+          {mark}
+        </button>
       )}
-      {lone ? (
-        // A lone Skip is small enough to stay on the title's line at any width, with the description under both.
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 16 }}>
-            {heading}
-            {actions}
+      {/* On a narrow row the buttons wrap under the text. */}
+      <div style={{ display: "flex", flex: 1, flexWrap: "wrap", alignItems: "flex-start", gap: "12px 16px", minWidth: 0 }}>
+        {/* A finished Task is one line, short enough to keep its button beside it on a phone. */}
+        <div style={{ flex: finished ? "1 1 140px" : "1 1 240px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            {/* Heavier on the one Task to do next, so a list of titles is not all one weight. */}
+            <div id={titleId} style={{ color: finished ? color.muted : color.text, fontWeight: next ? 600 : 500 }}>
+              {task.title}
+            </div>
+            {/* Skipped is the one status the mark alone does not make plain. */}
+            <span id={statusId} style={status === "skipped" ? { color: color.muted, fontSize: 12 } : visuallyHidden}>
+              {STATUS_TEXT[status]}
+            </span>
           </div>
-          {description}
+          {/* Said while the Task is to be done; a finished Task steps back to its title. */}
+          {task.description !== undefined && !finished && <div style={{ color: color.muted }}>{task.description}</div>}
         </div>
-      ) : (
-        // On a narrow row the buttons wrap under the text; the row gap is what is left once they are pulled up.
-        <div style={{ display: "flex", flex: 1, flexWrap: "wrap", alignItems: "flex-start", gap: "11px 16px", minWidth: 0 }}>
-          {/* A finished Task is one line, short enough to keep its button beside it on a phone. */}
-          <div style={{ flex: finished ? "1 1 140px" : "1 1 260px", minWidth: 0 }}>
-            {heading}
-            {description}
-          </div>
-          {actions}
+        {/* Pulled up and down, so a button sits on the title's line, and right, so the last one's text ends where the header's does. */}
+        <div style={{ display: "flex", gap: 8, margin: "-6px -12px -6px 0" }}>
+          {primary}
+          {status === "todo" && (
+            <Button variant="quiet" onClick={() => skip(task.id)}>
+              {labels.skip}
+            </Button>
+          )}
         </div>
-      )}
+      </div>
     </>
   );
 }
-
-const barStyle: CSSProperties = { height: "100%", borderRadius: 999, transition: "width 300ms" };
 
 export function Checklist<TTask extends AnyReactTask>({
   checklist,
@@ -345,7 +190,7 @@ export function Checklist<TTask extends AnyReactTask>({
   const palette = usePalette();
   const { snapshot, start, markDone, markTodo, skip, toggle } = useChecklist(checklist);
   const text = withDefaults(DEFAULT_LABELS, labels);
-  const { tasks, taskCount, finishedCount, complete } = snapshot;
+  const { tasks, taskCount, finishedCount } = snapshot;
   const done = tasks.filter((row) => row.status === "done").length;
   const skipped = finishedCount - done;
   // The walkthrough under way, or else the first Task still to do that has a button.
@@ -359,76 +204,55 @@ export function Checklist<TTask extends AnyReactTask>({
       role="group"
       aria-label="Checklist"
       aria-busy={snapshot.storageStatus === "loading"}
-      style={{ ...palette, ...panelStyle, ...style }}
+      style={{
+        ...palette,
+        boxSizing: "border-box",
+        overflow: "hidden",
+        color: color.text,
+        background: color.surface,
+        border: `1px solid ${color.line}`,
+        borderRadius: 14,
+        fontSize: 14,
+        lineHeight: "20px",
+        textAlign: "start",
+        ...style,
+      }}
     >
       <div style={{ padding: "16px 20px" }}>
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "0 12px" }}>
-          {title !== undefined && (
-            <div style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 600, lineHeight: "24px", letterSpacing: "-0.01em" }}>
-              {title}
-            </div>
-          )}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-              color: complete ? color.text : color.muted,
-              fontSize: 13,
-              fontWeight: 500,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {complete && (
-              <span style={{ display: "grid", color: color.accent }}>
-                <CheckIcon size={14} />
-              </span>
-            )}
-            <span>
-              {complete ? (
-                skipped > 0 ? (
-                  <>{done} done</>
-                ) : (
-                  "All done"
-                )
-              ) : (
-                <>
-                  {done} of {taskCount} done
-                </>
-              )}
-              {skipped > 0 && <span style={{ color: color.muted, fontWeight: 400 }}> · {skipped} skipped</span>}
-            </span>
+          {title !== undefined && <div style={{ flex: 1, fontSize: 16, fontWeight: 600, lineHeight: "24px" }}>{title}</div>}
+          <div style={{ color: color.muted, fontSize: 13 }}>
+            {done} of {taskCount} done
+            {skipped > 0 && <> · {skipped} skipped</>}
           </div>
         </div>
-        <div
-          aria-hidden="true"
-          style={{ display: "flex", gap: 2, height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}
-        >
-          {/* Drawn only with something to show: an empty part would still leave its gap. */}
-          {done > 0 && <div style={{ ...barStyle, width: share(done), background: color.accent }} />}
+        <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}>
+          <div style={{ width: share(done), background: color.accent, transition: "width 300ms" }} />
           {/* Skipped moves the bar on, in grey, so the list can be finished without calling a skipped Task done. */}
-          {skipped > 0 && <div style={{ ...barStyle, width: share(skipped), background: color.skipped }} />}
+          <div style={{ width: share(skipped), background: color.muted, opacity: 0.5 }} />
         </div>
       </div>
-      <ol style={listStyle}>
+      <ol style={{ margin: 0, padding: 0, listStyle: "none" }}>
         {tasks.map(({ task, status, walkthrough }) => {
           const open = walkthrough === "open";
-          const isNext = next?.task.id === task.id;
-          const props: ChecklistRowProps<TTask> = {
-            task,
-            status,
-            walkthrough,
-            start,
-            markDone,
-            markTodo,
-            skip,
-            toggle,
-          };
+          const isNext = !renderRow && next?.task.id === task.id;
+          const props: ChecklistRowProps<TTask> = { task, status, walkthrough, start, markDone, markTodo, skip, toggle };
           return (
             <li
               key={task.id}
               aria-current={open ? "step" : undefined}
-              style={{ ...rowStyleFor(open, !renderRow && isNext), ...rowStyle }}
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 12,
+                padding: "14px 20px",
+                borderTop: `1px solid ${color.line}`,
+                // Tinted while its walkthrough is on screen.
+                background: open ? color.hover : "none",
+                // A bar down the side, so the Task to do next is found without reading, and not by its button's colour alone.
+                boxShadow: open || isNext ? `inset 3px 0 ${color.accent}` : "none",
+                ...rowStyle,
+              }}
             >
               {renderRow ? renderRow(props) : <DefaultRow {...props} labels={text} next={isNext} />}
             </li>

@@ -545,8 +545,10 @@ describe("WaymarkRoot", () => {
     expect(buttonNamed("Finish")).toBeDefined();
 
     await clickAway();
-    // The beacon shows its name beside it as it appears, and again under a pointer or the keyboard's focus, where a `title` shows for neither a touch nor a key.
+    // The beacon shows its name beside it under a pointer or the keyboard's focus, where a `title` shows for no key.
     const resume = document.querySelector<HTMLElement>('button[aria-label="Fortsetzen"]')!;
+    expect(resume.parentElement).not.toHaveTextContent("Fortsetzen");
+    await act(async () => resume.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     expect(resume.parentElement).toHaveTextContent("Fortsetzen");
   });
 
