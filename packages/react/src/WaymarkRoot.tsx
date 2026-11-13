@@ -5,33 +5,11 @@ import type { ProblemHandlers, Walkthrough, WaymarkRootProps } from "./types";
 import { RunContext } from "./useRun";
 
 /**
- * Hands the Run the app's latest handlers each time it calls one, so a
+ * Hands the Run the app's latest handlers each time it looks one up, so a
  * handler written inline sees the render it came from without making a new Run.
  */
-const latestHandlers = (latest: RefObject<WaymarkRootProps>): ProblemHandlers => {
-  const handlers = {
-    get storageFailed() {
-      return latest.current?.problemHandlers?.storageFailed;
-    },
-    get recordUnreadable() {
-      return latest.current?.problemHandlers?.recordUnreadable;
-    },
-    get recordDropped() {
-      return latest.current?.problemHandlers?.recordDropped;
-    },
-    get waymarkLost() {
-      return latest.current?.problemHandlers?.waymarkLost;
-    },
-    get waymarkMissing() {
-      return latest.current?.problemHandlers?.waymarkMissing;
-    },
-    get callbackThrew() {
-      return latest.current?.problemHandlers?.callbackThrew;
-    },
-  };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a getter's undefined is no handler, as a missing key is: the Run falls back to its default.
-  return handlers as ProblemHandlers;
-};
+const latestHandlers = (latest: RefObject<WaymarkRootProps>): ProblemHandlers =>
+  new Proxy<ProblemHandlers>({}, { get: (_, type: keyof ProblemHandlers) => latest.current?.problemHandlers?.[type] });
 
 /**
  * Before the browser paints, so a record read at once is drawn in the first

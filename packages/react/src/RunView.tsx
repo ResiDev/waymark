@@ -14,11 +14,8 @@ import { BeaconAnchor, DEFAULT_LABELS, Dialog, WaymarkShade } from "./view";
 const subscribeNever = () => () => {};
 
 /** A walkthrough is on the page and nothing was given to draw it: better loud than a page left under a shade. */
-const nothingDraws = (what: "popover" | "beacon", id: string): never => {
-  const [prop, own] = what === "popover" ? ["renderPopover", "defaultPopover"] : ["renderBeacon", "defaultBeacon"];
-  throw new Error(
-    `Waymark: nothing draws the ${what} of walkthrough "${id}". Give <WaymarkRoot> a ${prop}: ${own} is the library's own.`,
-  );
+const nothingDraws = (prop: string, id: string): never => {
+  throw new Error(`Waymark: walkthrough "${id}" has no ${prop}. Give <WaymarkRoot> one: the library's own are defaultPopover and defaultBeacon.`);
 };
 
 /**
@@ -86,7 +83,7 @@ function OpenView({
   const rect = snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
   // Named, so a popover drawn for a step just left acts on nothing else.
   const act = (action: Action) => () => run.act(action, walkthrough);
-  const draw = walkthrough.renderPopover ?? renderPopover ?? nothingDraws("popover", walkthrough.id);
+  const draw = walkthrough.renderPopover ?? renderPopover ?? nothingDraws("renderPopover", walkthrough.id);
   const render = (placement: WalkthroughRenderProps["placement"], arrow: number) => {
     const props: WalkthroughRenderProps = {
       snapshot,
@@ -139,6 +136,6 @@ function BeaconView({
     exit: () => run.act("exit", walkthrough),
     labels,
   };
-  const draw = walkthrough.renderBeacon ?? renderBeacon ?? nothingDraws("beacon", walkthrough.id);
+  const draw = walkthrough.renderBeacon ?? renderBeacon ?? nothingDraws("renderBeacon", walkthrough.id);
   return <BeaconAnchor rect={rect}>{draw(props)}</BeaconAnchor>;
 }

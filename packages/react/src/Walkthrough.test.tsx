@@ -395,7 +395,7 @@ describe("WaymarkRoot", () => {
     });
 
     await expect(render(<Walkthrough walkthrough={walkthrough} />, {}, true)).rejects.toThrow(
-      'nothing draws the popover of walkthrough "tour"',
+      'walkthrough "tour" has no renderPopover',
     );
   });
 

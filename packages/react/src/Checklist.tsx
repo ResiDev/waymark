@@ -1,7 +1,7 @@
-import { useId, useMemo, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { useId, useMemo, useSyncExternalStore, type CSSProperties } from "react";
 import type { ChecklistDefinition, TaskStatus } from "waymark-core";
 import { Button, CHECK, DASH, Icon } from "./controls";
-import { color, focusRing, useInteraction, usePalette } from "./theme";
+import { color } from "./theme";
 import type {
   AnyReactTask,
   ChecklistLabels,
@@ -96,28 +96,12 @@ function DefaultRow<TTask extends AnyReactTask>({
 }: ChecklistRowProps<TTask> & { labels: ChecklistLabels; next: boolean }) {
   const titleId = useId();
   const statusId = useId();
-  const [{ focused }, interaction] = useInteraction();
   const finished = status !== "todo";
-  // One filled button in the list, on what to do next; a finished Task's button steps back.
-  // A quiet button is pulled left by its padding, so its text lines up with the title when the buttons wrap under it.
-  const look = { variant: finished ? "quiet" : next ? "primary" : "secondary", style: finished ? { marginLeft: -12 } : undefined } as const;
   const mark = <Mark status={status} underWay={walkthrough !== "none"} />;
 
-  let primary: ReactNode = null;
-  if (task.action !== undefined) {
-    primary = (
-      <Button {...look} onClick={task.action.onSelect}>
-        {task.action.label}
-      </Button>
-    );
-  } else if (task.walkthrough !== undefined) {
-    primary = (
-      // Nothing to start while its walkthrough is on screen.
-      <Button {...look} onClick={() => start(task.id)} disabled={walkthrough === "open"}>
-        {status === "done" ? labels.replay : walkthrough === "collapsed" ? labels.resume : labels.start}
-      </Button>
-    );
-  }
+  // The app's own action, or else the Task's walkthrough.
+  const onSelect = task.action?.onSelect ?? (task.walkthrough && (() => start(task.id)));
+  const label = task.action?.label ?? (status === "done" ? labels.replay : walkthrough === "collapsed" ? labels.resume : labels.start);
 
   return (
     <>
@@ -131,7 +115,6 @@ function DefaultRow<TTask extends AnyReactTask>({
           aria-labelledby={titleId}
           aria-describedby={statusId}
           onClick={() => toggle(task.id)}
-          {...interaction}
           style={{
             // Larger than the circle it shows, for a finger; pulled back so the circle keeps its place in the row.
             display: "grid",
@@ -142,7 +125,6 @@ function DefaultRow<TTask extends AnyReactTask>({
             borderRadius: "50%",
             background: "none",
             cursor: "pointer",
-            ...(focused ? { ...focusRing, outlineOffset: -2 } : null),
           }}
         >
           {mark}
@@ -167,7 +149,19 @@ function DefaultRow<TTask extends AnyReactTask>({
         </div>
         {/* Pulled up and down, so a button sits on the title's line, and right, so the last one's text ends where the header's does. */}
         <div style={{ display: "flex", gap: 8, margin: "-6px -12px -6px 0" }}>
-          {primary}
+          {onSelect && (
+            // One filled button in the list, on what to do next; a finished Task's button steps back, and is pulled
+            // left by its padding, so its text lines up with the title when the buttons wrap under it. Nothing starts
+            // while the Task's walkthrough is on screen.
+            <Button
+              variant={finished ? "quiet" : next ? "primary" : "secondary"}
+              style={finished ? { marginLeft: -12 } : undefined}
+              onClick={onSelect}
+              disabled={task.action === undefined && walkthrough === "open"}
+            >
+              {label}
+            </Button>
+          )}
           {status === "todo" && (
             <Button variant="quiet" onClick={() => skip(task.id)}>
               {labels.skip}
@@ -187,7 +181,6 @@ export function Checklist<TTask extends AnyReactTask>({
   labels,
   renderRow,
 }: ChecklistProps<TTask>) {
-  const palette = usePalette();
   const { snapshot, start, markDone, markTodo, skip, toggle } = useChecklist(checklist);
   const text = withDefaults(DEFAULT_LABELS, labels);
   const { tasks, taskCount, finishedCount } = snapshot;
@@ -197,7 +190,7 @@ export function Checklist<TTask extends AnyReactTask>({
   const next =
     tasks.find((row) => row.walkthrough !== "none") ??
     tasks.find(({ task, status }) => status === "todo" && (task.action ?? task.walkthrough) !== undefined);
-  const share = (count: number) => `${taskCount === 0 ? 0 : (count / taskCount) * 100}%`;
+  const share = (count: number) => `${(count / taskCount) * 100}%`;
 
   return (
     <div
@@ -205,7 +198,6 @@ export function Checklist<TTask extends AnyReactTask>({
       aria-label="Checklist"
       aria-busy={snapshot.storageStatus === "loading"}
       style={{
-        ...palette,
         boxSizing: "border-box",
         overflow: "hidden",
         color: color.text,

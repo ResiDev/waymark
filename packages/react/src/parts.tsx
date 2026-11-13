@@ -90,12 +90,11 @@ function usePointerHover(
     const element = ref.current;
     if (!mounted || !element) return;
     // A touch has no hover to end it, so only a press opens the checklist.
-    const enter = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") hover(true);
+    const report = (inside: boolean) => (event: PointerEvent) => {
+      if (event.pointerType !== "touch") hover(inside);
     };
-    const leave = (event: PointerEvent) => {
-      if (event.pointerType !== "touch") hover(false);
-    };
+    const enter = report(true);
+    const leave = report(false);
     element.addEventListener("pointerenter", enter);
     element.addEventListener("pointerleave", leave);
     return () => {

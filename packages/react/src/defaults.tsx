@@ -1,7 +1,7 @@
 import { useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button, CLOSE, Icon, PLAY, WARNING } from "./controls";
 import { vertical } from "./placement";
-import { color, focusRing, useInteraction, usePalette } from "./theme";
+import { color, useHover } from "./theme";
 import { useViewportSize } from "./useViewportSize";
 import type { BeaconRenderProps, Placement, WalkthroughRenderProps, WalkthroughStep } from "./types";
 
@@ -67,7 +67,6 @@ function DefaultPopover<TStep extends WalkthroughStep>({
   skipTask,
   labels,
 }: WalkthroughRenderProps<TStep>) {
-  const palette = usePalette();
   const popoverRef = useRef<HTMLDivElement>(null);
   useAnimation(popoverRef, APPEAR, APPEAR_TIMING);
   const { stepIndex, stepCount, canAdvance, waymark } = snapshot;
@@ -76,7 +75,6 @@ function DefaultPopover<TStep extends WalkthroughStep>({
     <div
       ref={popoverRef}
       style={{
-        ...palette,
         position: "relative",
         boxSizing: "border-box",
         width: 360,
@@ -106,7 +104,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       )}
       <div>{currentStep.content}</div>
       {(waymark.status === "lost" || waymark.status === "missing") && (
-        <div style={{ display: "flex", gap: 10, marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.warn, background: color.hover, fontSize: 13, lineHeight: "18px" }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 14, padding: "10px 12px", borderRadius: 10, color: color.warn, background: "color-mix(in srgb, currentColor 10%, transparent)", fontSize: 13, lineHeight: "18px" }}>
           <Icon d={WARNING} size={16} />
           <span>{labels.missing}</span>
         </div>
@@ -139,117 +137,80 @@ const PULSE: Keyframe[] = [
 ];
 const PULSE_TIMING: KeyframeAnimationOptions = { duration: 3000, easing: "ease-out", iterations: Infinity };
 
+/** What a finger gets to press, and what is held on screen. */
+const PRESS = 40;
+const DISC = 24;
+
 /** A play arrow on a disc, so it reads as a way back in and not as a notification's dot. */
-function Disc({ size, pulsing }: { size: number; pulsing: boolean }) {
+function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, rect }: BeaconRenderProps) {
+  const viewport = useViewportSize();
+  // Under the pointer or the keyboard's focus.
+  const [active, hover, setActive] = useHover();
   const rippleRef = useRef<HTMLSpanElement>(null);
-  useAnimation(rippleRef, PULSE, PULSE_TIMING, pulsing);
+  useAnimation(rippleRef, PULSE, PULSE_TIMING, !active);
   const disc: CSSProperties = {
     display: "grid",
     gridArea: "1 / 1",
     placeItems: "center",
-    width: size,
-    height: size,
+    width: DISC,
+    height: DISC,
     borderRadius: "50%",
     background: color.accent,
   };
+
   return (
-    <span style={{ display: "grid" }}>
+    <button
+      type="button"
+      // Which step it goes back to, where the step has a name.
+      aria-label={typeof title === "string" ? `${labels.resume}: ${title}` : labels.resume}
+      onClick={resume}
+      {...hover}
+      onFocus={() => setActive(true)}
+      onBlur={() => setActive(false)}
+      style={{
+        position: "relative",
+        display: "grid",
+        placeItems: "center",
+        width: PRESS,
+        height: PRESS,
+        padding: 0,
+        border: 0,
+        borderRadius: "50%",
+        background: "none",
+        font: "inherit",
+        cursor: "pointer",
+      }}
+    >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />
       {/* Positioned, to paint over the ripple. A ring in the surface colour parts it from the page; the halo is what is left where motion is turned off. */}
       <span style={{ ...disc, position: "relative", color: color.onAccent, boxShadow: `0 0 0 2px ${color.surface}, 0 0 0 5px ${color.halo}` }}>
-        <Icon d={PLAY} size={size / 2} filled />
+        <Icon d={PLAY} filled />
       </span>
-    </span>
-  );
-}
-
-/** The beacon's name: all of a beacon with no Waymark to sit on, and the label of one that has. */
-const pill: CSSProperties = {
-  border: `1px solid ${color.line}`,
-  borderRadius: 999,
-  color: color.text,
-  background: color.surface,
-  boxShadow: SHADOW,
-  font: "inherit",
-  fontSize: 13,
-  fontWeight: 500,
-  lineHeight: "20px",
-  whiteSpace: "nowrap",
-};
-
-/** What a finger gets to press, and what is held on screen. */
-const PRESS = 40;
-
-function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, rect }: BeaconRenderProps) {
-  const palette = usePalette();
-  const viewport = useViewportSize();
-  const [{ hovered, focused }, interaction] = useInteraction();
-  const active = hovered || focused;
-  const button = { type: "button", onClick: resume, ...interaction } as const;
-
-  // With no Waymark to sit on, a dot alone at the bottom of the screen says nothing: it carries its name.
-  if (!waymarkFound) {
-    return (
-      <button
-        {...button}
-        aria-label={labels.resume}
-        style={{
-          ...palette,
-          ...pill,
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "7px 16px 7px 8px",
-          cursor: "pointer",
-          ...(focused ? focusRing : null),
-        }}
-      >
-        <Disc size={20} pulsing={!active} />
-        {labels.resume}
-      </button>
-    );
-  }
-
-  return (
-    <span style={{ ...palette, position: "relative", display: "grid" }}>
-      <button
-        {...button}
-        // Which step it goes back to, where the step has a name.
-        aria-label={typeof title === "string" ? `${labels.resume}: ${title}` : labels.resume}
-        style={{
-          display: "grid",
-          placeItems: "center",
-          width: PRESS,
-          height: PRESS,
-          padding: 0,
-          border: 0,
-          borderRadius: "50%",
-          background: "none",
-          cursor: "pointer",
-          ...(focused ? { ...focusRing, outlineOffset: -4 } : null),
-        }}
-      >
-        <Disc size={24} pulsing={!active} />
-      </button>
-      {active && (
+      {/* Its name, while it is asked for. With no Waymark to sit on, a dot alone at the bottom of the screen says nothing, so there it always shows. */}
+      {(active || !waymarkFound) && (
         <span
           aria-hidden="true"
           style={{
-            ...pill,
             position: "absolute",
-            top: "50%",
             // Towards the side of the screen with more room.
             [rect !== null && rect.right > viewport.width / 2 ? "right" : "left"]: "100%",
-            transform: "translateY(-50%)",
             padding: "4px 12px",
-            pointerEvents: "none",
+            border: `1px solid ${color.line}`,
+            borderRadius: 999,
+            color: color.text,
+            background: color.surface,
+            boxShadow: SHADOW,
+            fontSize: 13,
+            fontWeight: 500,
+            lineHeight: "20px",
+            whiteSpace: "nowrap",
           }}
         >
           {labels.resume}
           {title !== undefined && <> · {title}</>}
         </span>
       )}
-    </span>
+    </button>
   );
 }
 

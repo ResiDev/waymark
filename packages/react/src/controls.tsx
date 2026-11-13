@@ -1,5 +1,5 @@
 import type { ComponentPropsWithoutRef, CSSProperties } from "react";
-import { color, focusRing, useInteraction } from "./theme";
+import { color, useHover } from "./theme";
 
 type Variant = "primary" | "secondary" | "quiet";
 
@@ -24,31 +24,29 @@ const base: CSSProperties = {
   lineHeight: "20px",
   whiteSpace: "nowrap",
   cursor: "pointer",
-  transition: "background-color 150ms, color 150ms",
-};
-
-const looks: Record<Variant, readonly [rest: CSSProperties, hover: CSSProperties]> = {
-  primary: [{ color: color.onAccent, background: color.accent }, { background: color.accentStrong }],
-  secondary: [{ color: color.text, borderColor: color.line }, { background: color.hover }],
-  quiet: [{ color: color.muted }, { color: color.text, background: color.hover }],
+  transition: "background-color 150ms, color 150ms, filter 150ms",
 };
 
 const disabled: CSSProperties = { opacity: 0.5, cursor: "not-allowed" };
 
 /** One button for the popover and the checklist, so the two read as one design. */
 export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"button"> & { variant: Variant }) {
-  const [{ hovered, focused }, interaction] = useInteraction();
-  const [rest, hover] = looks[variant];
+  const [hovered, hover] = useHover();
+  const looks: Record<Variant, readonly [rest: CSSProperties, hovering: CSSProperties]> = {
+    primary: [{ color: color.onAccent, background: color.accent }, { filter: "brightness(0.9)" }],
+    secondary: [{ color: color.text, borderColor: color.line }, { background: color.hover }],
+    quiet: [{ color: color.muted }, { color: color.text, background: color.hover }],
+  };
+  const [rest, hovering] = looks[variant];
   return (
     <button
       type="button"
       {...props}
-      {...interaction}
+      {...hover}
       style={{
         ...base,
         ...rest,
-        ...(props.disabled === true ? disabled : hovered ? hover : null),
-        ...(focused ? focusRing : null),
+        ...(props.disabled === true ? disabled : hovered ? hovering : null),
         ...style,
       }}
     />
