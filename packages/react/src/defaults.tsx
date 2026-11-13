@@ -172,7 +172,7 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
         cursor: "pointer",
         outlineColor: color.accent,
         // Drawn in, to where the halo was, so the ring fits the chip's end.
-        outlineOffset: -3,
+        outlineOffset: -6,
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />
