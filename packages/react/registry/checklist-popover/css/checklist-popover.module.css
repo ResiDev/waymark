@@ -1,69 +1,50 @@
 /*
  * The same colours as react-waymark's own popover and checklist: four an app
- * can set, here or on the page, and the rest mixed from them. `light-dark()`
- * follows the page's `color-scheme`, so a dark app gets a dark panel.
+ * can set, here or on the page, and the rest mixed from them. Left unset, the
+ * surface and the text are the browser's own for the page's `color-scheme`,
+ * so a dark app gets a dark panel.
  */
 .trigger,
 .panel {
-  --accent: var(--waymark-accent, light-dark(#2563eb, #60a5fa));
-  --on-accent: var(--waymark-on-accent, light-dark(#ffffff, #0f172a));
-  --surface: var(--waymark-surface, light-dark(#ffffff, #1e293b));
-  --text: var(--waymark-text, light-dark(#0f172a, #f1f5f9));
-  --accent-strong: color-mix(in srgb, var(--accent) 80%, var(--text));
-  --accent-soft: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  --body: color-mix(in srgb, var(--text) 80%, var(--surface));
+  --accent: var(--waymark-accent, #2563eb);
+  --on-accent: var(--waymark-on-accent, #fff);
+  --surface: var(--waymark-surface, Canvas);
+  --text: var(--waymark-text, CanvasText);
   --muted: color-mix(in srgb, var(--text) 62%, var(--surface));
-  --edge: color-mix(in srgb, var(--text) 50%, var(--surface));
-  --skipped: color-mix(in srgb, var(--text) 30%, var(--surface));
-  --line-strong: color-mix(in srgb, var(--text) 20%, var(--surface));
-  --line: color-mix(in srgb, var(--text) 10%, var(--surface));
-  /* See-through, so it shows on the plain surface and the raised one alike. */
+  --line: color-mix(in srgb, var(--text) 16%, var(--surface));
+  /* See-through, so it tints whatever it is laid over. */
   --hover: color-mix(in srgb, var(--text) 7%, transparent);
-  /* What floats over a dark page is lifted by a lighter surface and a lit top edge, where a shadow cannot be seen. */
-  --raised: light-dark(var(--surface), color-mix(in srgb, var(--text) 6%, var(--surface)));
-  --glint: light-dark(transparent, rgb(255 255 255 / 0.07));
-  --shadow: light-dark(rgb(2 6 23 / 0.28), rgb(0 0 0 / 0.6));
 }
 
 /*
  * The trigger sits in the app's own layout, so it takes the colour of the
- * text around it, ring included, and looks at home in a dark header or a
- * light sidebar.
+ * text around it and looks at home in a dark header or a light sidebar.
  */
 .trigger {
   display: inline-flex;
   flex: none;
   align-items: center;
   gap: 8px;
-  box-sizing: border-box;
   height: 32px;
   margin: 0;
   padding: 0 12px 0 8px;
   border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
   border-radius: 999px;
   color: inherit;
-  background: transparent;
+  background: none;
   font: inherit;
   font-size: 13px;
   font-weight: 500;
-  line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 120ms, border-color 120ms;
 }
 
-.trigger:hover {
-  border-color: color-mix(in srgb, currentColor 45%, transparent);
-  background: color-mix(in srgb, currentColor 10%, transparent);
-}
-
+.trigger:hover,
 .trigger[data-state="open"] {
-  border-color: color-mix(in srgb, currentColor 60%, transparent);
-  background: color-mix(in srgb, currentColor 18%, transparent);
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .triggerCount {
-  font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
 
@@ -78,31 +59,10 @@
   stroke: color-mix(in srgb, currentColor 22%, transparent);
 }
 
-/* The panel's accent, leaning towards the text around the trigger so it shows on a dark header and a light one. */
-.ringDone,
-.ringCheck {
-  stroke: color-mix(in srgb, var(--accent) 65%, currentColor);
-}
-
+/* The panel's accent, taken towards the text around the trigger so it shows on a dark header and a light one. */
 .ringDone {
-  stroke-linecap: round;
+  stroke: color-mix(in srgb, var(--accent) 65%, currentColor);
   transition: stroke-dasharray 300ms;
-}
-
-.ringCheck {
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.trigger[data-running] .ring {
-  animation: pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    opacity: 0.4;
-  }
 }
 
 .panel {
@@ -117,51 +77,40 @@
   flex-direction: column;
   width: 340px;
   max-width: calc(100vw - 16px);
-  /* A little short of the room there is, so the panel's edge and shadow clear the bottom of the screen. */
-  max-height: min(560px, calc(var(--waymark-available-height) - 4px));
+  max-height: min(560px, var(--waymark-available-height));
   overflow: hidden;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 14px;
   color: var(--text);
-  background: var(--raised);
+  background: var(--surface);
   box-shadow:
-    inset 0 1px 0 var(--glint),
     0 1px 3px rgb(2 6 23 / 0.1),
-    0 16px 40px -8px var(--shadow);
+    0 12px 32px -8px rgb(2 6 23 / 0.3);
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   text-align: start;
   outline: none;
-  animation: appear 140ms ease-out;
+  transition:
+    opacity 140ms,
+    scale 140ms;
 }
 
-/* On a phone the panel spans the screen, with the same gutter on both sides, wherever the trigger sits. */
-@media (max-width: 480px) {
+/* Where it opens from. */
+@starting-style {
   .panel {
-    left: 12px !important;
-    width: calc(100vw - 24px);
-    max-width: none;
-  }
-}
-
-@keyframes appear {
-  from {
     opacity: 0;
-    transform: scale(0.96);
+    scale: 0.96;
   }
 }
 
 .header {
-  flex: none;
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid var(--line);
-}
-
-.headline {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
 }
 
 .heading {
@@ -170,38 +119,17 @@
   font-size: 16px;
   font-weight: 600;
   line-height: 24px;
-  letter-spacing: -0.01em;
 }
 
 .count {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.count[data-complete] {
-  color: var(--text);
-}
-
-.count svg {
-  width: 14px;
-  height: 14px;
-  color: var(--accent);
-}
-
-.countSkipped {
-  color: var(--muted);
-  font-weight: 400;
 }
 
 .track {
   display: flex;
-  gap: 2px;
+  flex: none;
+  width: 100%;
   height: 6px;
   margin-top: 10px;
   overflow: hidden;
@@ -209,20 +137,14 @@
   background: var(--line);
 }
 
-.done,
-.skipped {
-  height: 100%;
-  border-radius: 999px;
+.done {
+  background: var(--accent);
   transition: width 300ms;
 }
 
-.done {
-  background: var(--accent);
-}
-
-/* Skipped moves the bar on, in grey, so the list can be finished without calling a skipped task done. */
 .skipped {
-  background: var(--skipped);
+  background: var(--muted);
+  opacity: 0.5;
 }
 
 .list {
@@ -232,22 +154,13 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   list-style: none;
-  /*
-   * A shadow at whichever end has more to scroll to. The first two layers
-   * move with the content and cover the shadows once that end is reached.
-   */
-  background:
-    linear-gradient(var(--raised) 40%, transparent) top / 100% 36px no-repeat local,
-    linear-gradient(transparent, var(--raised) 60%) bottom / 100% 36px no-repeat local,
-    linear-gradient(rgb(2 6 23 / 0.22), transparent) top / 100% 14px no-repeat scroll,
-    linear-gradient(transparent, rgb(2 6 23 / 0.22)) bottom / 100% 14px no-repeat scroll;
 }
 
 .task {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 11px 20px;
+  padding: 12px 20px;
 }
 
 .task + .task {
@@ -262,108 +175,52 @@
 
 /* Tinted while its walkthrough is on screen. */
 .task[data-open] {
-  background: var(--accent-soft);
+  background: var(--hover);
 }
 
-/* Larger than the circle it shows, for a finger; pulled back so the circle keeps its place in the row. */
+/* One drawn circle for every state, so a task's status is read from its shape. */
 .checkbox {
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  width: 28px;
-  height: 28px;
-  margin: -3px -4px;
+  width: 20px;
+  height: 20px;
   padding: 0;
-  border: 0;
+  border: 1.5px solid var(--muted);
   border-radius: 50%;
   color: var(--muted);
-  background: transparent;
+  background: none;
+}
+
+.checkbox svg {
+  width: 12px;
+  height: 12px;
 }
 
 button.checkbox {
   cursor: pointer;
 }
 
-.mark {
-  display: grid;
-  place-items: center;
-  box-sizing: border-box;
-  width: 20px;
-  height: 20px;
-  border: 1.5px solid var(--edge);
-  border-radius: 50%;
-  background: transparent;
-  transition: background-color 120ms, border-color 120ms;
+/* Larger than the circle, for a finger. */
+button.checkbox::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
 }
 
-.mark svg {
-  width: 12px;
-  height: 12px;
-}
-
-/* A box that cannot be ticked is locked and faint, so it does not invite a press. */
-span.checkbox[data-status="todo"] .mark {
-  border-color: var(--line-strong);
-  color: var(--muted);
-  background: var(--hover);
-}
-
-span.checkbox[data-status="todo"] .mark svg {
-  width: 11px;
-  height: 11px;
-}
-
-/* A to-do task carries the tick it would get, shown only under the pointer. */
-.checkbox[data-status="todo"] .mark {
-  color: transparent;
-}
-
-button.checkbox[data-status="todo"]:hover .mark {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-/* Half a pie: started, not finished. */
-.checkbox[data-in-progress][data-status="todo"] .mark,
-.checkbox[data-open][data-status="todo"] .mark {
-  padding: 3px;
-  border-color: var(--accent);
-  background: conic-gradient(var(--accent) 50%, transparent 0) content-box;
-}
-
-.checkbox[data-in-progress][data-status="todo"] .mark svg,
-.checkbox[data-open][data-status="todo"] .mark svg {
-  display: none;
-}
-
-.checkbox[data-status="done"] .mark {
+.checkbox[data-status="done"] {
   border-color: var(--accent);
   color: var(--on-accent);
   background: var(--accent);
 }
 
-.checkbox[data-status="skipped"] .mark {
-  border-style: dashed;
-}
-
-.undo {
-  display: none;
-}
-
-/* Under the pointer it shows what a press does: brings the task back. */
-button.checkbox[data-status="skipped"]:hover .mark {
-  border-style: solid;
-  border-color: var(--muted);
-}
-
-button.checkbox[data-status="skipped"]:hover .dash {
-  display: none;
-}
-
-button.checkbox[data-status="skipped"]:hover .undo {
-  display: block;
+/* Half a pie: started, not finished. */
+.checkbox[data-status="todo"]:is([data-open], [data-in-progress]) {
+  padding: 3px;
+  border-color: var(--accent);
+  background: conic-gradient(var(--accent) 50%, transparent 0) content-box;
 }
 
 .body {
@@ -371,12 +228,37 @@ button.checkbox[data-status="skipped"]:hover .undo {
   min-width: 0;
 }
 
-/* The whole line opens the task, for a mouse; the arrow at its end does the same for a keyboard. */
+/* The title's line: all of a task with nothing under its title. */
 .summary {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Its own arrow, at the end of the line, in place of the browser's at the start. */
+summary.summary {
   cursor: pointer;
+  list-style: none;
+}
+
+summary.summary::-webkit-details-marker {
+  display: none;
+}
+
+summary.summary::after {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px 3px auto;
+  border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.body[open] > summary.summary::after {
+  margin-bottom: -3px;
+  transform: rotate(225deg);
 }
 
 .title {
@@ -390,169 +272,81 @@ button.checkbox[data-status="skipped"]:hover .undo {
 }
 
 /* A finished task steps back to grey, with its mark left to say how it ended. */
-.title[data-status="done"],
-.title[data-status="skipped"] {
+.title:not([data-status="todo"]),
+.tag,
+.description {
   color: var(--muted);
 }
 
+/* Skipped is the one status the mark alone does not make plain. */
 .tag {
-  flex: none;
-  padding: 0 8px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  background: var(--hover);
   font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.expander {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  margin: -1px -6px -1px auto;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  /* Faint until its row is under the pointer, so a column of them stays even and quiet. */
-  color: color-mix(in srgb, var(--muted) 55%, transparent);
-  background: transparent;
-  cursor: pointer;
-  transition: background-color 120ms, color 120ms;
-}
-
-.expander[aria-expanded="true"],
-.expander:focus-visible {
-  color: var(--muted);
-}
-
-.summary:hover .expander {
-  color: var(--text);
-  background: var(--hover);
-}
-
-.expander svg {
-  width: 16px;
-  height: 16px;
-  transition: transform 150ms;
-}
-
-.expander[aria-expanded="true"] svg {
-  transform: rotate(180deg);
 }
 
 .description {
   margin: 2px 0 0;
-  color: var(--muted);
-  text-wrap: pretty;
 }
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
   gap: 8px;
-  margin: 10px 0 5px;
+  margin: 10px 0 4px;
 }
 
-.button {
-  box-sizing: border-box;
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
+.primary,
+.secondary,
+.quiet {
   min-height: 32px;
   margin: 0;
   padding: 5px 12px;
   border: 1px solid transparent;
   border-radius: 8px;
+  color: var(--text);
+  background: none;
   font: inherit;
-  font-size: 14px;
   font-weight: 500;
-  line-height: 20px;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 200ms, border-color 120ms, color 200ms;
 }
 
 .primary {
   color: var(--on-accent);
   background: var(--accent);
-  box-shadow: 0 1px 2px rgb(2 6 23 / 0.16);
 }
 
-.primary:hover:enabled {
-  background: var(--accent-strong);
+.primary:hover {
+  filter: brightness(0.9);
 }
 
-/* A button among many like it: its box shows only under the pointer, so a list of them is not a column of boxes. */
-.plain {
-  color: var(--text);
-  background: transparent;
-}
-
-.plain:hover:enabled {
-  border-color: var(--line-strong);
-  background: var(--hover);
-}
-
-.actions > .plain:first-child {
-  margin-left: -12px;
+.secondary {
+  border-color: var(--line);
 }
 
 .quiet {
-  padding: 5px 10px;
   color: var(--muted);
-  background: transparent;
 }
 
-.quiet:hover:enabled {
+.secondary:hover,
+.quiet:hover {
   color: var(--text);
   background: var(--hover);
 }
 
 /* Its text, not its hover square, lines up with the description above. */
-.actions > .quiet:first-child {
-  margin-left: -10px;
+.quiet:first-child {
+  margin-left: -12px;
 }
 
-/* A done task's button reads a shade stronger than Skip, which gives a task up. */
-.again {
-  color: var(--body);
-}
-
-/* The walkthrough is on screen, so the button has nothing to start: it says so, and does not look broken. */
-.button.running:disabled {
-  gap: 6px;
-  color: var(--accent);
-  background: transparent;
-  font-size: 13px;
-  cursor: default;
-}
-
-.running::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.button:disabled {
-  border-color: transparent;
-  color: var(--edge);
-  background: var(--line);
-  box-shadow: none;
+.actions button:disabled {
+  opacity: 0.5;
+  filter: none;
   cursor: not-allowed;
 }
 
 .trigger:focus-visible,
 .checkbox:focus-visible,
-.expander:focus-visible,
-.button:focus-visible {
+.summary:focus-visible,
+.actions button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -561,20 +355,10 @@ button.checkbox[data-status="skipped"]:hover .undo {
   outline-color: currentColor;
 }
 
-.checkbox:focus-visible {
-  outline-offset: -2px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .panel,
-  .trigger[data-running] .ring {
-    animation: none;
-  }
-
   .ringDone,
-  .done,
-  .skipped,
-  .expander svg {
+  .done {
     transition: none;
   }
 }
