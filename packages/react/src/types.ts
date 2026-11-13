@@ -121,11 +121,11 @@ export type WaymarkRootProps = Readonly<{
   /** In px. Room the shade leaves around the Waymark; clicks this close count as clicks on it. Defaults to 20. */
   waymarkPadding?: number;
   /**
-   * What draws every walkthrough without drawing of its own. The library's are
+   * What draws every walkthrough; a walkthrough's own wins. The library's are
    * `defaultPopover` and `defaultBeacon`; an app that passes its own ships neither.
    */
-  renderPopover?: (props: WalkthroughRenderProps) => ReactNode;
-  renderBeacon?: (props: BeaconRenderProps) => ReactNode;
+  renderPopover: (props: WalkthroughRenderProps) => ReactNode;
+  renderBeacon: (props: BeaconRenderProps) => ReactNode;
   labels?: Partial<WalkthroughLabels>;
   /** Every walkthrough's events and every checklist's. */
   onEvent?: (event: WaymarkEvent<WalkthroughStep>) => void;

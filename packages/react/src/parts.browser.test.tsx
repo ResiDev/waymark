@@ -11,7 +11,7 @@ const { checklists } = defineChecklists({
 describe("ChecklistPanel", () => {
   it("sits against its trigger, and follows it when a container scrolls", async () => {
     const scroller = renderInScroller(
-      <WaymarkRoot>
+      <WaymarkRoot renderPopover={() => null} renderBeacon={() => null}>
         <ChecklistRoot checklist={checklists.home}>
           {() => (
             <>
@@ -41,7 +41,7 @@ describe("ChecklistPanel", () => {
   it("opens above its trigger when there is no room below, and stays on screen", async () => {
     render(
       <div style={{ position: "fixed", left: 20, bottom: 10 }}>
-        <WaymarkRoot>
+        <WaymarkRoot renderPopover={() => null} renderBeacon={() => null}>
           <ChecklistRoot checklist={checklists.home}>
             {() => (
               <>

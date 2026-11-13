@@ -70,6 +70,7 @@ describe("Walkthrough prop shapes", () => {
           expectTypeOf(currentStep).toEqualTypeOf<WalkthroughStep>();
           return currentStep.content;
         }}
+        renderBeacon={() => null}
       >
         <Walkthrough walkthrough={announcement} />
       </WaymarkRoot>
@@ -181,6 +182,8 @@ describe("problem handlers", () => {
     const describeProblem = (problem: WaymarkProblem) => problem.type;
     const untyped = (
       <WaymarkRoot
+        renderPopover={() => null}
+        renderBeacon={() => null}
         problemHandlers={everyProblem((problem) => {
           expectTypeOf(problem).toEqualTypeOf<WaymarkProblem>();
           describeProblem(problem);
@@ -188,7 +191,7 @@ describe("problem handlers", () => {
       />
     );
     const pressProblem = (problem: WaymarkProblem<{ readonly content: "Press" }>) => problem.type;
-    const typed = <WaymarkRoot problemHandlers={everyProblem(pressProblem)} />;
+    const typed = <WaymarkRoot renderPopover={() => null} renderBeacon={() => null} problemHandlers={everyProblem(pressProblem)} />;
     expect([untyped, typed]).toHaveLength(2);
   });
 });

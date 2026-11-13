@@ -102,7 +102,7 @@ A click within 20px of the waymark counts as a click on it. The same distance se
 | `context` | Your app's facts, read by checklists' completion conditions. See [Checklists](#checklists). |
 | `onEvent` | Hears what every walkthrough and checklist does. See [Events and analytics](#events-and-analytics). |
 | `problemHandlers` | One set for every walkthrough and checklist. See [Problem handlers](#problem-handlers). |
-| `renderPopover`, `renderBeacon` | What draws the popover and the beacon. `defaultPopover` and `defaultBeacon` are the library's own. See [Changing the look](#changing-the-look). |
+| `renderPopover`, `renderBeacon` | Required. What draws every walkthrough's popover and beacon, unless the walkthrough has its own. `defaultPopover` and `defaultBeacon` are the library's own; an app with no walkthroughs can pass `() => null`. See [Changing the look](#changing-the-look). |
 | `labels` | See [Changing the look](#changing-the-look). |
 | `waymarkPadding` | In px. Defaults to 20. |
 | `portal` | `false` renders the popover and beacons inside `<WaymarkRoot>`, after its children, not in `document.body`. Defaults to `true`. |
@@ -426,7 +426,7 @@ To draw the popover yourself, pass your own `renderPopover` to `<WaymarkRoot>`, 
 
 The defaults are render functions like your own, so yours can hand a step back to one: `renderPopover={(props) => (props.currentStep.meta ? <Mine {...props} /> : defaultPopover(props))}`.
 
-An app that never imports `defaultPopover` or `defaultBeacon` does not have it in its bundle. A walkthrough that opens with nothing to draw it throws an error that says so.
+An app that never imports `defaultPopover` or `defaultBeacon` does not have it in its bundle.
 
 ```tsx
 <WaymarkRoot

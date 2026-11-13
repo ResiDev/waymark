@@ -265,7 +265,7 @@ describe("Checklist with storage", () => {
     tasks: { hello: { title: "Say hello" }, invite: { title: "Invite a friend" } },
   });
   const app = () => (
-    <WaymarkRoot storage="setup">
+    <WaymarkRoot storage="setup" renderPopover={() => null} renderBeacon={() => null}>
       <Checklist checklist={checklists.main} />
     </WaymarkRoot>
   );
@@ -303,7 +303,7 @@ describe("Checklist with storage", () => {
     save({ hello: "done", invite: "done" });
     const initial: StoredRecord = { version: 1, walkthroughs: {}, tasks: { hello: "done" } };
     const given = () => (
-      <WaymarkRoot storage="setup" initial={initial}>
+      <WaymarkRoot storage="setup" initial={initial} renderPopover={() => null} renderBeacon={() => null}>
         <Checklist checklist={checklists.main} />
       </WaymarkRoot>
     );
@@ -343,7 +343,7 @@ describe("Checklist with storage", () => {
       return <p>Storage {status}</p>;
     }
     const page = (browser: boolean) => (
-      <WaymarkRoot storage="setup">
+      <WaymarkRoot storage="setup" renderPopover={() => null} renderBeacon={() => null}>
         <Storage />
         <Suspense fallback={<p>Loading</p>}>
           <Lazy browser={browser}>

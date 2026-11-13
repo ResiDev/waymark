@@ -49,7 +49,7 @@ describe("popover", () => {
     addWaymark({ left: "400px", top: "450px" });
     const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "target", scroll: "never", content: "Unused: the popover is custom." }] });
     render(
-      <WaymarkRoot waymarkPadding={0} renderPopover={({ advance }) => <GrowingContent advance={advance} />}>
+      <WaymarkRoot waymarkPadding={0} renderPopover={({ advance }) => <GrowingContent advance={advance} />} renderBeacon={() => null}>
         <Walkthrough walkthrough={walkthrough} />
       </WaymarkRoot>,
     );

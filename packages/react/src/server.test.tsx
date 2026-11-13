@@ -41,7 +41,7 @@ const { checklists } = defineChecklists({
 const initial: StoredRecord = { version: 1, walkthroughs: {}, tasks: { hello: "done" } };
 
 describe("WaymarkRoot on a server", () => {
-  it.each<[string, Omit<WaymarkRootProps, "children" | "storage">, string]>([
+  it.each<[string, Omit<WaymarkRootProps, "children" | "storage" | "renderPopover" | "renderBeacon">, string]>([
     ["", {}, "0<!-- --> of <!-- -->2<!-- --> done"],
     [", given a record and context", { initial, context: { invited: false } }, "1<!-- --> of <!-- -->2<!-- --> done"],
   ])("renders a Checklist and a Walkthrough without touching storage or the page%s", (_, props, done) => {
@@ -49,7 +49,7 @@ describe("WaymarkRoot on a server", () => {
     const error = vi.spyOn(console, "error");
     const storage = watchedStorage();
     const html = renderToString(
-      <WaymarkRoot storage={storage} {...props}>
+      <WaymarkRoot storage={storage} renderPopover={() => null} renderBeacon={() => null} {...props}>
         <Walkthrough walkthrough={tour} />
         <Checklist checklist={checklists.main} />
       </WaymarkRoot>,
@@ -68,7 +68,7 @@ describe("WaymarkRoot on a server", () => {
     onAServer();
     const error = vi.spyOn(console, "error");
     const html = renderToString(
-      <WaymarkRoot storage="setup">
+      <WaymarkRoot storage="setup" renderPopover={() => null} renderBeacon={() => null}>
         <Walkthrough walkthrough={tour} />
         <Checklist checklist={checklists.main} />
       </WaymarkRoot>,

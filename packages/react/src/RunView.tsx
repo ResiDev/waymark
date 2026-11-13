@@ -13,11 +13,6 @@ import { BeaconAnchor, DEFAULT_LABELS, Dialog, WaymarkShade } from "./view";
 
 const subscribeNever = () => () => {};
 
-/** A walkthrough is on the page and nothing was given to draw it: better loud than a page left under a shade. */
-const nothingDraws = (prop: string, id: string): never => {
-  throw new Error(`Waymark: walkthrough "${id}" has no ${prop}. Give <WaymarkRoot> one.`);
-};
-
 /**
  * False on the server and while React hydrates its HTML, true after. A server
  * cannot read the browser's storage, so it draws no walkthrough; drawing one
@@ -33,8 +28,8 @@ const useDrawn = () =>
 type Drawing = Readonly<{
   run: Run;
   waymarkPadding: number;
-  renderPopover?: ((props: WalkthroughRenderProps) => ReactNode) | undefined;
-  renderBeacon?: ((props: BeaconRenderProps) => ReactNode) | undefined;
+  renderPopover: (props: WalkthroughRenderProps) => ReactNode;
+  renderBeacon: (props: BeaconRenderProps) => ReactNode;
   labels: WalkthroughLabels;
 }>;
 
@@ -83,7 +78,7 @@ function OpenView({
   const rect = snapshot.waymark.status === "found" ? snapshot.waymark.rect : null;
   // Named, so a popover drawn for a step just left acts on nothing else.
   const act = (action: Action) => () => run.act(action, walkthrough);
-  const draw = walkthrough.renderPopover ?? renderPopover ?? nothingDraws("renderPopover", walkthrough.id);
+  const draw = walkthrough.renderPopover ?? renderPopover;
   const render = (placement: WalkthroughRenderProps["placement"], arrow: number) => {
     const props: WalkthroughRenderProps = {
       snapshot,
@@ -136,6 +131,6 @@ function BeaconView({
     exit: () => run.act("exit", walkthrough),
     labels,
   };
-  const draw = walkthrough.renderBeacon ?? renderBeacon ?? nothingDraws("renderBeacon", walkthrough.id);
+  const draw = walkthrough.renderBeacon ?? renderBeacon;
   return <BeaconAnchor rect={rect}>{draw(props)}</BeaconAnchor>;
 }

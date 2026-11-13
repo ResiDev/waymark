@@ -381,24 +381,6 @@ describe("WaymarkRoot", () => {
     expect(beaconAnchor()!.style).toMatchObject({ left: "120px", top: "20px" });
   });
 
-  it("says so when a walkthrough opens and the root was given nothing to draw it", async () => {
-    const { render } = mount();
-    addTarget("panel", "Panel");
-    const walkthrough = defineWalkthrough({ id: "tour", steps: [{ waymark: "panel", content: "Use this panel" }] });
-    // React logs the error, and jsdom reports it as uncaught: both are what the test asks for.
-    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-    const handled = (event: ErrorEvent) => event.preventDefault();
-    window.addEventListener("error", handled);
-    onTestFinished(() => {
-      quiet.mockRestore();
-      window.removeEventListener("error", handled);
-    });
-
-    await expect(render(<Walkthrough walkthrough={walkthrough} />, {}, true)).rejects.toThrow(
-      'walkthrough "tour" has no renderPopover',
-    );
-  });
-
   it("draws a custom beacon in place of the default, and resumes from it", async () => {
     const { render } = mount();
     addTarget("panel", "Panel");
