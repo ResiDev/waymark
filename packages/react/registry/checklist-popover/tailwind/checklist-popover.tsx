@@ -74,7 +74,7 @@ const classes = {
   header: "flex flex-none flex-wrap items-baseline gap-x-3 border-0 border-b border-solid border-[color:var(--line)] px-5 py-4",
   heading: "m-0 flex-1 text-[17px] font-semibold leading-6",
   count: "text-[13px] text-[color:var(--muted)]",
-  track: "mt-2.5 flex h-1.5 w-full flex-none overflow-hidden rounded-full bg-[var(--line)]",
+  track: "mt-2.5 flex h-1.5 w-full flex-none overflow-hidden rounded-full bg-[var(--hover)]",
   done: "bg-[var(--accent)] motion-safe:transition-[width] motion-safe:duration-300",
   // Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done.
   skipped: "bg-[var(--accent)] opacity-70",
@@ -82,10 +82,10 @@ const classes = {
     "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
     // A shadow along the bottom edge while there is more below. It stays put; the cover over it is at the end of
     // the list and scrolls with it, so it hides the shadow only once the end is reached.
-    "[background:linear-gradient(transparent,var(--surface)_70%)_bottom/100%_24px_no-repeat_local,linear-gradient(transparent,var(--hover))_bottom/100%_16px_no-repeat_scroll]",
+    "[background:linear-gradient(var(--surface),var(--surface))_bottom/100%_20px_no-repeat_local,linear-gradient(transparent,var(--line))_bottom/100%_20px_no-repeat_scroll]",
   ].join(" "),
   task: [
-    "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-2.5 [&+&]:border-t",
+    "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-3 [&+&]:border-t",
     // A bar down the side, so the task to do next is found without reading, and not by its button's colour alone.
     "data-[next]:shadow-[inset_3px_0_var(--accent)] data-[open]:shadow-[inset_3px_0_var(--accent)]",
   ].join(" "),
@@ -121,7 +121,7 @@ const classes = {
   // Skipped is the one status the mark alone does not make plain.
   tag: "text-xs text-[color:var(--muted)]",
   description: "m-0 mt-0.5 text-[color:var(--muted)]",
-  actions: "mb-1 mt-2.5 flex gap-2",
+  actions: "mb-1 mt-2.5 flex gap-2.5",
   // The two with a box share a least width, so a column of them lines up.
   primary: `${button} min-w-[88px] border-transparent bg-[var(--accent)] text-[color:var(--on-accent)] enabled:hover:brightness-90`,
   secondary: `${button} min-w-[88px] border-[color:var(--line)] bg-transparent text-[color:var(--text)] enabled:hover:bg-[var(--hover)]`,
@@ -184,7 +184,8 @@ function Contents<TTask extends AnyReactTask>({
       <ChecklistTrigger className={classes.trigger} aria-label={`${title}, ${progress}`}>
         {/*
           How far through the list, skipped tasks too, as the panel's bar shows it: a pie in a ring, like a started
-          task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round.
+          task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. The number
+          beside it is the tasks done, as the panel's text says it.
         */}
         <svg className={classes.ring} viewBox="0 0 18 18" aria-hidden="true">
           <circle className={classes.ringTrack} cx="9" cy="9" r="8" />
@@ -192,7 +193,7 @@ function Contents<TTask extends AnyReactTask>({
         </svg>
         {title}
         <span className={classes.triggerCount}>
-          {finishedCount}/{taskCount}
+          {done}/{taskCount}
         </span>
       </ChecklistTrigger>
       <ChecklistPanel side={side} gap={14} className={classes.panel} aria-label={title}>

@@ -76,8 +76,8 @@ function DefaultPopover<TStep extends WalkthroughStep>({
       {waymarkFound && <div aria-hidden="true" style={arrowStyle(placement, arrow)} />}
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6, color: color.muted, fontSize: 12, fontWeight: 500, lineHeight: "20px" }}>
         {stepCount > 1 && labels.stepOf(stepIndex + 1, stepCount)}
-        {/* Pulled past the padding, so the cross, not its hover square, lines up with the content's edge. */}
-        <Button variant="quiet" aria-label={labels.close} onClick={exit} style={{ minHeight: 28, margin: "-4px -7px -4px auto", padding: 6 }}>
+        {/* Pulled past its padding and the room round its strokes, so the cross, not its hover square, lines up with the content's edge. */}
+        <Button variant="quiet" aria-label={labels.close} onClick={exit} style={{ minHeight: 28, margin: "-4px -10px -4px auto", padding: 6 }}>
           <Icon d={CLOSE} size={14} />
         </Button>
       </div>
@@ -112,7 +112,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
 
 // One ripple, then a rest: enough to catch the eye, not a light that never stops flashing. The rest is the time
 // after the last frame, which the browser fills with the ripple as it is styled: unseen.
-const PULSE: Keyframe[] = [{ opacity: 0.6 }, { transform: "scale(2)", opacity: 0, offset: 0.4 }];
+const PULSE: Keyframe[] = [{ opacity: 0.6 }, { transform: "scale(2.5)", opacity: 0, offset: 0.4 }];
 const PULSE_TIMING: KeyframeAnimationOptions = { duration: 3000, easing: "ease-out", iterations: Infinity };
 
 /** What a finger gets to press, and what is held on screen. */
@@ -185,13 +185,13 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
             padding: "6px 12px",
             // Out from under the disc, as one chip with it, towards the side of the screen with more room.
             ...(rect !== null && rect.right > viewport.width / 2
-              ? { right: "100%", marginRight: -TUCK, paddingRight: TUCK + 4 }
-              : { left: "100%", marginLeft: -TUCK, paddingLeft: TUCK + 4 }),
+              ? { right: "100%", marginRight: -TUCK, paddingRight: TUCK }
+              : { left: "100%", marginLeft: -TUCK, paddingLeft: TUCK }),
             border: `1px solid ${color.line}`,
             borderRadius: 999,
             color: color.text,
             background: color.surface,
-            boxShadow: "0 1px 3px rgb(2 6 23 / 0.1)",
+            boxShadow: SHADOW,
             fontSize: 13,
             fontWeight: 500,
             lineHeight: "20px",

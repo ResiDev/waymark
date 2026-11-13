@@ -222,7 +222,7 @@ export function Checklist<TTask extends AnyReactTask>({
             {skipped > 0 && <> · {skipped} skipped</>}
           </div>
         </div>
-        <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.line }}>
+        <div aria-hidden="true" style={{ display: "flex", height: 6, marginTop: 10, overflow: "hidden", borderRadius: 999, background: color.hover }}>
           <div style={{ width: share(done), background: color.accent, transition: "width 300ms" }} />
           {/* Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped Task done. */}
           <div style={{ width: share(skipped), background: color.accent, opacity: 0.7 }} />

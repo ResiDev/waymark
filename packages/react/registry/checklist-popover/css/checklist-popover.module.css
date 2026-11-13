@@ -147,7 +147,7 @@
   margin-top: 10px;
   overflow: hidden;
   border-radius: 999px;
-  background: var(--line);
+  background: var(--hover);
 }
 
 .done {
@@ -173,15 +173,15 @@
    * hides the shadow only once the end is reached.
    */
   background:
-    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 24px no-repeat local,
-    linear-gradient(transparent, var(--hover)) bottom / 100% 16px no-repeat scroll;
+    linear-gradient(var(--surface), var(--surface)) bottom / 100% 20px no-repeat local,
+    linear-gradient(transparent, var(--line)) bottom / 100% 20px no-repeat scroll;
 }
 
 .task {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  padding: 10px 20px;
+  padding: 12px 20px;
 }
 
 .task + .task {
@@ -311,7 +311,7 @@ summary.summary::after {
 
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   margin: 10px 0 4px;
 }
 

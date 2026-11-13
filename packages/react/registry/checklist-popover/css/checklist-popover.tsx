@@ -66,7 +66,8 @@ function Contents<TTask extends AnyReactTask>({
       <ChecklistTrigger className={styles.trigger} aria-label={`${title}, ${progress}`}>
         {/*
           How far through the list, skipped tasks too, as the panel's bar shows it: a pie in a ring, like a started
-          task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round.
+          task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. The number
+          beside it is the tasks done, as the panel's text says it.
         */}
         <svg className={styles.ring} viewBox="0 0 18 18" aria-hidden="true">
           <circle className={styles.ringTrack} cx="9" cy="9" r="8" />
@@ -74,7 +75,7 @@ function Contents<TTask extends AnyReactTask>({
         </svg>
         {title}
         <span className={styles.triggerCount}>
-          {finishedCount}/{taskCount}
+          {done}/{taskCount}
         </span>
       </ChecklistTrigger>
       <ChecklistPanel side={side} gap={14} className={styles.panel} aria-label={title}>
