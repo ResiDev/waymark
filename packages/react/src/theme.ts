@@ -34,18 +34,22 @@ const palette = (accent: string, onAccent: string, surface: string, text: string
   ...rest,
 });
 
+const ACCENT = "var(--waymark-accent, light-dark(#2563eb, #60a5fa))";
+const TEXT = "var(--waymark-text, light-dark(#0f172a, #f1f5f9))";
+// The app's text colour taken nearly to black, so the shade is not a cold cast over a warm page; darker over a
+// dark page, which a light shade would barely change.
+const scrim = (text: string) =>
+  `light-dark(color-mix(in srgb, color-mix(in srgb, ${text} 30%, #000) 42%, transparent), rgb(0 0 0 / 0.65))`;
+
 /** Follows the page's `color-scheme`, so a dark app gets a dark popover without setting anything. */
 const ADAPTIVE = /* @__PURE__ */ palette(
-  "var(--waymark-accent, light-dark(#2563eb, #60a5fa))",
+  ACCENT,
   "var(--waymark-on-accent, light-dark(#ffffff, #0f172a))",
   "var(--waymark-surface, light-dark(#ffffff, #1e293b))",
-  "var(--waymark-text, light-dark(#0f172a, #f1f5f9))",
+  TEXT,
   {
     "--wm-warn": "light-dark(#92400e, #fcd34d)",
-    // The app's text colour taken nearly to black, so the shade is not a cold cast over a warm page; darker over a
-    // dark page, which a light shade would barely change.
-    "--wm-scrim":
-      "light-dark(color-mix(in srgb, color-mix(in srgb, var(--wm-text) 30%, #000) 42%, transparent), rgb(0 0 0 / 0.65))",
+    "--wm-scrim": /* @__PURE__ */ scrim("var(--wm-text)"),
     // What floats over a dark page is lifted by a lighter surface and a lit top edge, where a shadow cannot be seen.
     "--wm-raised": "light-dark(var(--wm-surface), color-mix(in srgb, var(--wm-text) 6%, var(--wm-surface)))",
     "--wm-glint": "light-dark(transparent, rgb(255 255 255 / 0.07))",
@@ -95,6 +99,26 @@ export const usePalette = (): CSSProperties =>
     never,
     () => (supported() ? ADAPTIVE : PLAIN),
     () => ADAPTIVE,
+  );
+
+type ShadeColours = Readonly<{ accent: string; ring: string; scrim: string }>;
+const SHADE: ShadeColours = { accent: ACCENT, ring: /* @__PURE__ */ mix(ACCENT, 30, "transparent"), scrim: /* @__PURE__ */ scrim(TEXT) };
+const PLAIN_SHADE: ShadeColours = {
+  accent: "var(--waymark-accent, #2563eb)",
+  ring: "rgb(37 99 235 / 0.3)",
+  scrim: "rgb(5 7 13 / 0.42)",
+};
+
+/**
+ * The shade's three colours by themselves. `<WaymarkRoot>` draws the shade for
+ * any popover, an app's own included, so it takes these and not the palette,
+ * which then ships only with the default look.
+ */
+export const useShadeColours = (): ShadeColours =>
+  useSyncExternalStore(
+    never,
+    () => (supported() ? SHADE : PLAIN_SHADE),
+    () => SHADE,
   );
 
 export const color = {

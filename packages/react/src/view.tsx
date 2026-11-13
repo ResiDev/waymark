@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import type { Rect } from "waymark-core";
 import { centerPopover, clamp, placePopover } from "./placement";
-import { color, usePalette } from "./theme";
+import { useShadeColours } from "./theme";
 import { useMeasuredSize } from "./useMeasuredSize";
 import { useViewportSize } from "./useViewportSize";
 import type { Placement, WalkthroughLabels } from "./types";
@@ -58,7 +58,7 @@ export function WaymarkShade({
   rect: Rect | null;
   padding: number;
 }) {
-  const palette = usePalette();
+  const colours = useShadeColours();
   const viewport = useViewportSize();
   const shadeRef = useRef<HTMLDivElement>(null);
   // The padding gives way at the edge of the screen, down to none, so the ring round a Waymark there is not cut off.
@@ -83,12 +83,11 @@ export function WaymarkShade({
         aria-hidden="true"
         data-waymark-shade=""
         style={{
-          ...palette,
           position: "fixed",
           inset: 0,
           zIndex: 50,
           pointerEvents: "none",
-          background: color.scrim,
+          background: colours.scrim,
         }}
       />
     );
@@ -100,7 +99,6 @@ export function WaymarkShade({
       aria-hidden="true"
       data-waymark-shade=""
       style={{
-        ...palette,
         position: "fixed",
         zIndex: 50,
         pointerEvents: "none",
@@ -109,7 +107,7 @@ export function WaymarkShade({
         width: cutOut.right - cutOut.left,
         height: cutOut.bottom - cutOut.top,
         // A ring, so the cut-out still reads on a surface too dark for the shade to change.
-        boxShadow: `0 0 0 2px ${color.accent}, 0 0 0 ${RING}px ${color.accentRing}, 0 0 0 9999px ${color.scrim}`,
+        boxShadow: `0 0 0 2px ${colours.accent}, 0 0 0 ${RING}px ${colours.ring}, 0 0 0 9999px ${colours.scrim}`,
       }}
     />
   );
