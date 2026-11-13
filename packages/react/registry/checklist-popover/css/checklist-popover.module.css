@@ -167,6 +167,14 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   list-style: none;
+  /*
+   * A shadow along the bottom edge while there is more below. It stays put;
+   * the cover over it is at the end of the list and scrolls with it, so it
+   * hides the shadow only once the end is reached.
+   */
+  background:
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 24px no-repeat local,
+    linear-gradient(transparent, var(--line)) bottom / 100% 10px no-repeat scroll;
 }
 
 .task {
@@ -184,11 +192,6 @@
 .task[data-next],
 .task[data-open] {
   box-shadow: inset 3px 0 var(--accent);
-}
-
-/* Tinted while its walkthrough is on screen. */
-.task[data-open] {
-  background: var(--hover);
 }
 
 /* One drawn circle for every state, so a task's status is read from its shape. */
@@ -326,6 +329,12 @@ summary.summary::after {
   font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
+}
+
+/* The two with a box share a least width, so a column of them lines up. */
+.primary,
+.secondary {
+  min-width: 88px;
 }
 
 .primary {

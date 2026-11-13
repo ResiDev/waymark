@@ -28,9 +28,10 @@ const base: CSSProperties = {
 /** One button for the popover and the checklist, so the two read as one design. */
 export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"button"> & { variant: Variant }) {
   const [hovered, hover] = useHover();
+  // The two with a box share a least width, so a pair or a column of them lines up.
   const looks: Record<Variant, readonly [rest: CSSProperties, hovering: CSSProperties]> = {
-    primary: [{ color: color.onAccent, background: color.accent }, { filter: "brightness(0.9)" }],
-    secondary: [{ color: color.text, borderColor: color.line }, { background: color.hover }],
+    primary: [{ minWidth: 88, color: color.onAccent, background: color.accent }, { filter: "brightness(0.9)" }],
+    secondary: [{ minWidth: 88, color: color.text, borderColor: color.line }, { background: color.hover }],
     quiet: [{ color: color.muted }, { color: color.text, background: color.hover }],
   };
   const [rest, hovering] = looks[variant];
@@ -58,8 +59,8 @@ export function Button({ variant, style, ...props }: ComponentPropsWithoutRef<"b
 export const CHECK = "M2.5 6.5 5 9l4.5-5.5";
 export const DASH = "M3 6h6";
 export const CLOSE = "M3 3l6 6M9 3l-6 6";
-// Small enough that its stroke fills it: a solid triangle with soft corners.
-export const PLAY = "M5.2 4.4v3.2L8 6Z";
+// A solid triangle with soft corners: its stroke all but fills it, and the dash in its middle fills the rest.
+export const PLAY = "M4.9 4v4L8.4 6ZM6 6h.3";
 
 export const Icon = ({ d, size = 12 }: { d: string; size?: number }) => (
   <svg

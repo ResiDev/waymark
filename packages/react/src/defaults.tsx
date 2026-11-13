@@ -102,7 +102,7 @@ function DefaultPopover<TStep extends WalkthroughStep>({
             {labels.previous}
           </Button>
         )}
-        <Button variant="primary" onClick={advance} disabled={!canAdvance} style={{ minWidth: 88 }}>
+        <Button variant="primary" onClick={advance} disabled={!canAdvance}>
           {stepIndex === stepCount - 1 ? labels.finish : labels.next}
         </Button>
       </div>
@@ -171,8 +171,6 @@ function DefaultBeacon({ currentStep: { title }, resume, labels, waymarkFound, r
         font: "inherit",
         cursor: "pointer",
         outlineColor: color.accent,
-        // Drawn in, to where the halo was: round the chip's end, not across it.
-        outlineOffset: -3,
       }}
     >
       <span ref={rippleRef} style={{ ...disc, opacity: 0 }} />

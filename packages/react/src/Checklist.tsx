@@ -156,10 +156,12 @@ function DefaultRow<TTask extends AnyReactTask>({
         */}
         <div style={{ display: "flex", gap: 8, margin: `-6px -12px -6px ${finished || !onSelect ? -12 : 0}px` }}>
           {onSelect && (
-            // One filled button in the list, on what to do next; a finished Task's button steps back. Nothing starts
-            // while the Task's walkthrough is on screen.
+            // One filled button in the list, on what to do next; a finished Task's button steps back to its words, in
+            // the text's colour so it still reads as something to press. Nothing starts while the Task's walkthrough
+            // is on screen.
             <Button
               variant={finished ? "quiet" : next ? "primary" : "secondary"}
+              style={finished ? { color: color.text } : undefined}
               onClick={onSelect}
               disabled={task.action === undefined && walkthrough === "open"}
             >
@@ -243,8 +245,6 @@ export function Checklist<TTask extends AnyReactTask>({
                 gap: 12,
                 padding: "14px 20px",
                 borderTop: `1px solid ${color.line}`,
-                // Tinted while its walkthrough is on screen.
-                background: open ? color.hover : "none",
                 // A bar down the side, so the Task to do next is found without reading, and not by its button's colour alone.
                 boxShadow: open || isNext ? `inset 3px 0 ${color.accent}` : "none",
                 ...rowStyle,

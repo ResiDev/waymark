@@ -78,13 +78,16 @@ const classes = {
   done: "bg-[var(--accent)] motion-safe:transition-[width] motion-safe:duration-300",
   // Skipped moves the bar on, in a tint, so the list can be finished without calling a skipped task done.
   skipped: "bg-[var(--accent)] opacity-60",
-  list: "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
+  list: [
+    "m-0 min-h-0 list-none overflow-y-auto overscroll-contain p-0",
+    // A shadow along the bottom edge while there is more below. It stays put; the cover over it is at the end of
+    // the list and scrolls with it, so it hides the shadow only once the end is reached.
+    "[background:linear-gradient(transparent,var(--surface)_70%)_bottom/100%_24px_no-repeat_local,linear-gradient(transparent,var(--line))_bottom/100%_10px_no-repeat_scroll]",
+  ].join(" "),
   task: [
     "group/task flex items-start gap-3 border-0 border-solid border-[color:var(--line)] px-5 py-2.5 [&+&]:border-t",
     // A bar down the side, so the task to do next is found without reading, and not by its button's colour alone.
     "data-[next]:shadow-[inset_3px_0_var(--accent)] data-[open]:shadow-[inset_3px_0_var(--accent)]",
-    // Tinted while its walkthrough is on screen.
-    "data-[open]:bg-[var(--hover)]",
   ].join(" "),
   // One drawn circle for every state, so a task's status is read from its shape: `mark` picks which.
   checkbox: [
@@ -119,8 +122,9 @@ const classes = {
   tag: "text-xs text-[color:var(--muted)]",
   description: "m-0 mt-0.5 text-[color:var(--muted)]",
   actions: "mb-1 mt-2.5 flex gap-2",
-  primary: `${button} border-transparent bg-[var(--accent)] text-[color:var(--on-accent)] enabled:hover:brightness-90`,
-  secondary: `${button} border-[color:var(--line)] bg-transparent text-[color:var(--text)] enabled:hover:bg-[var(--hover)]`,
+  // The two with a box share a least width, so a column of them lines up.
+  primary: `${button} min-w-[88px] border-transparent bg-[var(--accent)] text-[color:var(--on-accent)] enabled:hover:brightness-90`,
+  secondary: `${button} min-w-[88px] border-[color:var(--line)] bg-transparent text-[color:var(--text)] enabled:hover:bg-[var(--hover)]`,
   // Its text, not its hover square, lines up with the description above.
   quiet: [
     button,
@@ -178,14 +182,17 @@ function Contents<TTask extends AnyReactTask>({
   return (
     <>
       <ChecklistTrigger className={classes.trigger} aria-label={`${title}, ${progress}`}>
-        {/* A pie in a ring, like a started task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round. */}
+        {/*
+          How far through the list, skipped tasks too, as the panel's bar shows it: a pie in a ring, like a started
+          task's mark. The pie is a circle's stroke, as wide as the circle, drawn part of the way round.
+        */}
         <svg className={classes.ring} viewBox="0 0 18 18" aria-hidden="true">
           <circle className={classes.ringTrack} cx="9" cy="9" r="8" />
-          <circle className={classes.ringDone} cx="9" cy="9" r="3" pathLength={1} strokeDasharray={`${done / taskCount} 1`} transform="rotate(-90 9 9)" />
+          <circle className={classes.ringDone} cx="9" cy="9" r="3" pathLength={1} strokeDasharray={`${finishedCount / taskCount} 1`} transform="rotate(-90 9 9)" />
         </svg>
         {title}
         <span className={classes.triggerCount}>
-          {done}/{taskCount}
+          {finishedCount}/{taskCount}
         </span>
       </ChecklistTrigger>
       <ChecklistPanel side={side} gap={14} className={classes.panel} aria-label={title}>
