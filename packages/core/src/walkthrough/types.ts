@@ -30,7 +30,7 @@ type StepFields = Readonly<{
 }>;
 
 /**
- * No content: what a Step shows belongs to the adapter, which adds its own
+ * No content: what a Step shows belongs to the renderer, which adds its own
  * fields. A click or an event happens on the Waymark, so only a Step with one
  * may wait for it; a Step without one could never be passed.
  */
@@ -100,7 +100,7 @@ export type Walkthrough<TStep extends Step = Step> = Readonly<{
   maxAge?: number;
 }>;
 
-/** What `defineWalkthrough` takes. `TShape` lets an adapter allow its own Step fields, such as `content`. */
+/** What `defineWalkthrough` takes. `TShape` lets a renderer allow its own Step fields, such as `content`. */
 export type WalkthroughDefinition<TStep extends TShape, TShape extends Step = Step> = Readonly<{
   id: string;
   steps: readonly TStep[] & readonly ExactStep<TStep, TShape>[];

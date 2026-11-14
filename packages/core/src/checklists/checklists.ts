@@ -38,9 +38,9 @@ export function defineChecklists<
   const TTasks extends TaskMap,
   const TSelections extends ChecklistSelections<TTasks> =
     DefaultChecklists<TTasks>,
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- passed by an adapter, never inferred.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- passed by a renderer, never inferred.
   TShape = Task,
-  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- passed by an adapter, never inferred.
+  // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- passed by a renderer, never inferred.
   TStepShape extends Step = Step,
 >(
   config: ChecklistsConfig<

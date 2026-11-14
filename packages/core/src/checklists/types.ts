@@ -182,7 +182,7 @@ type ExactInlineSteps<TTask, TStepShape extends Step> = TTask extends {
     }
   : unknown;
 
-/** `TShape` lets an adapter allow its own Task fields, such as a title. */
+/** `TShape` lets a renderer allow its own Task fields, such as a title. */
 export type ChecklistsConfig<
   TTasks,
   TSelections extends ChecklistSelections<TTasks>,

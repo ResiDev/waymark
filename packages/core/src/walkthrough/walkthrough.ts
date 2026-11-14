@@ -1,6 +1,6 @@
 import type { Step, Walkthrough, WalkthroughDefinition } from "./types";
 
-/** `TShape` lets an adapter allow its own Step fields, such as `content`. */
+/** `TShape` lets a renderer allow its own Step fields, such as `content`. */
 export function defineWalkthrough<const TStep extends TShape, TShape extends Step = Step>(
   definition: WalkthroughDefinition<TStep, TShape>,
 ): Walkthrough<NoInfer<TStep>> {
