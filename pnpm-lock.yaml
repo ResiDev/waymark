@@ -144,7 +144,7 @@ importers:
   packages/react:
     dependencies:
       waymark-core:
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
     devDependencies:
       '@testing-library/jest-dom':

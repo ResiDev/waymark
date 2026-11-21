@@ -10,10 +10,6 @@ Events
 - Overlay clicks: make a click on the shade configurable to block, collapse or
   pass through.
 
-## Docs and packaging
-- No READMEs yet, for either package or the repo.
-- Both packages are at 0.0.0.
-
 ## Maybe later
 - Hints: beacons on elements, outside any run. The beacon and location code
   covers most of it.
