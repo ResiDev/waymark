@@ -12,7 +12,8 @@ This package is for building Waymark into another framework, or into an app with
 - **Easy to put aside, easy to come back to.** Clicking away or pressing Escape leaves a beacon to resume from, and progress is saved per user, in localStorage or on your server.
 - **Checklists that tick themselves.** Each task can have its own walkthrough, and an `isComplete` condition that ticks it when the user does the task on their own.
 - **You only draw.** Core finds elements as they render, measures them every frame, and handles the keyboard, clicks and saving. Your renderer draws from one snapshot.
-- **Events for analytics**, and **no dependencies**: about 16 kB minified and gzipped, with everything included.
+- **Events for analytics.** Every start, step, collapse, resume, exit and finish, plus every task ticked or skipped, via `onEvent`.
+- **No dependencies.** About 16 kB minified and gzipped, with everything included.
 
 ## Install
 
@@ -97,9 +98,12 @@ function draw({ open, beacons: collapsed }: RunSnapshot) {
   );
 }
 
-// Start listening, as your framework mounts the component that draws the Run.
+// Attach DOM listeners (Escape, arrow keys, clicks, frame tracking) and tell the Run where the dialog is.
+// Clicks within `waymarkPadding` px of the waymark count as clicks on it.
 const detach = run.attach(() => ({ dialog: popover }), { waymarkPadding: 8 });
+// Load saved progress from storage and listen for external changes (separate so SSR never touches browser storage).
 const disconnect = run.connect();
+// Call `draw` immediately, then whenever the snapshot changes.
 const unsubscribe = run.subscribe(draw);
 run.requestStart(welcome);
 
@@ -115,12 +119,12 @@ export function teardown() {
 
 The first step has no waymark, so it shows in the middle of the screen. The second sits under the New project button and waits for a click on it, then finishes. Escape or a click elsewhere puts the walkthrough aside as its beacon, and progress is saved in localStorage under `waymark`, so a reload carries on where the user was.
 
-This renderer is deliberately minimal. A real one also keeps the popover on screen and picks a side with room, and keeps each beacon's element between updates rather than rebuilding them, so a keyboard user's focus on one isn't lost. See [Write a renderer](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/renderer.md).
+This renderer is deliberately minimal: `step.meta` is untyped here, and beacons are rebuilt on every update. A real renderer types its own step fields, keeps the popover on screen on a side with room, and reuses each beacon's element between updates so a keyboard user's focus isn't lost. See [Write a renderer](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/renderer.md).
 
 ## Start a walkthrough from your code
 
-- `run.requestStart(walkthrough)` is for your app choosing to show one, as above. It waits until no other walkthrough is open, and opens only one the user has never started. It returns a function that withdraws the request.
-- `run.start(walkthrough)` is for the user asking, such as from a help button. It opens the walkthrough now: where they left it if part way through, or from step 1 if they finished or exited it.
+- `run.requestStart(walkthrough)` is for your app choosing to show one, as above. It waits until no other walkthrough is open: it starts a walkthrough the user hasn't seen yet, restores one they were mid-way through after a reload, leaves a collapsed walkthrough as its beacon, and never reopens one they finished or exited. It returns a function that withdraws the request.
+- `run.start(walkthrough)` is for the user asking, such as from a help button. It opens the walkthrough immediately—picking up where they left off if it's in progress, or starting from step 1 if they finished or exited it.
 
 Only one walkthrough is open at once. `start` interrupts the open one, which does what its `dismiss` says: by default it's put aside as a beacon. Give a walkthrough opened from a help button `dismiss: "exit"`, so clicking away exits it rather than leaving a beacon.
 
@@ -139,13 +143,13 @@ export const onboarding = defineChecklists({
 });
 ```
 
-`run.checklist(onboarding.checklists.main)` gives that checklist's state and commands, and `run.setContext(...)` gives the conditions the facts they read. [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/checklists.md) adds one to the script above, with a renderer for it.
+Without a `checklists` map, `defineChecklists` puts every task into `checklists.main`. `run.checklist(onboarding.checklists.main)` returns that checklist's state and commands, and `run.setContext(...)` updates the application context that `isComplete` conditions read. [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/checklists.md) adds one to the script above, with a renderer for it.
 
 ## What your renderer does
 
-Core handles the keyboard, clicks on and away from the waymark, and measuring the waymark every frame, while the Run is attached. Your renderer draws the rest from the snapshot:
+Core handles Escape and the arrow keys, clicks on and away from the waymark, and measuring the waymark every frame while the Run is attached. Your renderer draws the rest from the snapshot:
 
-- **The open step**, beside `waymark.rect` once its `waymark.status` is `"found"`, and in the middle of the screen otherwise, saying so while it's `"lost"` or `"missing"`.
+- **The open step**, placed beside `waymark.rect` when `waymark.status` is `"found"`, and centred on screen otherwise—with a fallback message when the status is `"lost"` or `"missing"`.
 - **Its buttons**, wired to `run.act`: `"advance"` (disabled unless `canAdvance`), `"previous"`, `"collapse"` and `"exit"`.
 - **Beacons** from `snapshot.beacons`, each calling `run.act("resume", beacon.walkthrough)`.
 - **Names and focus.** Core announces nothing and doesn't move focus; the dialog's name, a live region and where focus goes are yours.
@@ -161,12 +165,12 @@ This README gets you started. The full docs are in [`docs/`](https://github.com/
 - [Storage](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/storage.md): localStorage, adapters for your server or IndexedDB, and the record's shape.
 - [Server rendering](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/server-rendering.md)
 - [Why isn't anything showing?](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/troubleshooting.md)
-- [Reference](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/api.md): every export, the Run, snapshots, events and problems.
+- [API reference](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/api.md): every export, the Run, snapshots, events and problems.
 
 ## Good to know
 
 - **Modern setups.** ES modules only, built for ES2022 browsers. Its types need TypeScript 5.4 or later.
-- **Development checks.** Two different walkthroughs sharing an id throw, and attaching a second Run warns, unless `process.env.NODE_ENV` is `"production"`. In production, the first walkthrough with an id wins and a second Run stays quiet. Code loaded without a bundler, such as from a CDN, counts as development.
+- **Development checks.** Passing two different walkthrough definitions with the same `id` throws, and attaching a second Run warns, unless `process.env.NODE_ENV` is `"production"`. In production, the first walkthrough with an id wins and a second Run stays quiet. Code loaded without a bundler, such as from a CDN, counts as development.
 - **One Run per page.** Attach one Run, drawn by one renderer. Waymarks are found with `querySelector` from the Run's `root`, so they must be in the page's own document, not inside a shadow root or an iframe.
 - **Before 1.0.** The API may still change between minor versions.
 

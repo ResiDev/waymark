@@ -10,8 +10,8 @@ A **walkthrough** shows a popover beside a part of your app, one step at a time.
 - **Easy to put aside, easy to come back to.** Clicking away leaves a pulsing beacon on the page, and clicking it picks up on the same step. Progress is saved per user, so a reload doesn't lose their place.
 - **Checklists that tick themselves.** Each task can have its own short walkthrough. It ticks when that walkthrough finishes, or when your app's state says the user did the task without it.
 - **Never stuck on a missing element.** Steps wait for elements that render late, and if one never appears, the user can still move on.
-- **Events for analytics.** Every start, step, put-aside, resume, exit and finish, and every task ticked or skipped.
-- **Small, with no stylesheet to import.** On top of React, minified and gzipped: about 19 kB for walkthroughs with the default popover, 17 kB if you draw your own, and 23 kB for everything. Colours come from four CSS variables.
+- **Events for analytics.** Every start, step, put-aside, resume, exit and finish, plus every task ticked or skipped, via `onEvent`.
+- **Self-contained, with no stylesheet to import.** On top of React, minified and gzipped: about 19 kB for walkthroughs with the default popover, 17 kB if you draw your own, and 23 kB for everything. Colours come from four CSS variables.
 
 ## Install
 
@@ -51,19 +51,19 @@ export function App() {
 }
 ```
 
-When `<Walkthrough>` mounts, the walkthrough opens. The page is shaded except for the search field, with a popover beside it. The first step has a Next button. The second waits for the user to click New project, then finishes the walkthrough. If nothing appears, see [Why isn't a walkthrough showing?](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/troubleshooting.md)
+When `<Walkthrough>` mounts, the walkthrough opens. The page is shaded except for the search field, with a popover beside it. The first step has a Next button. The second waits for the user to click New project, then finishes the walkthrough. If nothing appears, see [Why isn't a walkthrough showing?](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/troubleshooting.md).
 
-`renderPopover` and `renderBeacon` say what draws the popover and the **beacon**, the small marker a walkthrough leaves on the page when the user puts it aside. `defaultPopover` and `defaultBeacon` are the library's own.
+`renderPopover` and `renderBeacon` render the popover and the **beacon** (the small marker left on the page when a user puts a walkthrough aside). Pass `defaultPopover` and `defaultBeacon` to use the built-in UI—they are passed explicitly so apps with custom UI don't ship them.
 
-Define each walkthrough once, outside any component. Its `id` names it in the user's saved progress, so keep it the same across releases. To hold a walkthrough back until something is ready, such as your data, pass `<Walkthrough walkthrough={welcome} active={loaded} />`.
+Define each walkthrough once, outside any component (defining one inside render throws in development). Its `id` names it in the user's saved progress, so keep it the same across releases. To hold a walkthrough back until something is ready, such as your data, pass `<Walkthrough walkthrough={welcome} active={loaded} />`.
 
 ### What the user can do
 
-- **Move through it.** Next and Previous, or the right and left arrow keys when the user isn't typing in a field. Next is disabled while a step is waiting for something, and reads Finish on the last step.
+- **Move through it.** Next and Previous, or the right and left arrow keys when the user isn't typing in a field. Next is disabled while a step is waiting for its `advance` condition, and reads Finish on the last step.
 - **Put it aside.** Clicking anywhere outside the popover and its waymark, or pressing Escape, collapses the walkthrough to its beacon on the waymark. Clicking the beacon reopens it on the same step.
 - **Exit it.** The × button exits the walkthrough, and it doesn't come back by itself.
 
-A click within 20px of the waymark counts as a click on it; change the distance with `waymarkPadding` on `<WaymarkRoot>`. The shade doesn't block clicks, and Escape and the arrow keys work page-wide while a walkthrough is open. See [Accessibility and the keyboard](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/accessibility.md) for how to keep them from your own widgets.
+A click within 20px of the waymark counts as a click on it; change the distance with `waymarkPadding` on `<WaymarkRoot>`. The shade doesn't block clicks, and Escape and the arrow keys work page-wide while a walkthrough is open. See [Accessibility and the keyboard](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/accessibility.md) for how to stop them interfering with your own menus or modals.
 
 ## Save progress for each user
 
@@ -82,7 +82,7 @@ export function Guidance({ userId, children }: { userId: string; children: React
 }
 ```
 
-A reload puts the user back where they were, and `<Walkthrough>` never shows a walkthrough again once they've finished or exited it. The root reads `storage` only when it mounts, so `key={userId}` mounts a new root when the user changes, and the next user doesn't see the last one's progress. To keep progress on your server, see [Saving progress](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/storage.md).
+A reload puts the user back where they were, and `<Walkthrough>` never shows a walkthrough again once they've finished or exited it. `<WaymarkRoot>` reads `storage` once when it mounts, so `key={userId}` ensures switching users mounts a fresh root with its own progress. To keep progress on your server, see [Saving progress](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/storage.md).
 
 ## Wait for the user
 
@@ -90,13 +90,13 @@ A reload puts the user back where they were, and `<Walkthrough>` never shows a w
 
 - `"click"`: a click on the waymark.
 - `{ event: "input" }`: any DOM event the waymark fires.
-- `{ state: (waymark) => boolean }`: a check Waymark runs every frame, such as whether a field holds a valid email.
+- `{ state: (waymark) => boolean }`: a check Waymark runs every frame while the step is open, such as whether a field holds a valid email.
 
 A step without `advance` has a Next button that works straight away, and a step without `waymark` shows in the middle of the screen. Waymark keeps looking for a waymark that isn't on the page yet, and never leaves the user stuck if it doesn't appear. More in [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md).
 
 ## Start one from a button
 
-`<Walkthrough>` suits a walkthrough a page shows by itself. To start one when the user asks, such as from a help menu, use `useRun()`:
+`<Walkthrough>` suits a walkthrough a page shows by itself. To start one when the user asks, such as from a help menu, call `useRun()` to get the **Run** (the object managing the current user's walkthroughs):
 
 ```tsx
 import { useRun } from "react-waymark";
@@ -108,7 +108,7 @@ export function HelpMenu() {
 }
 ```
 
-`run.start` opens it now, whatever the user's progress. `<Walkthrough>` only opens one the user has never started, once no other is open. More in [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md#start-a-walkthrough-from-your-code).
+`run.start` opens the walkthrough immediately—picking up where the user left off if it's in progress, or starting from step 1 if they finished or exited it. `<Walkthrough>` waits until no other walkthrough is open: it starts a walkthrough the user hasn't seen yet, restores one they were mid-way through after a reload, leaves a put-aside walkthrough as its beacon, and never reopens one they finished or exited. For help-menu walkthroughs, set `dismiss: "exit"` so clicking away exits the walkthrough instead of leaving a beacon. More in [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md#start-a-walkthrough-from-your-code).
 
 ## Checklists
 
@@ -134,7 +134,7 @@ export function GetStarted() {
 }
 ```
 
-Render it anywhere inside `<WaymarkRoot>`. It draws a progress bar and a checkbox for each task, with a "Show me" button that starts the task's walkthrough and a Skip button. Finishing the walkthrough ticks the task, and a task can also tick itself when your app's state says it's done. More in [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/checklists.md).
+Without a `checklists` map, `defineChecklists` puts every task into `checklists.main`. Render `<Checklist>` anywhere inside `<WaymarkRoot>`: it draws a progress bar and a checkbox for each task, with a "Show me" button that starts the task's walkthrough and a Skip button. Finishing the walkthrough ticks the task, and a task can also tick itself when your app's state says it's done. For custom markup or a header popover, use `useChecklist` or the composable `Checklist*` primitives—more in [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/checklists.md).
 
 ## Change the look
 
@@ -153,7 +153,7 @@ Left unset, the accent is blue, and the rest follow the page's `color-scheme`, s
 
 ## Next.js
 
-Waymark's components use hooks, so in the App Router render `<WaymarkRoot>`, `<Walkthrough>` and `<Checklist>` from files that start with `"use client"`. On the server no walkthrough is drawn, and a checklist shows every task as todo until the browser has read the user's progress. In Route Handlers or other server-only files, import `applyChanges` and `RecordUnreadableError` from `"react-waymark/server"`. More in [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md).
+Waymark's components use hooks, so in the App Router render `<WaymarkRoot>`, `<Walkthrough>` and `<Checklist>` from files that start with `"use client"`. On the server no walkthrough is drawn, and a checklist renders every task as `"todo"` until the browser reads the user's progress—unless you pass a server-fetched record via `initial`. In Route Handlers or other server-only files, import `applyChanges` and `RecordUnreadableError` from `"react-waymark/server"`. More in [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md).
 
 ## Docs
 
