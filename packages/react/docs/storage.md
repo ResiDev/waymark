@@ -70,10 +70,10 @@ export const server: StorageAdapter = {
 };
 ```
 
-The GET route returns the signed-in user's stored record as JSON, or a 404 when there's none. For the PATCH route, apply the changes to the stored record with `applyChanges`, inside one transaction, so nothing writes in between. Call this from your route handler, with the signed-in user's id:
+The GET route returns the signed-in user's stored record as JSON, or a 404 when there's none. For the PATCH route, apply the changes to the stored record with `applyChanges`, inside one transaction, so nothing writes in between. Import it from `"react-waymark/server"`, which leaves out React's client hooks so it works in Next.js Route Handlers and non-React backends. Call this from your route handler, with the signed-in user's id:
 
 ```tsx
-import { applyChanges, RecordUnreadableError, type StoredRecord } from "react-waymark";
+import { applyChanges, RecordUnreadableError, type StoredRecord } from "react-waymark/server";
 
 // Your database: a transaction that reads and writes one user's record.
 declare const db: {

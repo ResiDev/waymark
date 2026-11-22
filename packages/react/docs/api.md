@@ -7,6 +7,7 @@
 - Definitions: `defineWalkthrough`, `defineChecklists`, and `DEFAULT_CHECKLIST`, the name of the checklist you get without `checklists` (`"main"`).
 - Drawing: `defaultPopover`, `defaultBeacon`.
 - Problems and storage: `everyProblem`, `localStorageAdapter`, `applyChanges`, `RecordUnreadableError`.
+- Server subpath (`react-waymark/server`): `applyChanges`, `RecordUnreadableError`, and types `StoredRecord`, `RecordChanges` — without importing React, for Next.js Route Handlers and non-React backends.
 
 Types:
 
@@ -71,7 +72,7 @@ Types:
 
 `Running`, `Snapshot` and the event types default to core's step type; write `Running<WalkthroughStep>` or `WaymarkEvent<WalkthroughStep>` to have `content` and `title` typed, as `onEvent` and render props already do.
 
-The type of a walkthrough from `defineWalkthrough` isn't exported under its own name, which `<Walkthrough>` takes. Write it as `WalkthroughProps["walkthrough"]`. The beacon's `rect` is `BeaconRenderProps["rect"]`.
+The walkthrough type returned by `defineWalkthrough` isn't exported under its own name (since `<Walkthrough>` takes it); write `WalkthroughProps["walkthrough"]`. The beacon's `rect` is `BeaconRenderProps["rect"]`.
 
 ## `<WaymarkRoot>`
 

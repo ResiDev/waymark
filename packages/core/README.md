@@ -20,22 +20,6 @@ This package is for building Waymark into another framework, or into an app with
 npm install waymark-core
 ```
 
-- **Modern setups.** ES modules only, built for ES2022 browsers. Its types need TypeScript 5.4 or later.
-- **Development checks.** Two walkthroughs sharing an id throw, and attaching a second Run warns, unless `process.env.NODE_ENV` is `"production"`. In production, the first walkthrough with an id wins and a second Run stays quiet. Code loaded without a bundler, such as from a CDN, counts as development.
-- **One Run per page.** Attach one Run, drawn by one renderer. Waymarks are found with `querySelector` from the Run's `root`, so they must be in the page's own document, not inside a shadow root or an iframe.
-- **Before 1.0.** The API may still change between minor versions.
-
-## Docs
-
-This README gets you started. The full docs are in [`docs/`](https://github.com/ResiDev/waymark/tree/main/packages/core/docs), and ship with the package under `node_modules/waymark-core/docs/`:
-
-- [Write a renderer](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/renderer.md): what core handles, what your renderer draws, and typing your own step and task fields.
-- [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/checklists.md): tasks, `isComplete` conditions, and drawing a checklist.
-- [Storage](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/storage.md): localStorage, adapters for your server or IndexedDB, and the record's shape.
-- [Server rendering](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/server-rendering.md)
-- [Why isn't anything showing?](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/troubleshooting.md)
-- [Reference](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/api.md): every export, the Run, snapshots, events and problems.
-
 ## How it fits together
 
 - A **walkthrough** is a list of steps, made with `defineWalkthrough`. A step can point at an element on the page, which Waymark calls its **waymark**: one marked `data-waymark="<name>"`, or one matched by a CSS `selector`. A step without one is drawn in the middle of the screen.
@@ -167,6 +151,24 @@ Core handles the keyboard, clicks on and away from the waymark, and measuring th
 - **Names and focus.** Core announces nothing and doesn't move focus; the dialog's name, a live region and where focus goes are yours.
 
 More in [Write a renderer](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/renderer.md).
+
+## Docs
+
+This README gets you started. The full docs are in [`docs/`](https://github.com/ResiDev/waymark/tree/main/packages/core/docs), and ship with the package under `node_modules/waymark-core/docs/`:
+
+- [Write a renderer](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/renderer.md): what core handles, what your renderer draws, and typing your own step and task fields.
+- [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/checklists.md): tasks, `isComplete` conditions, and drawing a checklist.
+- [Storage](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/storage.md): localStorage, adapters for your server or IndexedDB, and the record's shape.
+- [Server rendering](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/server-rendering.md)
+- [Why isn't anything showing?](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/troubleshooting.md)
+- [Reference](https://github.com/ResiDev/waymark/blob/main/packages/core/docs/api.md): every export, the Run, snapshots, events and problems.
+
+## Good to know
+
+- **Modern setups.** ES modules only, built for ES2022 browsers. Its types need TypeScript 5.4 or later.
+- **Development checks.** Two different walkthroughs sharing an id throw, and attaching a second Run warns, unless `process.env.NODE_ENV` is `"production"`. In production, the first walkthrough with an id wins and a second Run stays quiet. Code loaded without a bundler, such as from a CDN, counts as development.
+- **One Run per page.** Attach one Run, drawn by one renderer. Waymarks are found with `querySelector` from the Run's `root`, so they must be in the page's own document, not inside a shadow root or an iframe.
+- **Before 1.0.** The API may still change between minor versions.
 
 ## Licence
 

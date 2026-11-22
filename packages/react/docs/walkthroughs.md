@@ -108,4 +108,6 @@ export const filtersHelp = defineWalkthrough({
 
 Keep onboarding on the default, `"collapse"`. With `"exit"`, one stray click ends a walkthrough for good, and `<Walkthrough>` won't show it again.
 
+### Opting your own UI out: `data-waymark-ui`
+
 To stop clicks inside part of your app from counting as clicking away, such as a help menu that sits over the page, add `data-waymark-ui` to it. Waymark then also leaves Escape, the arrow keys and Tab pressed inside it alone, unless they're inside the walkthrough's own popover. Clicks inside it belong to it too, so a step whose waymark is inside a `data-waymark-ui` element, including `ChecklistTrigger` and `ChecklistPanel`, should wait with `advance: { event: "click" }` rather than `"click"`.

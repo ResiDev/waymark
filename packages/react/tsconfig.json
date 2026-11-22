@@ -4,7 +4,8 @@
     "jsx": "react-jsx",
     "paths": {
       "waymark-core": ["../core/src/index.ts"],
-      "react-waymark": ["./src/index.ts"]
+      "react-waymark": ["./src/index.ts"],
+      "react-waymark/server": ["./src/server.ts"]
     }
   },
   "include": ["src", "registry", "tsup.config.ts", "vitest.config.ts", "vitest.setup.ts"]

@@ -1,7 +1,19 @@
 {
   "name": "waymark-core",
   "version": "0.1.0",
-  "description": "Framework-agnostic core for guided walkthroughs and checklists: waymark location, advance conditions, and the frame loop.",
+  "description": "Framework-agnostic engine for guided walkthroughs and onboarding checklists in web apps.",
+  "keywords": [
+    "walkthrough",
+    "onboarding",
+    "checklist",
+    "product-tour",
+    "guided-tour",
+    "tour",
+    "tooltip",
+    "popover",
+    "beacon",
+    "waymark"
+  ],
   "license": "MIT",
   "author": "Alex Boitier",
   "repository": {

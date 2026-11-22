@@ -7,11 +7,11 @@ A **walkthrough** shows a popover beside a part of your app, one step at a time.
 ## Why Waymark
 
 - **Steps wait for the user.** A step can move on by itself when the user clicks the button it points at, or types a valid email, so they learn by doing rather than pressing Next.
-- **Easy to put aside, easy to come back to.** Clicking away leaves a pulsing dot on the page, and clicking it picks up on the same step. Progress is saved per user, so a reload doesn't lose their place.
+- **Easy to put aside, easy to come back to.** Clicking away leaves a pulsing beacon on the page, and clicking it picks up on the same step. Progress is saved per user, so a reload doesn't lose their place.
 - **Checklists that tick themselves.** Each task can have its own short walkthrough. It ticks when that walkthrough finishes, or when your app's state says the user did the task without it.
 - **Never stuck on a missing element.** Steps wait for elements that render late, and if one never appears, the user can still move on.
 - **Events for analytics.** Every start, step, put-aside, resume, exit and finish, and every task ticked or skipped.
-- **Small, with no stylesheet.** On top of React, minified and gzipped: about 19 kB for walkthroughs with the default popover, 17 kB if you draw your own, and 23 kB for everything. Colours come from four CSS variables.
+- **Small, with no stylesheet to import.** On top of React, minified and gzipped: about 19 kB for walkthroughs with the default popover, 17 kB if you draw your own, and 23 kB for everything. Colours come from four CSS variables.
 
 ## Install
 
@@ -19,24 +19,7 @@ A **walkthrough** shows a popover beside a part of your app, one step at a time.
 npm install react-waymark
 ```
 
-- **React 18 or 19.** Works with server rendering, including the Next.js App Router ([see below](#nextjs)).
-- **Modern setups.** ES modules only, built for ES2022 browsers. Its types need TypeScript 5.4 or later.
-- **One per page.** Use one `<WaymarkRoot>`. The elements walkthroughs point at must be in the page's own document, not inside a shadow root or an iframe.
-- **Before 1.0.** The API may still change between minor versions.
-
-## Docs
-
-This README gets you started. The full docs are in [`docs/`](https://github.com/ResiDev/waymark/tree/main/packages/react/docs), and ship with the package under `node_modules/react-waymark/docs/`:
-
-- [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md): writing steps, waiting for the user, elements that render late or not at all, and starting walkthroughs from your code.
-- [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/checklists.md): tasks, ticking them from your app's state, and drawing your own checklist.
-- [Saving progress](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/storage.md): per-user storage, and adapters for your server or IndexedDB.
-- [Change the look](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/styling.md): colours, translations, and your own popover and beacon.
-- [Accessibility and the keyboard](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/accessibility.md): what screen readers get, and the keys and clicks a walkthrough takes.
-- [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md)
-- [Events and problems](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/events-and-problems.md): analytics, and handling what goes wrong.
-- [Why isn't a walkthrough showing?](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/troubleshooting.md)
-- [API reference](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/api.md): every export, prop and type.
+Works with React 18 and 19, including server rendering and the Next.js App Router ([see below](#nextjs)).
 
 ## Quick start
 
@@ -170,7 +153,27 @@ Left unset, the accent is blue, and the rest follow the page's `color-scheme`, s
 
 ## Next.js
 
-Waymark's components use hooks, so in the App Router render `<WaymarkRoot>`, `<Walkthrough>` and `<Checklist>` from files that start with `"use client"`. On the server no walkthrough is drawn, and a checklist shows every task as todo until the browser has read the user's progress. More in [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md).
+Waymark's components use hooks, so in the App Router render `<WaymarkRoot>`, `<Walkthrough>` and `<Checklist>` from files that start with `"use client"`. On the server no walkthrough is drawn, and a checklist shows every task as todo until the browser has read the user's progress. In Route Handlers or other server-only files, import `applyChanges` and `RecordUnreadableError` from `"react-waymark/server"`. More in [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md).
+
+## Docs
+
+This README gets you started. The full docs are in [`docs/`](https://github.com/ResiDev/waymark/tree/main/packages/react/docs), and ship with the package under `node_modules/react-waymark/docs/`:
+
+- [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md): writing steps, waiting for the user, elements that render late or not at all, and starting walkthroughs from your code.
+- [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/checklists.md): tasks, ticking them from your app's state, and drawing your own checklist.
+- [Saving progress](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/storage.md): per-user storage, and adapters for your server or IndexedDB.
+- [Change the look](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/styling.md): colours, translations, and your own popover and beacon.
+- [Accessibility and the keyboard](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/accessibility.md): what screen readers get, and the keys and clicks a walkthrough takes.
+- [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md)
+- [Events and problems](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/events-and-problems.md): analytics, and handling what goes wrong.
+- [Why isn't a walkthrough showing?](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/troubleshooting.md)
+- [API reference](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/api.md): every export, prop and type.
+
+## Good to know
+
+- **Modern setups.** ES modules only, built for ES2022 browsers. Its types need TypeScript 5.4 or later.
+- **One per page.** Use one `<WaymarkRoot>`. The elements walkthroughs point at must be in the page's own document, not inside a shadow root or an iframe.
+- **Before 1.0.** The API may still change between minor versions.
 
 ## Without React
 

@@ -70,7 +70,7 @@ export function Guidance({ children }: { children: ReactNode }) {
 }
 ```
 
-Telling the user when a step's waymark can't be found is up to your popover, as above. Waymark draws it inside its own wrapper, which is already the `role="dialog"`, named with the `stepOf` label, so don't add another; set `labels.stepOf` on `<WaymarkRoot>` to translate that name. `renderBeacon` works the same way for the beacon. Everything both functions receive is in the [reference](api.md#render-props). An app that never imports `defaultPopover` or `defaultBeacon` doesn't have them in its bundle, which is where the 2 kB difference in size comes from.
+Telling the user when a step's waymark can't be found is up to your popover, as above. Waymark draws it inside its own wrapper, which is already the `role="dialog"`, named with the `stepOf` label, so don't add another; set `labels.stepOf` on `<WaymarkRoot>` to translate that name. `renderBeacon` works the same way for the beacon. Everything both functions receive is in the [reference](api.md#render-props). An app that never imports `defaultPopover` or `defaultBeacon` doesn't have them in its bundle, which saves about 2 kB gzipped.
 
 The defaults are plain functions, so yours can hand some steps back to them: `renderPopover={(props) => (props.currentStep.meta ? <Mine {...props} /> : defaultPopover(props))}`.
 

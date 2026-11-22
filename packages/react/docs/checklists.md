@@ -61,7 +61,7 @@ export function App({ context, children }: { context: AppContext; children: Reac
 
 - **Conditions are checked again when `context` changes** to a new object. Put everything your conditions read into it, so a change to any of it is noticed. Without a `context`, conditions don't run.
 - **Type it on each condition**, as in `(c: AppContext) => c.invited`, since `<WaymarkRoot>` can't know your context's type. For a task written in a module of its own, write `satisfies ReactTask<AppContext>` after it.
-- **Conditions run once their checklists are in use.** Showing any checklist from a `defineChecklists` call, with `<Checklist>`, `useChecklist` or the checklist parts, or calling one of its commands, brings in every task from that call for as long as the root stays mounted. Until then, its conditions don't run: if your checklist only shows on one page, a project created elsewhere isn't ticked until the user visits it, and a condition that's only true for a moment is missed. To have tasks tick on every page, call [`useChecklist`](#draw-your-own-checklist)`(firstSteps.checklists.main)` once in a component near the root.
+- **Conditions run once their checklists are in use.** As soon as you render `<Checklist>`, call `useChecklist`, use the checklist parts, or run one of its commands, every task from that `defineChecklists` call stays active for as long as the root is mounted. Until then, its conditions don't run: if your checklist only shows on one page, a project created elsewhere isn't ticked until the user visits it, and a condition that's only true for a moment is missed. To have tasks tick on every page, call [`useChecklist(firstSteps.checklists.main)`](#draw-your-own-checklist) once in a component near the root.
 
 ## How a task gets done
 

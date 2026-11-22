@@ -8,5 +8,4 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   target: 'es2022',
-  external: ['react', 'react-dom'],
 });
