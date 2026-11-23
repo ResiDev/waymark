@@ -19,7 +19,7 @@ const isEmail = (waymark: Element | null) =>
 
 const hasName = (waymark: Element | null) => waymark instanceof HTMLInputElement && waymark.value.trim().length >= 3;
 
-/** Act 1. Every step moves on by itself: a click, a valid email, then the send. */
+/** Act 1. A click moves on by itself, a valid email unlocks Next, and the send finishes it. */
 export const inviteTour = defineWalkthrough({
   id: "inviteTour",
   steps: [
@@ -35,7 +35,7 @@ export const inviteTour = defineWalkthrough({
     },
     {
       waymark: "invite-email",
-      advance: { state: isEmail, delayMs: 700 },
+      advance: { state: isEmail, then: "unlock" },
       preferredPlacement: "below",
       content: "Type a teammate's email.",
     },

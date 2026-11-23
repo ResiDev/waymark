@@ -8,7 +8,7 @@ import { build, preview } from "vite";
  * Records the demo app for the promo video.
  *
  * Builds the app, drives it through the storyboard in Chromium at 1280×800 and
- * 2× scale, and keeps every frame the CDP screencast sends with its timestamp.
+ * 2× scale, and screenshots it as fast as Chromium allows, keeping each frame with its timestamp.
  * ffmpeg turns those into a constant 60 fps video. Beside it goes a timeline:
  * when each beat starts and ends, what to frame, and where the pointer was, so
  * the edit can sync zooms, captions and a drawn cursor.
@@ -41,12 +41,15 @@ declare global {
 // ---- the app ----
 
 await build({ configFile: here("vite.config.ts"), build: { outDir: here(".capture/dist"), emptyOutDir: true } });
-const server = await preview({ configFile: here("vite.config.ts"), build: { outDir: here(".capture/dist") } });
+// Any free port: a preview left running elsewhere shouldn't stop a recording.
+const server = await preview({ configFile: here("vite.config.ts"), build: { outDir: here(".capture/dist") }, preview: { strictPort: false } });
 const url = server.resolvedUrls?.local[0] ?? "http://localhost:4181/";
 
-// ---- the browser and the screencast ----
+// ---- the browser and the capture ----
 
-const browser = await chromium.launch();
+// CHROMIUM_PATH runs an installed Chromium instead of Playwright's own, where that can't be downloaded.
+const executablePath = process.env.CHROMIUM_PATH;
+const browser = await chromium.launch(executablePath === undefined ? {} : { executablePath });
 const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: SCALE });
 const page = await context.newPage();
 page.on("pageerror", (error) => console.error("page error:", error.message));
@@ -57,20 +60,26 @@ await mkdir(PUBLIC, { recursive: true });
 
 const frames: { file: string; t: number }[] = [];
 const writes: Promise<void>[] = [];
-const cdp = await context.newCDPSession(page);
-cdp.on("Page.screencastFrame", ({ data, metadata, sessionId }) => {
-  const file = `${String(frames.length).padStart(5, "0")}.jpg`;
-  frames.push({ file, t: metadata.timestamp ?? clock() });
-  writes.push(writeFile(`${FRAMES}/${file}`, Buffer.from(data, "base64")));
-  void cdp.send("Page.screencastFrameAck", { sessionId }).catch(() => {});
-});
-const startScreencast = () =>
-  cdp.send("Page.startScreencast", {
-    format: "jpeg",
-    quality: 92,
-    maxWidth: VIEWPORT.width * SCALE,
-    maxHeight: VIEWPORT.height * SCALE,
-  });
+// Screenshots, not Page.startScreencast: the screencast sends frames at CSS-pixel size whatever the device
+// scale, so the footage came out at half size and blurred when the edit zoomed in. Playwright's screenshot
+// takes every device pixel, and waits out a reload where a raw CDP one never returns.
+const stop = new AbortController();
+let capture = Promise.resolve();
+async function shoot() {
+  while (!stop.signal.aborted) {
+    const before = clock();
+    // oxlint-disable-next-line eslint/no-await-in-loop -- one shot at a time, each stamped as it's taken.
+    const data = await page.screenshot({ type: "jpeg", quality: 92, scale: "device", caret: "initial" }).catch(() => null);
+    // A shot that fails mid-reload is dropped; the last frame holds until the next.
+    if (data === null) continue;
+    const file = `${String(frames.length).padStart(5, "0")}.jpg`;
+    frames.push({ file, t: (before + clock()) / 2 });
+    writes.push(writeFile(`${FRAMES}/${file}`, data));
+  }
+}
+const startCapture = () => {
+  capture = shoot();
+};
 
 // ---- what the edit needs to know ----
 
@@ -92,6 +101,9 @@ const beat = (id: string) => {
 };
 
 const pause = (ms: number) => page.waitForTimeout(ms);
+// The storyboard's holds, scaled together: shorter makes a quicker cut, but each caption has less time to read.
+const HOLD = 2 / 3;
+const hold = (ms: number) => pause(Math.round(ms * HOLD));
 
 let at = { x: 760, y: 520 };
 const ease = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - (-2 * p + 2) ** 3 / 2);
@@ -168,58 +180,62 @@ await page.addInitScript(() => {
 await page.mouse.move(at.x, at.y);
 await page.goto(url);
 await page.locator("table").waitFor();
-await startScreencast();
+startCapture();
 const start = clock();
 pointer.push({ t: start, ...at });
-await pause(200);
+await hold(200);
 
 // Each beat is one line of the captions, held long enough to read it, so the
 // edit never has to slow the footage down.
 
-// ---- act 1: every step moves on by itself ----
+// ---- act 1: steps that wait for the user ----
 
 // "This step will automatically progress as soon as the user clicks Invite." It stays up as the tour
 // moves on, which shows what it says.
 beat("a1-title");
 await popover("better with your team");
 await frame('[data-waymark="invite"]');
-await pause(1400);
+await hold(1400);
 await click('[data-waymark="invite"]', { ms: 600 });
 
 beat("a1-click");
 await popover("teammate's email");
 await frame(".invite-panel");
-await pause(1000);
+await hold(1000);
 
-// "This step will automatically progress as soon as a valid email is entered."
+// "This one unlocks Next once a valid email is entered, and the user moves on." A beat on the unlocked
+// button before pressing it, so the change from locked shows.
 beat("a1-state");
 await click('[data-waymark="invite-email"]', { ms: 600, dx: -60 });
-await pause(1000);
+await hold(1000);
 await page.keyboard.type("elena@fernhill.studio", { delay: 90 });
+await page.getByRole("dialog").getByRole("button", { name: "Next", disabled: false }).waitFor();
+await hold(900);
+await click('[role="dialog"] button:text-is("Next")', { ms: 600 });
 
 // "And now sending the invite will automatically complete the tour." Sending is also what ticks the
 // checklist in act 3.
 beat("a1-done");
 await popover("send it");
 await frame(".invite-panel");
-await pause(1800);
+await hold(1800);
 
 // Then a breath before act 2.
 beat("a1-send");
 await click('[data-waymark="send-invite"]', { ms: 600 });
 await page.getByRole("dialog").waitFor({ state: "detached" });
 await page.locator(".invite-panel").waitFor({ state: "detached" });
-await pause(2000);
+await hold(2000);
 
 // ---- act 2: started by the app, kept through a reload, paused, skipped, all of it tracked ----
 
 // "Tours can be started automatically too — such as a user opening their own projects." One camera move.
 beat("a2-title");
 await frame(".projects", '[data-waymark="tabs"]');
-await pause(800);
+await hold(800);
 await click('[data-waymark="tabs"] button:has-text("Mine")', { ms: 1000 });
 await popover("only the ones you own");
-await pause(5000);
+await hold(5000);
 
 // "Even an accidental reload keeps the tour on the same step." Nothing but the stored run brings it back:
 // the app only starts it on a click of Mine.
@@ -228,42 +244,42 @@ reloads.push({ t: clock() });
 await page.reload();
 await page.locator("table").waitFor();
 await popover("only the ones you own");
-await pause(5200);
+await hold(5200);
 
 // "Clicking anywhere else pauses the tour and hides the popover." Somewhere in shot, so the click is seen.
 beat("a2-away");
 await click("tbody tr:first-child td:nth-child(3)", { ms: 900 });
 await page.getByRole("button", { name: "Resume walkthrough" }).waitFor();
-await pause(2700);
+await hold(2700);
 
 // "A pulsing dot attaches to the last step. Clicking it reopens the tour, allowing the user to move at
 // their own pace." The click it describes happens under it.
 beat("a2-beacon");
 await frame('[data-waymark="tabs"]');
-await pause(4800);
+await hold(4800);
 await click('button[aria-label="Resume walkthrough"]', { ms: 1000 });
 await popover("only the ones you own");
-await pause(2000);
+await hold(2000);
 
 // "Waymark reports every start, pause, resume and skip, ready for your analytics." The card fills in
 // first; the skip lands live. Then a breath before act 3.
 beat("a2-skip");
-await pause(1500);
+await hold(1500);
 await click('[role="dialog"] button:has-text("Skip")', { ms: 900 });
 await page.getByRole("dialog").waitFor({ state: "detached" });
-await pause(4200);
+await hold(4200);
 
 // Back to every project between the acts: act 3's new project has no owner yet.
 beat("");
 await click('[data-waymark="tabs"] button:has-text("All")', { ms: 500 });
-await pause(300);
+await hold(300);
 
 // ---- act 3: a checklist, ticked by a tour and by the user on their own ----
 
 // "The checklist lays out what to learn. Users decide when."
 beat("a3-title");
 await frame(".getting-started");
-await pause(3000);
+await hold(3000);
 // The cursor heads for the item while the line is still up; the next line comes with the click.
 const pick = await centre('.tasks li:has-text("Create a new project") button');
 await moveTo(pick.x, pick.y, 1200);
@@ -273,7 +289,7 @@ beat("a3-pick");
 await click('.tasks li:has-text("Create a new project") button', { ms: 120 });
 await popover("Every project starts here");
 await frame(".getting-started", '[data-waymark="new-project"]');
-await pause(3200);
+await hold(3200);
 
 beat("a3-tour");
 await click('[data-waymark="new-project"]', { ms: 700 });
@@ -282,32 +298,33 @@ await frame(".new-project", ".getting-started");
 await click('[data-waymark="project-name"]', { ms: 500, dx: -60 });
 await page.keyboard.type("Spring launch", { delay: 55 });
 await popover("And create it");
-await pause(600);
+await hold(600);
 
 // "Finishing the tour ticks the item off." A beat with it still open, then the click that ticks it.
 beat("a3-tick");
 await frame('[data-waymark="create-project"]', ".getting-started");
-await pause(1100);
+await hold(1100);
 await click('[data-waymark="create-project"]', { ms: 600 });
 await page.getByRole("dialog").waitFor({ state: "detached" });
-await pause(1300);
+await hold(1300);
 
 // "Doing the task without the tour ticks it off too."
 beat("a3-owner");
 await frame("tbody tr:first-child");
-await pause(500);
+await hold(500);
 await click('[data-waymark="assign-owner"]', { ms: 1100 });
 await page.locator(".owner-menu").waitFor();
 
 beat("a3-auto");
 await frame(".owner-menu", ".getting-started");
-await pause(1100);
+await hold(1100);
 await click('.owner-menu button:has-text("Hannah")', { ms: 600 });
-await pause(1800);
+await hold(1800);
 beat("");
 
 const end = clock();
-await cdp.send("Page.stopScreencast");
+stop.abort();
+await capture;
 await Promise.all(writes);
 await browser.close();
 await server.close();
@@ -316,7 +333,7 @@ await server.close();
 
 const kept = frames.filter((f) => f.t >= start);
 const first = kept[0];
-if (!first) throw new Error("The screencast sent no frames.");
+if (!first) throw new Error("The capture took no frames.");
 const list = kept
   .map((f, i) => `file '${f.file}'\nduration ${((kept[i + 1]?.t ?? end) - f.t).toFixed(4)}`)
   .join("\n");

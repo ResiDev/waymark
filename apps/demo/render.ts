@@ -20,6 +20,8 @@ const GIF = `${dir}/waymark.gif`;
 // Kept beside the cut, so it can be traced back to the recording it came from.
 copyFileSync(here("video/public/capture.json"), `${dir}/capture.json`);
 const LIMIT = 5 * 1024 * 1024;
+// GitHub plays a video in a README only if it was uploaded there, up to 10 MB on a free plan.
+const VIDEO_LIMIT = 10 * 1024 * 1024;
 
 if (!existsSync(here("video/public/capture.mp4"))) {
   console.error("No capture yet. Run pnpm --filter demo record first.");
@@ -27,7 +29,9 @@ if (!existsSync(here("video/public/capture.mp4"))) {
 }
 
 // Anything after `--` goes to Remotion, e.g. --props='{"align":"center"}'.
-execFileSync("remotion", ["render", "Waymark", MP4, "--codec=h264", "--crf=16", ...process.argv.slice(2).filter((arg) => arg !== "--")], { stdio: "inherit" });
+execFileSync("remotion", ["render", "Waymark", MP4, "--codec=h264", "--crf=20", "--color-space=bt709", "--pixel-format=yuv420p", ...process.argv.slice(2).filter((arg) => arg !== "--")], { stdio: "inherit" });
+
+if (statSync(MP4).size > VIDEO_LIMIT) console.warn("The MP4 is over 10 MB, too big to upload to GitHub. Raise --crf or shorten the edit.");
 
 // Smaller and slower until it fits. The UI is flat colour, so no dithering: it
 // only adds noise that compresses badly.

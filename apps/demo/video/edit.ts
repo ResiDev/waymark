@@ -55,7 +55,7 @@ type Cut = Readonly<{
 export const CUTS: readonly Cut[] = [
   { beat: "a1-title", act: "advance", speed: 1, trim: 0.5, title: true, say: "This step will automatically progress as soon as the user clicks Invite." },
   { beat: "a1-click", act: "advance", speed: 1 },
-  { beat: "a1-state", act: "advance", speed: 1, say: "This step will automatically progress as soon as a valid email is entered." },
+  { beat: "a1-state", act: "advance", speed: 1, say: "This one unlocks Next once a valid email is entered, and the user moves on." },
   { beat: "a1-done", act: "advance", speed: 1, say: "And now sending the invite will automatically complete the tour." },
   { beat: "a1-send", act: "advance", speed: 1 },
   { beat: "a2-title", act: "interrupt", speed: 1.44, title: true, say: "Tours can be started automatically too — such as a user opening their own projects." },

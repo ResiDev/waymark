@@ -17,6 +17,7 @@ import {
   cameraAt,
   captions,
   clamp,
+  easeInOut,
   easeOut,
   focusAt,
   footageFrames,
@@ -109,9 +110,18 @@ function Outro() {
           fontFamily: mono,
           fontSize: 44,
           fontWeight: 500,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
         }}
       >
-        <span style={{ color: faint }}>$ </span>npm install <span style={{ color: accent }}>react-waymark</span>
+        <div>
+          <span style={{ color: faint }}>$ </span>npm install <span style={{ color: accent }}>react-waymark</span>
+        </div>
+        <div>
+          <span style={{ color: faint }}>$ </span>npm install <span style={{ color: accent }}>waymark-core</span>
+          <span style={{ color: faint, whiteSpace: "pre" }}>{"  # without React"}</span>
+        </div>
       </div>
       <div style={{ ...rise(frame, fps, 12), fontSize: 26, color: muted }}>
         Open source, MIT licensed
@@ -143,6 +153,7 @@ function Footage({ timeline }: { timeline: Timeline }) {
         <Text timeline={timeline} all={all} frame={frame} />
       </div>
       <Analytics timeline={timeline} all={all} frame={frame} />
+      <Reload timeline={timeline} t={at(all, frame).t} />
     </AbsoluteFill>
   );
 }
@@ -395,6 +406,57 @@ function Analytics({ timeline, all, frame }: { timeline: Timeline; all: readonly
         })}
       </div>
     </div>
+  );
+}
+
+// ---- the reload: a chip whose arrow turns once, since a reload alone is just a blink of the page ----
+
+/** Seconds of footage: the chip shows a little before the reload and stays while the page comes back. */
+const RELOAD = { before: 0.3, spin: 0.9, after: 1.3, fade: 0.25 };
+
+function Reload({ timeline, t }: { timeline: Timeline; t: number }) {
+  const reload = timeline.reloads.find((r) => t >= r.t - RELOAD.before && t < r.t + RELOAD.after);
+  if (!reload) return null;
+  const since = t - reload.t;
+  const enter = easeOut(clamp((since + RELOAD.before) / RELOAD.fade, 0, 1));
+  const leave = 1 - easeOut(clamp((since - RELOAD.after + RELOAD.fade) / RELOAD.fade, 0, 1));
+  const turn = easeInOut(clamp(since / RELOAD.spin, 0, 1)) * 360;
+  return (
+    // Low and centred: the shaded page below the table, clear of the popover, the caption and the checklist.
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "flex-end", paddingBottom: 170, pointerEvents: "none" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          padding: "18px 30px 18px 24px",
+          borderRadius: 999,
+          background: "#fff",
+          boxShadow: "0 12px 32px rgb(16 24 40 / 0.18), 0 0 0 1px rgb(16 24 40 / 0.06)",
+          fontSize: 30,
+          fontWeight: 600,
+          letterSpacing: "-0.01em",
+          opacity: enter * leave,
+          transform: `scale(${0.92 + 0.08 * enter})`,
+        }}
+      >
+        <svg
+          width="38"
+          height="38"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke={accent}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ transform: `rotate(${turn}deg)` }}
+        >
+          <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
+          <path d="M21 3v5h-5" />
+        </svg>
+        Reloading the page
+      </div>
+    </AbsoluteFill>
   );
 }
 
