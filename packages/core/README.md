@@ -1,8 +1,10 @@
 # waymark-core
 
-The framework-agnostic engine behind Waymark: walkthroughs and onboarding checklists for web apps.
+The framework-agnostic engine behind Waymark: walkthroughs and checklists for web apps.
 
 **Using React? Install [`react-waymark`](https://www.npmjs.com/package/react-waymark) instead.** It includes this package, and draws the popover, beacon and checklist for you.
+
+Steps can advance automatically, or unlock Next, when the user clicks an element, triggers a DOM event, or meets a condition in your app. Clicking away collapses a walkthrough into a pulsing beacon on that element, so the user can come back to the same step later. Progress persists across reloads in `localStorage` or your own backend. Checklists track tasks that can launch a walkthrough and tick themselves off from your app's state.
 
 This package is for building Waymark into another framework, or into an app without one.
 
@@ -124,7 +126,7 @@ This renderer is deliberately minimal: `step.meta` is untyped here, and beacons 
 ## Start a walkthrough from your code
 
 - `run.requestStart(walkthrough)` is for your app choosing to show one, as above. It waits until no other walkthrough is open: it starts a walkthrough the user hasn't seen yet, restores one they were mid-way through after a reload, leaves a collapsed walkthrough as its beacon, and never reopens one they finished or exited. It returns a function that withdraws the request.
-- `run.start(walkthrough)` is for the user asking, such as from a help button. It opens the walkthrough immediately—picking up where they left off if it's in progress, or starting from step 1 if they finished or exited it.
+- `run.start(walkthrough)` is for the user asking, such as from a help button. It opens the walkthrough immediately, picking up where they left off if it's in progress, or starting from step 1 if they finished or exited it.
 
 Only one walkthrough is open at once. `start` interrupts the open one, which does what its `dismiss` says: by default it's put aside as a beacon. Give a walkthrough opened from a help button `dismiss: "exit"`, so clicking away exits it rather than leaving a beacon.
 
@@ -149,7 +151,7 @@ Without a `checklists` map, `defineChecklists` puts every task into `checklists.
 
 Core handles Escape and the arrow keys, clicks on and away from the waymark, and measuring the waymark every frame while the Run is attached. Your renderer draws the rest from the snapshot:
 
-- **The open step**, placed beside `waymark.rect` when `waymark.status` is `"found"`, and centred on screen otherwise—with a fallback message when the status is `"lost"` or `"missing"`.
+- **The open step**, placed beside `waymark.rect` when `waymark.status` is `"found"`, and centred on screen otherwise, with a fallback message when the status is `"lost"` or `"missing"`.
 - **Its buttons**, wired to `run.act`: `"advance"` (disabled unless `canAdvance`), `"previous"`, `"collapse"` and `"exit"`.
 - **Beacons** from `snapshot.beacons`, each calling `run.act("resume", beacon.walkthrough)`.
 - **Names and focus.** Core announces nothing and doesn't move focus; the dialog's name, a live region and where focus goes are yours.

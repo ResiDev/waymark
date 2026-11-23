@@ -1,8 +1,8 @@
 # react-waymark
 
-Walkthroughs and onboarding checklists for React.
+Walkthroughs and checklists for React.
 
-A **walkthrough** shows a popover beside a part of your app, one step at a time. A step can wait for the user to do what it asks, such as click a button or type a valid email, and move on by itself. A **checklist** is a list of tasks for a new user, and each task can start a walkthrough that shows how.
+Steps can advance automatically, or unlock Next, when the user clicks an element, triggers a DOM event, or meets a condition in your app. Clicking away collapses a walkthrough into a pulsing beacon on that element, so the user can come back to the same step later. Progress persists across reloads in `localStorage` or your own backend. Checklists track tasks that can launch a walkthrough and tick themselves off from your app's state.
 
 ## Why Waymark
 
@@ -53,7 +53,7 @@ export function App() {
 
 When `<Walkthrough>` mounts, the walkthrough opens. The page is shaded except for the search field, with a popover beside it. The first step has a Next button. The second waits for the user to click New project, then finishes the walkthrough. If nothing appears, see [Why isn't a walkthrough showing?](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/troubleshooting.md).
 
-`renderPopover` and `renderBeacon` render the popover and the **beacon** (the small marker left on the page when a user puts a walkthrough aside). Pass `defaultPopover` and `defaultBeacon` to use the built-in UI—they are passed explicitly so apps with custom UI don't ship them.
+`renderPopover` and `renderBeacon` render the popover and the **beacon** (the small marker left on the page when a user puts a walkthrough aside). Pass `defaultPopover` and `defaultBeacon` to use the built-in UI. They are passed explicitly so apps with custom UI don't ship them.
 
 Define each walkthrough once, outside any component (defining one inside render throws in development). Its `id` names it in the user's saved progress, so keep it the same across releases. To hold a walkthrough back until something is ready, such as your data, pass `<Walkthrough walkthrough={welcome} active={loaded} />`.
 
@@ -108,7 +108,7 @@ export function HelpMenu() {
 }
 ```
 
-`run.start` opens the walkthrough immediately—picking up where the user left off if it's in progress, or starting from step 1 if they finished or exited it. `<Walkthrough>` waits until no other walkthrough is open: it starts a walkthrough the user hasn't seen yet, restores one they were mid-way through after a reload, leaves a put-aside walkthrough as its beacon, and never reopens one they finished or exited. For help-menu walkthroughs, set `dismiss: "exit"` so clicking away exits the walkthrough instead of leaving a beacon. More in [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md#start-a-walkthrough-from-your-code).
+`run.start` opens the walkthrough immediately, picking up where the user left off if it's in progress, or starting from step 1 if they finished or exited it. `<Walkthrough>` waits until no other walkthrough is open: it starts a walkthrough the user hasn't seen yet, restores one they were mid-way through after a reload, leaves a put-aside walkthrough as its beacon, and never reopens one they finished or exited. For help-menu walkthroughs, set `dismiss: "exit"` so clicking away exits the walkthrough instead of leaving a beacon. More in [Walkthroughs](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/walkthroughs.md#start-a-walkthrough-from-your-code).
 
 ## Checklists
 
@@ -134,7 +134,7 @@ export function GetStarted() {
 }
 ```
 
-Without a `checklists` map, `defineChecklists` puts every task into `checklists.main`. Render `<Checklist>` anywhere inside `<WaymarkRoot>`: it draws a progress bar and a checkbox for each task, with a "Show me" button that starts the task's walkthrough and a Skip button. Finishing the walkthrough ticks the task, and a task can also tick itself when your app's state says it's done. For custom markup or a header popover, use `useChecklist` or the composable `Checklist*` primitives—more in [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/checklists.md).
+Without a `checklists` map, `defineChecklists` puts every task into `checklists.main`. Render `<Checklist>` anywhere inside `<WaymarkRoot>`: it draws a progress bar and a checkbox for each task, with a "Show me" button that starts the task's walkthrough and a Skip button. Finishing the walkthrough ticks the task, and a task can also tick itself when your app's state says it's done. For custom markup or a header popover, use `useChecklist` or the composable `Checklist*` primitives. More in [Checklists](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/checklists.md).
 
 ## Change the look
 
@@ -153,7 +153,7 @@ Left unset, the accent is blue, and the rest follow the page's `color-scheme`, s
 
 ## Next.js
 
-Waymark's components use hooks, so in the App Router render `<WaymarkRoot>`, `<Walkthrough>` and `<Checklist>` from files that start with `"use client"`. On the server no walkthrough is drawn, and a checklist renders every task as `"todo"` until the browser reads the user's progress—unless you pass a server-fetched record via `initial`. In Route Handlers or other server-only files, import `applyChanges` and `RecordUnreadableError` from `"react-waymark/server"`. More in [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md).
+Waymark's components use hooks, so in the App Router render `<WaymarkRoot>`, `<Walkthrough>` and `<Checklist>` from files that start with `"use client"`. On the server no walkthrough is drawn, and a checklist renders every task as `"todo"` until the browser reads the user's progress, unless you pass a server-fetched record via `initial`. In Route Handlers or other server-only files, import `applyChanges` and `RecordUnreadableError` from `"react-waymark/server"`. More in [Next.js and server rendering](https://github.com/ResiDev/waymark/blob/main/packages/react/docs/server-rendering.md).
 
 ## Docs
 
