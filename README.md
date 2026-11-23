@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/462467f1-bc7e-4545-a02f-68b2db074f6d
+
 # Waymark
 
 Walkthroughs and onboarding checklists for web apps. A walkthrough shows a popover beside a part of your app, one step at a time, and can move on by itself when the user does what a step asks. A checklist lists the tasks a new user should get through, and each task can start a walkthrough that shows how.
